@@ -2,9 +2,7 @@ package com.iheart.poweramp.common.akka.patterns.queue
 
 import java.time.LocalDateTime
 
-import akka.actor.Actor.Receive
 import akka.actor.{Props, ActorRef, Actor, ActorSystem}
-import akka.testkit.TestActor.AutoPilot
 import akka.testkit._
 import com.iheart.poweramp.common.akka.SpecWithActorSystem
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
@@ -29,7 +27,7 @@ class AutoScalingSpec extends SpecWithActorSystem {
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(Some(1.second)))
     tProcessor.expectMsgType[QueryStatus]
-    tProcessor.reply(RunningStatus(Set(newWorker().ref, newWorker().ref)))
+    tProcessor.reply(RunningStatus(Set(newWorker(), newWorker())))
     tProcessor.expectMsgType[ScaleTo]
     as.underlyingActor.perfLog must not(beEmpty)
   }
@@ -102,6 +100,7 @@ class AutoScalingSpec extends SpecWithActorSystem {
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
 
+    tProcessor.expectNoMsg(20.milliseconds)
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
 
@@ -125,17 +124,13 @@ class AutoScalingSpec extends SpecWithActorSystem {
 class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
   val tQueue = TestProbe()
   val tProcessor = TestProbe()
+  import akka.actor.ActorDSL._
+  def newWorker(busy: Boolean = true) = actor(new Act {
+    become {
+      case _ => sender ! (if(busy) Working else Idle)
+    }
+  })
 
-  def newWorker(busy: Boolean = true) = {
-    val w = TestProbe()
-    w.setAutoPilot(new AutoPilot {
-      def run(sender: ActorRef, msg: Any): AutoPilot = {
-        sender ! (if(busy) Working else Idle)
-        TestActor.KeepRunning
-      }
-    })
-    w
-  }
 
 
   case class MockQueueInfo(avgDispatchDurationLowerBound: Option[Duration]) extends QueueDispatchInfo
@@ -145,7 +140,7 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
     val processor = tProcessor.ref
     override def chanceOfScalingDownWhenFull = 0.3
 
-    override def actionFrequency: FiniteDuration = 1.hour //manual action
+    override def actionFrequency: FiniteDuration = 1.hour //manual action only
   }
 
   def autoScalingRef(explorationRatio: Double = 0.5) =
@@ -155,8 +150,8 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(Some(dispatchDuration)))
     tProcessor.expectMsgType[QueryStatus]
-    val workers = (1 to numOfBusyWorkers).map(_ => newWorker(true).ref) ++
-      (1 to numOfIdleWorkers).map(_ => newWorker(false).ref)
+    val workers = (1 to numOfBusyWorkers).map(_ => newWorker(true)) ++
+      (1 to numOfIdleWorkers).map(_ => newWorker(false))
     tProcessor.reply(RunningStatus(workers.toSet))
   }
 
