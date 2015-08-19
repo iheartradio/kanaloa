@@ -95,9 +95,9 @@ class QueueSpec extends SpecWithActorSystem {
 class ScalingWhenWorkingSpec extends SpecWithActorSystem {
 
   "retiring a worker when there is no work" in new QueueScope {
-    val queueProcessor = initQueue( iteratorQueue(List("a", "b").iterator,
-                                    WorkSetting(sendResultTo = Some(self))),
-                                    numberOfWorkers = 2)
+    val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
+      WorkSetting(sendResultTo = Some(self))),
+      numberOfWorkers = 2)
     queueProcessor ! ScaleTo(1)
     expectNoMsg(20.millisecond) //wait for retire to take effect
     delegatee.expectMsgType[DelegateeMessage]
