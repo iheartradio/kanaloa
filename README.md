@@ -1,5 +1,7 @@
 # work-pulling-pattern
 
+[![Build Status](https://travis-ci.org/iheartradio/work-pulling-pattern.svg)](https://travis-ci.org/iheartradio/work-pulling-pattern)
+
 An Akka work pipeline with back pressure control, circuit breaker and auto scaling. 
 
 The main goal of this work pipeline library is to protect backing service (e.g. a DB) from unbounded incoming requests and impose back pressure on the incoming source (Since akka actors are none-blocking, there is no limit on how many concurrent requests an actor can forward to a backend service). 
