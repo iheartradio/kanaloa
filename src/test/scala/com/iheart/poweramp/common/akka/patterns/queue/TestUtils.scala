@@ -2,8 +2,7 @@ package com.iheart.poweramp.common.akka.patterns.queue
 
 import akka.actor.{ActorSystem, Props, Actor, ActorRef}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor.Settings
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{WorkSetting, ResultChecker}
+
 import org.specs2.specification.Scope
 
 object TestUtils {
@@ -36,6 +35,6 @@ object TestUtils {
 
     val delegateeProps = Wrapper.props(delegatee.ref)
 
-    def defaultProcessorProps(queue: QueueRef, settings: Settings = Settings(numOfWorkers = 1)) = QueueProcessor.default(queue, delegateeProps, settings)(resultChecker)
+    def defaultProcessorProps(queue: QueueRef, settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1)) = QueueProcessor.default(queue, delegateeProps, settings)(resultChecker)
   }
 }

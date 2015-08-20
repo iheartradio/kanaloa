@@ -8,8 +8,4 @@ object CommonProtocol {
       replyTo.getOrElse(sender).!(msg)(replier)
     }
   }
-
-  case class WorkRejected(reason: String)
-  case class WorkFailed(reason: String)
-  case class WorkTimedOut(reason: String)
 }

@@ -1,11 +1,12 @@
 package com.iheart.poweramp.common.akka.patterns
 
 import akka.actor._
-import com.iheart.poweramp.common.akka.patterns.WorkPullingPipeline.{Rejected, Settings}
-import com.iheart.poweramp.common.akka.patterns.queue.{AutoScaling, QueueProcessor, Queue}
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.OverCapacity
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.{BackPressureSettings, EnqueueRejected, WorkAdded, Enqueue}
-import com.iheart.poweramp.common.akka.patterns.queue.Worker._
+import com.iheart.poweramp.common.akka.patterns.WorkPullingPipeline.Settings
+
+import com.iheart.poweramp.common.akka.patterns.queue._
+import queue.CommonProtocol.WorkRejected
+import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
+import EnqueueRejected.OverCapacity
 
 import scala.concurrent.duration._
 
@@ -21,13 +22,13 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
     }
 
     def waitingForQueueConfirmation(replyTo: ActorRef): Receive = {
-      case WorkAdded =>
+      case WorkEnqueued =>
         context stop self //mission accomplished
       case EnqueueRejected(_, OverCapacity) =>
-        replyTo ! Rejected("Server out of capacity")
+        replyTo ! WorkRejected("Server out of capacity")
         context stop self
       case m  =>
-        replyTo ! Rejected(s"unexpected response $m")
+        replyTo ! WorkRejected(s"unexpected response $m")
         context stop self
     }
   }
@@ -36,7 +37,7 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
 
   private lazy val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
                                               backendProps,
-                                              QueueProcessor.Settings(settings.numberOfParallelWorkers),
+                                              settings.workerPool,
                                               settings.circuitBreaker)(resultChecker), name + "-queue-processor")
 
   private lazy val autoScaler = system.actorOf(AutoScaling.default(queue, processor), name + "-auto-scaler" )
@@ -50,8 +51,6 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
 
 object WorkPullingPipeline {
 
-  case class Rejected(reason: String)
-
   val defaultBackPressureSettings: BackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,  //a good approximation is (thresholdForExpectedWaitTime / expected normal processing time), in this case the expected normal processing time is 1 ms
     thresholdForExpectedWaitTime = 1.minute,
@@ -63,11 +62,16 @@ object WorkPullingPipeline {
     historyLength = 5
   )
 
-  case class Settings( numberOfParallelWorkers: Int = 20, //relatively high number given our control
-                       workTimeout: FiniteDuration = 1.minute,
-                       workRetry: Int = 0,
-                       backPressure: BackPressureSettings = defaultBackPressureSettings,
+  val defaultWorkerPoolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(
+    startingPoolSize = 20,
+    maxProcessingTime = None,
+    minPoolSize = 5
+  )
 
+  case class Settings( workTimeout: FiniteDuration = 1.minute,
+                       workRetry: Int = 0,
+                       workerPool: ProcessingWorkerPoolSettings = defaultWorkerPoolSettings,
+                       backPressure: BackPressureSettings = defaultBackPressureSettings,
                        circuitBreaker: CircuitBreakerSettings = defaultCircuitBreakerSettings)
 
 }

@@ -8,7 +8,6 @@ import com.iheart.poweramp.common.akka.helpers.MessageScheduler
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.{OverCapacity, Reason}
 import com.iheart.poweramp.common.akka.patterns.queue.Queue._
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{WorkSetting, Rejected, Work}
 import scala.annotation.tailrec
 import scala.collection.immutable.{ Queue => ScalaQueue }
 import scala.concurrent.duration._
@@ -34,7 +33,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       case Enqueue(workMessage, replyTo, setting) =>
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
         dispatchWorks(status.copy(workBuffer = status.workBuffer.enqueue(newWork)), processing)
-        replyTo.foreach(_ ! WorkAdded)
+        replyTo.foreach(_ ! WorkEnqueued)
     }: ReceiveEnqueue)(enq)
 
     case Retire(timeout) =>
@@ -186,7 +185,7 @@ object Queue {
   object Enqueue {
     def apply(workMessage: Any, replyTo: ActorRef): Enqueue = Enqueue(workMessage, Some(replyTo))
   }
-  case object WorkAdded
+  case object WorkEnqueued
   case object Unregistered
 
   case class Unregister(worker: WorkerRef)
@@ -249,9 +248,6 @@ object Queue {
    * @param thresholdForExpectedWaitTime
    * @param maxHistoryLength
    */
-  case class BackPressureSettings( maxBufferSize: Int = 1000,
-                                   thresholdForExpectedWaitTime: FiniteDuration = 1.minute,
-                                   maxHistoryLength: FiniteDuration = 10.seconds
-                                 )
+
 }
 

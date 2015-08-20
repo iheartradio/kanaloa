@@ -10,7 +10,8 @@ import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.OverCapacity
 import com.iheart.poweramp.common.akka.patterns.queue.Queue._
 import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{CircuitBreakerSettings, WorkSetting}
+import com.iheart.poweramp.common.akka.patterns.queue.CommonProtocol._
+import com.iheart.poweramp.common.akka.patterns.queue._
 import org.specs2.mutable.Specification
 import org.specs2.specification.{Scope, AfterAll}
 import scala.concurrent.duration._
@@ -174,13 +175,13 @@ class DefaultQueueSpec extends SpecWithActorSystem {
 
       queue ! Enqueue("a", replyTo = Some(self))
 
-      expectMsg(WorkAdded)
+      expectMsg(WorkEnqueued)
 
       delegatee.expectMsg("a")
 
       queue ! Enqueue("b", Some(self))
 
-      expectMsg(WorkAdded)
+      expectMsg(WorkEnqueued)
 
       delegatee.expectMsg("b")
 
@@ -256,7 +257,7 @@ class QueueWithNaiveBackPressureSpec extends SpecWithActorSystem {
 
     queue ! Enqueue("d", Some(self))
 
-    expectMsg(WorkAdded)
+    expectMsg(WorkEnqueued)
 
     queue ! Enqueue("e", Some(self))
 
@@ -269,14 +270,14 @@ class QueueWithNaiveBackPressureSpec extends SpecWithActorSystem {
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, delegateeProps, Settings(numOfWorkers = 1), circuitBreakerSettings) {
+    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings) {
       case MessageProcessed(msg) => Right(msg)
       case MessageFailed => Left("doesn't matter")
     }
 
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : ActorRef = {
-    val processorProps: Props = defaultProcessorProps(queue, Settings(numOfWorkers = numberOfWorkers, minPoolSize = minPoolSize))
+    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize))
     system.actorOf(processorProps)
   }
   

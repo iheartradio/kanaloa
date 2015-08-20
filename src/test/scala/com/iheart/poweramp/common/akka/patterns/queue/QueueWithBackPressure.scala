@@ -4,17 +4,10 @@ import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
 import akka.actor._
-import akka.testkit.{TestActorRef, TestProbe, ImplicitSender, TestKit}
 import com.iheart.poweramp.common.akka.SpecWithActorSystem
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.OverCapacity
 import com.iheart.poweramp.common.akka.patterns.queue.Queue._
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{CircuitBreakerSettings, WorkSetting}
-import org.specs2.mutable.Specification
-import org.specs2.specification.{Scope, AfterAll}
 import scala.concurrent.duration._
-import scala.util.Random
 
 import TestUtils._
 
@@ -26,7 +19,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     initQueue(q, numberOfWorkers = 2)
 
     q ! Enqueue("a", self)
-    expectMsg(WorkAdded)
+    expectMsg(WorkEnqueued)
     q ! QueryStatus()
     val qs = expectMsgType[QueueStatus]
     qs.queuedWorkers.size === 1
@@ -34,7 +27,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     qs.bufferHistory.map(_.dispatched).sum === 1
 
     q ! Enqueue("b", self)
-    expectMsg(WorkAdded)
+    expectMsg(WorkEnqueued)
     q ! QueryStatus()
     val qs2 = expectMsgType[QueueStatus]
     qs2.queuedWorkers.size === 0
@@ -43,7 +36,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     qs2.bufferHistory.map(_.dispatched).sum === 2
 
     q ! Enqueue("c", self)
-    expectMsg(WorkAdded)
+    expectMsg(WorkEnqueued)
     q ! QueryStatus()
     val qs3 = expectMsgType[QueueStatus]
 

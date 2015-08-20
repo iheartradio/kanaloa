@@ -8,14 +8,13 @@ import com.iheart.poweramp.common.akka.helpers.MessageScheduler
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.{Retire}
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{CircuitBreakerSettings, ResultChecker}
 import scala.concurrent.duration._
 
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   import QueueProcessor.WorkerPool
   val queue: QueueRef
   def delegateeProps: Props
-  def settings: Settings
+  def settings: ProcessingWorkerPoolSettings
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
@@ -25,7 +24,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def workerProp(queueRef: QueueRef, delegateeProps: Props): Props
 
   def receive: Receive = {
-    val workers = (1 to settings.numOfWorkers).map(createWorker).toSet
+    val workers = (1 to settings.startingPoolSize).map(createWorker).toSet
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
 
@@ -128,14 +127,14 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
  */
 case class DefaultQueueProcessor(queue: QueueRef,
                                  delegateeProps: Props,
-                                 settings: Settings,
+                                 settings: ProcessingWorkerPoolSettings,
                                  resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props = Worker.default(queue, delegateeProps)(resultChecker)
 }
 
 case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
                                             delegateeProps: Props,
-                                            settings: Settings,
+                                            settings: ProcessingWorkerPoolSettings,
                                             circuitBreakerSettings: CircuitBreakerSettings,
                                             resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
@@ -162,17 +161,13 @@ object QueueProcessor {
   case object ShutdownSuccessfully
   private case object ShutdownTimeout
 
-  case class Settings( numOfWorkers: Int = 5,
-                       maxProcessingTime: Option[FiniteDuration] = None,
-                       minPoolSize: Int = 3)
-
   def default(queue: QueueRef,
               delegateeProps: Props,
-              settings: Settings)(resultChecker: ResultChecker): Props = Props(new DefaultQueueProcessor(queue, delegateeProps, settings, resultChecker))
+              settings: ProcessingWorkerPoolSettings)(resultChecker: ResultChecker): Props = Props(new DefaultQueueProcessor(queue, delegateeProps, settings, resultChecker))
 
   def withCircuitBreaker(queue: QueueRef,
                          delegateeProps: Props,
-                         settings: Settings,
+                         settings: ProcessingWorkerPoolSettings,
                          circuitBreakerSettings: CircuitBreakerSettings)(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(queue, delegateeProps, settings, circuitBreakerSettings, resultChecker))
 }

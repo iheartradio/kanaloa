@@ -2,7 +2,8 @@ package com.iheart.poweramp.common.akka.patterns.queue
 
 import akka.actor._
 import com.iheart.poweramp.common.akka.helpers.MessageScheduler
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.{WorkTimedOut, WorkFailed, QueryStatus}
+import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
+import com.iheart.poweramp.common.akka.patterns.queue.CommonProtocol.{WorkTimedOut, WorkFailed}
 import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor.MissionAccomplished
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.{Unregistered, Unregister, NoWorkLeft, RequestWork}
 import com.iheart.poweramp.common.akka.patterns.queue.Worker._
@@ -166,9 +167,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
 
 object Worker {
-  type ResultChecker = PartialFunction[Any, Either[String, Any]]
-  case class WorkSetting(retry: Int = 0, timeout: FiniteDuration = 30 seconds, sendResultTo: Option[ActorRef] = None)
-  case class Work(messageToDelegatee: Any, settings: WorkSetting = WorkSetting())
+
   private case object DelegateeTimeout
   case object Retire
 
@@ -176,7 +175,7 @@ object Worker {
   case object Retiring extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
-  case class Rejected(work: Work, reason: String)
+
 
   class DefaultWorker(protected val queue: QueueRef,
                       protected val delegateeProps: Props,
@@ -202,9 +201,7 @@ object Worker {
     val resultHistoryLength = circuitBreakerSettings.historyLength
   }
 
-  case class CircuitBreakerSettings( closeDuration: FiniteDuration = 3.seconds,
-                                     errorRateThreshold: Double = 1,
-                                     historyLength: Int = 5 )
+
 
   def default(queue: QueueRef, delegateeProps: Props)(resultChecker: ResultChecker): Props = {
     Props(new DefaultWorker(queue, delegateeProps, resultChecker))
