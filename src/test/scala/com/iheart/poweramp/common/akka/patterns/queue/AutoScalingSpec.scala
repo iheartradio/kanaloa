@@ -125,26 +125,23 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
   val tQueue = TestProbe()
   val tProcessor = TestProbe()
   import akka.actor.ActorDSL._
+
   def newWorker(busy: Boolean = true) = actor(new Act {
     become {
       case _ => sender ! (if(busy) Working else Idle)
     }
   })
 
-
-
   case class MockQueueInfo(avgDispatchDurationLowerBound: Option[Duration]) extends QueueDispatchInfo
 
-  case class TestAutoScaling(override val explorationRatio: Double) extends AutoScaling {
-    val queue = tQueue.ref
-    val processor = tProcessor.ref
-    override def chanceOfScalingDownWhenFull = 0.3
-
-    override def actionFrequency: FiniteDuration = 1.hour //manual action only
-  }
-
   def autoScalingRef(explorationRatio: Double = 0.5) =
-    TestActorRef[TestAutoScaling](Props(TestAutoScaling(explorationRatio)))
+    TestActorRef[AutoScaling](AutoScaling.default(tQueue.ref, tProcessor.ref,
+      AutoScalingSettings(
+        chanceOfScalingDownWhenFull = 0.3,
+        actionFrequency = 1.hour, //manual action only
+        explorationRatio = explorationRatio
+      )
+    ))
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {
     tQueue.expectMsgType[QueryStatus]

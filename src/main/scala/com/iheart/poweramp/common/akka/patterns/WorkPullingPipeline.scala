@@ -33,45 +33,51 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
     }
   }
 
-  private lazy val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSetting()), name + "-backing-queue")
+  private val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSetting()), name + "-backing-queue")
 
-  private lazy val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
+  private val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
                                               backendProps,
                                               settings.workerPool,
                                               settings.circuitBreaker)(resultChecker), name + "-queue-processor")
 
-  private lazy val autoScaler = system.actorOf(AutoScaling.default(queue, processor), name + "-auto-scaler" )
+  private val autoScaler =  settings.autoScalingSettings.foreach { s =>
+    system.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
+  }
 
 
   def handlerProps = {
-    autoScaler //lazy initialized system actors
     Props(new WorkPullingHandler(settings, queue))
   }
 }
 
 object WorkPullingPipeline {
 
-  val defaultBackPressureSettings: BackPressureSettings = BackPressureSettings(
-    maxBufferSize = 60000,  //a good approximation is (thresholdForExpectedWaitTime / expected normal processing time), in this case the expected normal processing time is 1 ms
+  val defaultBackPressureSettings = BackPressureSettings(
+    maxBufferSize = 60000,
     thresholdForExpectedWaitTime = 1.minute,
     maxHistoryLength = 10.seconds)
 
-  val defaultCircuitBreakerSettings: CircuitBreakerSettings = CircuitBreakerSettings(
+  val defaultCircuitBreakerSettings = CircuitBreakerSettings(
     closeDuration = 3.seconds,
     errorRateThreshold = 1,
-    historyLength = 5
+    historyLength = 3
   )
 
-  val defaultWorkerPoolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(
+  val defaultWorkerPoolSettings = ProcessingWorkerPoolSettings(
     startingPoolSize = 20,
     maxProcessingTime = None,
     minPoolSize = 5
+  )
+
+  val defaultAutoScalingSettings = AutoScalingSettings(
+
   )
 
   case class Settings( workTimeout: FiniteDuration = 1.minute,
                        workRetry: Int = 0,
                        workerPool: ProcessingWorkerPoolSettings = defaultWorkerPoolSettings,
                        backPressure: BackPressureSettings = defaultBackPressureSettings,
-                       circuitBreaker: CircuitBreakerSettings = defaultCircuitBreakerSettings)
+                       circuitBreaker: CircuitBreakerSettings = defaultCircuitBreakerSettings,
+                       autoScalingSettings: Option[AutoScalingSettings] = Some(defaultAutoScalingSettings))
 
 }

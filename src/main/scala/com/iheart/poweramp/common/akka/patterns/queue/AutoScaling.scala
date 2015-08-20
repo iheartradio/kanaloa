@@ -21,22 +21,9 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   //accessible only for testing purpose
   private[queue] var perfLog: PerformanceLog = Vector.empty
 
-  def chanceOfScalingDownWhenFull = 0.1
+  val settings: AutoScalingSettings
 
-  def actionFrequency: FiniteDuration = 15.seconds
-  
-  def retentionInHours = 72
-
-  def numOfAdjacentSizesToConsiderDuringOptimization = 6
-
-  def exploreStepSize = 0.1
-
-  def bufferRatio = 0.1
-
-  def explorationRatio = 0.4
-
-  def statusCollectionTimeout = 30.seconds
-
+  import settings._
   def receive: Receive = {
     delayedMsg(actionFrequency, OptimizeOrExplore)
     idle
@@ -190,7 +177,7 @@ object AutoScaling {
 
   type PerformanceLog = Vector[PerformanceLogEntry]
 
-  case class Default(queue: QueueRef, processor: QueueProcessorRef) extends AutoScaling
+  case class Default(queue: QueueRef, processor: QueueProcessorRef, settings: AutoScalingSettings) extends AutoScaling
 
-  def default(queue: QueueRef, processor: QueueProcessorRef) = Props(Default(queue, processor))
+  def default(queue: QueueRef, processor: QueueProcessorRef, settings: AutoScalingSettings) = Props(Default(queue, processor, settings))
 }
