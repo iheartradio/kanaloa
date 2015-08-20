@@ -276,9 +276,19 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
 
 
-  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : ActorRef = {
+  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize))
     system.actorOf(processorProps)
+  }
+
+  def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
+    queue ! QueryStatus()
+    fishForMessage(500.millisecond, "wait for workers to register"){
+      case qs : QueueStatus =>
+        val registered = qs.queuedWorkers.size == numberOfWorkers
+        if(!registered) queue ! QueryStatus()
+        registered
+    }
   }
   
   def iteratorQueue(iterator: Iterator[String], workSetting: WorkSetting = WorkSetting()): QueueRef =

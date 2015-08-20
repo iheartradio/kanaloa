@@ -18,11 +18,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     val q = withBackPressure()
     initQueue(q, numberOfWorkers = 2)
 
-    expectNoMsg(200.milliseconds) //wait for both workers to register with the queue, this wait time is set based on the stats from when it runs on travis
-
-    q ! QueryStatus()
-    val sqs = expectMsgType[QueueStatus]
-    sqs.queuedWorkers.size === 2
+    waitForWorkerRegistration(q, 2)
 
     q ! Enqueue("a", self)
     expectMsg(WorkEnqueued)
