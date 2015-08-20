@@ -146,9 +146,8 @@ case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
 object QueueProcessor {
   private[queue] type WorkerPool = Set[WorkerRef]
 
-  sealed trait ScaleAction
 
-  case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) extends ScaleAction {
+  case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) {
     assert(numOfWorkers > 0)
   }
 

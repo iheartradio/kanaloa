@@ -14,16 +14,6 @@ import com.iheart.poweramp.common.collection.FiniteCollection.FiniteQueue
 import scala.concurrent.duration._
 import scala.util.Random
 
-/***
-  * Periodically try to improve the pool size by changing it randomly by +1/-1 unit.
-  * If the new size improves performance then set this as the new pool size.
-  * Be careful to only measure pool size performance when the pool is maxed out.
-  * There’s no point measuring pool size performance when the pool is only partly used,
-  * because performance isn’t being constrained by the size of the pool unless the pool is fully used.
-  * Periodically shrink the pool size if it hasn’t been maxed out in some time period.
-  * If the pool is never maxed out then it’s probably too big.
-  * Set the time period to a long enough value that it spans the typical gap between peak traffic periods, e.g. 1 day.
-  */
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   val processor: QueueProcessorRef
@@ -35,15 +25,13 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   def actionFrequency: FiniteDuration = 15.seconds
   
-  def relevantPeriodInHours = 72
+  def retentionInHours = 72
 
   def numOfAdjacentSizesToConsiderDuringOptimization = 6
 
   def exploreStepSize = 0.1
 
   def bufferRatio = 0.1
-
-  def logLength = 10000
 
   def explorationRatio = 0.4
 
@@ -112,29 +100,35 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   private def chooseAction(dispatchWait: Duration, workerPool: WorkerPool, workerStatus: List[WorkerStatus]): Option[ScaleTo] = {
     val utilization = workerStatus.count(_ == Working)
+    val oldestRetention = LocalDateTime.now.minusHours(retentionInHours)
     val newEntry = PerformanceLogEntry(workerPool.size, dispatchWait, utilization, LocalDateTime.now)
-    perfLog = perfLog.enqueueFinite(newEntry, logLength)
+    perfLog = (perfLog :+ newEntry) match {
+      case h +: tail if h.time.isBefore(oldestRetention) => tail
+      case l => l
+    }
 
-    val (maxedLogs, unUtilizedLogs) = recentLogsWithin(relevantPeriodInHours).partition(_.fullyUtilized)
+    val (fullyUtilizedEntries, rest) = recentLogsWithin(retentionInHours).partition(_.fullyUtilized)
 
-    if (maxedLogs.isEmpty) {
-
-      val enoughUnUtilizedHistory = unUtilizedLogs.headOption.map(_.time.isBefore(LocalDateTime.now.minusHours(relevantPeriodInHours - 1))).getOrElse(false)
-      if (enoughUnUtilizedHistory) {
-        val maxUtilization = unUtilizedLogs.maxBy(_.actualUtilization).actualUtilization
-        val downsizeTo = maxUtilization * (1 + bufferRatio)
-        Some(ScaleTo(downsizeTo.toInt, Some("downsizing")))
-      }
-      else
-        None
-    } else
+    if (fullyUtilizedEntries.isEmpty)
+      downsize(rest)
+    else
       Some(
         if(newEntry.fullyUtilized && Random.nextDouble() < explorationRatio)
           explore(workerPool.size)
         else
-          optimize(workerPool.size, maxedLogs)
+          optimize(workerPool.size, fullyUtilizedEntries)
       )
+  }
 
+  private def downsize(logs: PerformanceLog): Option[ScaleTo] = {
+    val enoughUnUtilizedHistory = logs.headOption.map(_.time.isBefore(LocalDateTime.now.minusHours(retentionInHours - 1))).getOrElse(false)
+    if (enoughUnUtilizedHistory) {
+      val maxUtilization = logs.maxBy(_.actualUtilization).actualUtilization
+      val downsizeTo = maxUtilization * (1 + bufferRatio)
+      Some(ScaleTo(downsizeTo.toInt, Some("downsizing")))
+    }
+    else
+      None
   }
 
   private def recentLogsWithin(hours: Int) = perfLog.takeRightWhile(_.time.isAfter(LocalDateTime.now.minusHours(hours)))
