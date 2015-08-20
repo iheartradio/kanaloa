@@ -1,5 +1,5 @@
 language: scala
-sudo: false
+sudo: true #use legacy travis infra which works better
 scala:
    - 2.11.6
 jdk:
