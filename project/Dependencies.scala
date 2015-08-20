@@ -6,7 +6,9 @@ object Dependencies {
 
 
 
-  val resolvers = Seq(Resolver.typesafeRepo("releases"))
+  val resolvers = Seq(
+    Resolver.typesafeRepo("releases"),
+    Resolver.bintrayRepo("scalaz", "releases"))
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
