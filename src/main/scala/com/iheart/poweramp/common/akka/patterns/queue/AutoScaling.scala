@@ -24,16 +24,16 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val settings: AutoScalingSettings
 
   import settings._
-  def receive: Receive = {
+  final def receive: Receive = {
     delayedMsg(actionFrequency, OptimizeOrExplore)
     idle
   }
 
-  def watchingQueueAndProcessor: Receive = {
+  private def watchingQueueAndProcessor: Receive = {
     case Terminated(`queue`) | Terminated(`processor`) | Queue.Retiring | QueueProcessor.ShuttingDown => context stop self
   }
 
-  def idle: Receive = watchingQueueAndProcessor orElse {
+  private  def idle: Receive = watchingQueueAndProcessor orElse {
     case OptimizeOrExplore =>
       queue ! QueryStatus()
       delayedMsg(statusCollectionTimeout, StatusCollectionTimedOut)
@@ -42,7 +42,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     case StatusCollectionTimedOut => //nothing to worry about
   }
 
-  def collectingStatus(status: SystemStatus): Receive = watchingQueueAndProcessor orElse {
+  private def collectingStatus(status: SystemStatus): Receive = watchingQueueAndProcessor orElse {
     case qdi: QueueDispatchInfo =>
       val waitDuration = qdi.avgDispatchDurationLowerBound
       if(waitDuration.isDefined) {

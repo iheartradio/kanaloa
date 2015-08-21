@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
 import akka.actor._
+import akka.testkit.TestActorRef
 import com.iheart.poweramp.common.akka.SpecWithActorSystem
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.poweramp.common.akka.patterns.queue.Queue._
@@ -62,12 +63,10 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
 
   }
 
-  "overcpacitycontrol over threshold" >> {
+  "isOverCapacity" >> {
 
-    val q = new BackPressureControl {
-      val settings = BackPressureSettings(maxBufferSize = 10,
-        thresholdForExpectedWaitTime = 5.minutes)
-    }
+    val q = TestActorRef[QueueWithBackPressure](Queue.withBackPressure(BackPressureSettings(maxBufferSize = 10,
+                                                                        thresholdForExpectedWaitTime = 5.minutes))).underlyingActor
 
     def status(ps: (Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory =  ps.map { case (dispatched, size, time) => BufferHistoryEntry(dispatched, size, time) }.toVector )
 

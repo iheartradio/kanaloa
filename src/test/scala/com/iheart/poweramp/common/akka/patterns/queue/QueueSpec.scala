@@ -77,7 +77,7 @@ class QueueSpec extends SpecWithActorSystem {
   "Sad path" >> {
 
     "abandon work when delegatee times out" in new QueueScope {
-      val queueProcessor = initQueue(iteratorQueue(List("a", "b").iterator, WorkSetting(timeout = 288.milliseconds)))
+      val queueProcessor = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(timeout = 288.milliseconds)))
 
       delegatee.expectMsg(DelegateeMessage("a"))
 
@@ -97,7 +97,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
 
   "retiring a worker when there is no work" in new QueueScope {
     val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
-      WorkSetting(sendResultTo = Some(self))),
+      WorkSettings(sendResultTo = Some(self))),
       numberOfWorkers = 2)
     queueProcessor ! ScaleTo(1)
     expectNoMsg(20.millisecond) //wait for retire to take effect
@@ -115,7 +115,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
 
   "retiring a worker when it already started working" in new QueueScope {
     val queueProcessor = initQueue( iteratorQueue(List("a", "b", "c").iterator,
-                                    WorkSetting(sendResultTo = Some(self))),
+                                    WorkSettings(sendResultTo = Some(self))),
                                     numberOfWorkers = 2)
     delegatee.expectMsgType[DelegateeMessage]
 
@@ -238,35 +238,6 @@ class DefaultQueueSpec extends SpecWithActorSystem {
     }
 }
 
-class QueueWithNaiveBackPressureSpec extends SpecWithActorSystem {
-
-  "reject work after buffer is full" in new QueueScope {
-
-    val queue = withNaiveBackPressure(2)
-
-    initQueue(queue, numberOfWorkers = 2)
-
-    queue ! Enqueue("a")
-    delegatee.expectMsg("a")
-
-    queue ! Enqueue("b")
-
-    delegatee.expectMsg("b")
-
-    queue ! Enqueue("c")
-
-    queue ! Enqueue("d", Some(self))
-
-    expectMsg(WorkEnqueued)
-
-    queue ! Enqueue("e", Some(self))
-
-    expectMsg(EnqueueRejected("e", OverCapacity))
-  }
-}
-
-
-
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
@@ -291,17 +262,14 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
   
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSetting = WorkSetting()): QueueRef =
+  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(iteratorQueueProps(iterator, workSetting), "iterator-queue-" + Random.nextInt(100000))
 
-  def defaultQueue(workSetting: WorkSetting = WorkSetting()): QueueRef =
+  def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(Queue.default(workSetting), "default-queue-" + Random.nextInt(100000))
-
-  def withNaiveBackPressure(maxWorkBuffer: Int): QueueRef =
-    system.actorOf(Queue.withNaiveBackPressure(maxWorkBuffer, WorkSetting()), "naive-queue-" + Random.nextInt(100000))
 
 
   def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
-                        defaultWorkSetting: WorkSetting = WorkSetting()) =
+                        defaultWorkSetting: WorkSettings = WorkSettings()) =
       system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting), "with-back-pressure-queue" + Random.nextInt(500000))
 }

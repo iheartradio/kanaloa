@@ -17,7 +17,7 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
   private class WorkPullingHandler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
       case msg =>
-        queue ! Enqueue(msg, Some(self), Some(WorkSetting(settings.workRetry, settings.workTimeout, Some(sender))))
+        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
         context become waitingForQueueConfirmation(sender)
     }
 
@@ -33,7 +33,7 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
     }
   }
 
-  private val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSetting()), name + "-backing-queue")
+  private val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSettings()), name + "-backing-queue")
 
   private val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
                                               backendProps,

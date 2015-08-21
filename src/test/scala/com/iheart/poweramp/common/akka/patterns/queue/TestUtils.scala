@@ -26,7 +26,7 @@ object TestUtils {
     case m => Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
   }
 
-  def iteratorQueueProps(iterator: Iterator[String], workSetting: WorkSetting = WorkSetting()): Props =
+  def iteratorQueueProps(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
