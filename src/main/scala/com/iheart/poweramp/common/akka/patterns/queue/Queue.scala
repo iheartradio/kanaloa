@@ -31,13 +31,15 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
       else {
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
-        dispatchWorks(status.copy(workBuffer = status.workBuffer.enqueue(newWork)), processing)
+        val newStatus = dispatchWork(status.copy(workBuffer = status.workBuffer.enqueue(newWork)))
+        context become processing(newStatus)
         replyTo.foreach(_ ! WorkEnqueued)
       }
 
     case Retire(timeout) =>
       log.info("Queue commanded to retire")
-      val newStatus = dispatchWorks(status, retiring)  //if there are still work and workers
+      val newStatus = dispatchWork(status)
+      context become retiring(newStatus)
       newStatus.queuedWorkers.foreach { (qw) =>
         qw ! NoWorkLeft
         context unwatch qw
@@ -66,34 +68,42 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   protected def isOverCapacity(qs: QueueStatus): Boolean
 
   private def handleWork(status: QueueStatus, nextContext: QueueStatus => Receive): Receive = {
-    case RequestWork(requester) =>
-      context watch requester
-      dispatchWorks(status.copy(queuedWorkers = status.queuedWorkers.enqueue(requester)), nextContext)
+    def dispatchWorkAndBecome(status: QueueStatus, newContext: QueueStatus => Receive) : Unit = {
+      val newStatus = dispatchWork(status)
+      context become newContext(newStatus)
+    }
 
-    case Unregister(worker) =>
-      dispatchWorks(status.copy(queuedWorkers = status.queuedWorkers.filterNot(_ == worker)), nextContext)
-      worker ! Unregistered
+    {
+      case RequestWork(requester) =>
+        context watch requester
+        dispatchWorkAndBecome(status.copy(queuedWorkers = status.queuedWorkers.enqueue(requester)), nextContext)
 
-    case Terminated(worker) =>
-      context become nextContext(status.copy(queuedWorkers = status.queuedWorkers.filter(_ != worker)))
+      case Unregister(worker) =>
+        dispatchWorkAndBecome(status.copy(queuedWorkers = status.queuedWorkers.filterNot(_ == worker)), nextContext)
+        worker ! Unregistered
 
-    case Rejected(w, reason) =>
-      log.info(s"work rejected, reason given by worker is '$reason'")
-      dispatchWorks(status.copy(workBuffer = status.workBuffer.enqueue(w)), nextContext)
+      case Terminated(worker) =>
+        context become nextContext(status.copy(queuedWorkers = status.queuedWorkers.filter(_ != worker)))
 
-    case qs: QueryStatus => qs reply status
+      case Rejected(w, reason) =>
+        log.info(s"work rejected, reason given by worker is '$reason'")
+        dispatchWorkAndBecome(status.copy(workBuffer = status.workBuffer.enqueue(w)), nextContext)
 
+      case qs: QueryStatus => qs reply status
+    }
   }
 
   @tailrec
-  protected final def dispatchWorks(status: QueueStatus, newContext: QueueStatus => Receive, dispatched: Int = 0): QueueStatus = {
-    lazy val statusWithUpdatedHistory = if(bufferHistoryLength > 0) {
+  protected final def dispatchWork(status: QueueStatus, dispatched: Int = 0): QueueStatus = {
+    def updatedHistory = {
       val lastHistory = status.bufferHistory
       val newEntry = BufferHistoryEntry(dispatched, status.workBuffer.length, LocalDateTime.now)
-      val sampling = lastHistory.length > 1 && lastHistory.init.last.time.until(newEntry.time, ChronoUnit.MILLIS) < historySampleRateInMills //replacing the last entry if it's too close to the previous entry to achieve sampling while always retaining the latest status
-      val updatedHistory = if(sampling) lastHistory.init :+ newEntry.aggregate(lastHistory.last) else status.bufferHistory.enqueueFinite(newEntry, bufferHistoryLength)
-      status.copy(bufferHistory = updatedHistory)
-    } else status
+      val sampling = lastHistory.length > 1 && lastHistory.init.last.time.until(newEntry.time, ChronoUnit.MILLIS) < historySampleRateInMills //whether to replace the last entry if it's too close to the previous entry to achieve sampling while always retaining the latest status
+      if(sampling)
+        lastHistory.init :+ newEntry.aggregate(lastHistory.last)
+      else
+        status.bufferHistory.enqueueFinite(newEntry, bufferHistoryLength)
+    }
 
     (for (
       (worker, queuedWorkers) <- status.queuedWorkers.dequeueOption;
@@ -104,10 +114,11 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       if(workBuffer.isEmpty) onQueuedWorkExhausted()
       status.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = status.countOfWorkSent + 1)
     }) match {
-      case Some(newStatus) => dispatchWorks(newStatus, newContext, dispatched + 1) //actually in most cases, either works queue or workers queue is empty after one dispatch
+      case Some(newStatus) => dispatchWork(newStatus, dispatched + 1) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None =>
-        context become newContext(statusWithUpdatedHistory)
-        statusWithUpdatedHistory
+        if(bufferHistoryLength > 0)
+          status.copy(bufferHistory = updatedHistory)
+        else status
     }
   }
 
@@ -122,24 +133,20 @@ case class QueueWithBackPressure(settings: BackPressureSettings,
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms" )
 
 
-  def isOverCapacity(qs: QueueStatus): Boolean = {
-    val history = qs.bufferHistory
-    if(history.isEmpty)
+  def isOverCapacity(qs: QueueStatus): Boolean =
+    if(qs.currentQueueLength == 0)
       false
-    else if(history.last.numInBuffer >= settings.maxBufferSize){
+    else if(qs.currentQueueLength >= settings.maxBufferSize){
       log.error("buffer overflowed" + settings.maxBufferSize)
       true
-    } else if(history.last.numInBuffer == 0)
-      false //avoid unnecessary math most of the time since there is no relevant history to calculate wait time.
-    else {
-
+    } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBound.getOrElse(Duration.Zero) * qs.currentQueueLength
 
       val ret = expectedWaitTime > settings.thresholdForExpectedWaitTime
-      if(ret) log.error(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${settings.thresholdForExpectedWaitTime}. queue size ${history.last.numInBuffer}")
+      if(ret) log.error(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${settings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
       ret
     }
-  }
+  
 
 }
 
@@ -201,7 +208,7 @@ object Queue {
                                     countOfWorkSent: Int = 0,
                                     bufferHistory: Vector[BufferHistoryEntry] = Vector.empty) extends QueueDispatchInfo {
 
-    lazy val relevantHistory: Vector[BufferHistoryEntry] = bufferHistory.takeRightWhile(_.numInBuffer > 0) //only take into account latest busy queue history
+    lazy val relevantHistory: Vector[BufferHistoryEntry] = bufferHistory.takeRightWhile(_.queueLength > 0) //only take into account latest busy queue history
 
     /**
      * The lower bound of average duration it takes to dispatch one request， The reciprocal of it is the upper bound of dispatch speed.
@@ -214,10 +221,10 @@ object Queue {
       } else None
     }
 
-    def currentQueueLength = bufferHistory.lastOption.map(_.numInBuffer).getOrElse(0)
+    lazy val currentQueueLength = bufferHistory.lastOption.map(_.queueLength).getOrElse(0)
   }
 
-  private[queue] case class BufferHistoryEntry(dispatched: Int, numInBuffer: Int, time: LocalDateTime) {
+  private[queue] case class BufferHistoryEntry(dispatched: Int, queueLength: Int, time: LocalDateTime) {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
   }
 

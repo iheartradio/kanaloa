@@ -26,7 +26,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     q ! QueryStatus()
     val qs = expectMsgType[QueueStatus]
     qs.queuedWorkers.size === 1
-    qs.bufferHistory.last.numInBuffer === 0
+    qs.bufferHistory.last.queueLength === 0
     qs.bufferHistory.map(_.dispatched).sum === 1
 
     q ! Enqueue("b", self)
@@ -35,7 +35,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     val qs2 = expectMsgType[QueueStatus]
     qs2.queuedWorkers.size === 0
 
-    qs2.bufferHistory.last.numInBuffer === 0
+    qs2.bufferHistory.last.queueLength === 0
     qs2.bufferHistory.map(_.dispatched).sum === 2
 
     q ! Enqueue("c", self)
@@ -44,7 +44,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     val qs3 = expectMsgType[QueueStatus]
 
     qs3.queuedWorkers.size === 0
-    qs3.bufferHistory.last.numInBuffer === 1
+    qs3.bufferHistory.last.queueLength === 1
     qs3.bufferHistory.map(_.dispatched).sum === 2
     delegatee.expectMsg("a")
     delegatee.expectMsg("b")
@@ -58,7 +58,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
 
     qs4.queuedWorkers.size === 0
     qs4.workBuffer.size === 0
-    qs4.bufferHistory.last.numInBuffer === 0
+    qs4.bufferHistory.last.queueLength === 0
     qs4.bufferHistory.map(_.dispatched).sum === 3
 
   }
