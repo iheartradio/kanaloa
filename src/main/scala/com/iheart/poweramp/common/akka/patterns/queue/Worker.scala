@@ -108,19 +108,19 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       case Left(e) =>
         log.error(s"error $e returned by delegatee in regards to running work $outstanding")
         appendResultHistory(false)
-        retryOrAbandon(outstanding, isRetiring)
+        retryOrAbandon(outstanding, isRetiring, e)
 
     }
 
-  private def retryOrAbandon(outstanding: Outstanding, isRetiring: Boolean): Unit = {
-    outstanding.done()
+  private def retryOrAbandon(outstanding: Outstanding, isRetiring: Boolean, error: Any): Unit = {
+    outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry ) {
       log.info(s"Retry work $outstanding")
       sendWorkToDelegatee(outstanding.work, outstanding.retried + 1)
     } else {
       val message = s"Work failed after ${outstanding.retried} try(s)"
       log.error(s"$message, work $outstanding abandoned")
-      outstanding.done(WorkFailed(message))
+      outstanding.done(WorkFailed(message + s" due to $error"))
       if(isRetiring) finish()
       else
         askMoreWork()
@@ -152,9 +152,12 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   private case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
     def done(result: Any): Unit = {
-      if(!timeoutHandle.isCancelled) timeoutHandle.cancel()
+      cancel()
       reportResult(result)
     }
+
+    def cancel(): Unit = if(!timeoutHandle.isCancelled) timeoutHandle.cancel()
+
 
     override def toString = work.messageToDelegatee.getClass.toString
 
