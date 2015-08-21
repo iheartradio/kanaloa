@@ -131,7 +131,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       } else logs.head.dispatchWait
     }
 
-    val adjacentDispatchDurations: Map[PoolSize, Duration] = {
+    val adjacentDispatchWaits: Map[PoolSize, Duration] = {
       def adjacency = (size: Int) => Math.abs(currentSize - size)
       val sizes = avgDispatchWaitForEachSize.keys.toSeq
       val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
@@ -140,7 +140,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       avgDispatchWaitForEachSize.filter { case (size, _) => size >= leftBoundary && size <= rightBoundary }
     }
 
-    val optimalSize = adjacentDispatchDurations.minBy(_._2)._1
+    val optimalSize = adjacentDispatchWaits.minBy(_._2)._1
     val scaleStep = Math.ceil((optimalSize - currentSize) / 2).toInt
     ScaleTo(currentSize + scaleStep, Some("optimizing"))
   }
