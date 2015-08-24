@@ -94,7 +94,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       case l => l
     }
 
-    val (fullyUtilizedEntries, rest) = recentLogsWithin(retentionInHours).partition(_.fullyUtilized)
+    val (fullyUtilizedEntries, rest) = perfLog.partition(_.fullyUtilized)
 
     if (fullyUtilizedEntries.isEmpty)
       downsize(rest)
@@ -117,8 +117,6 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     else
       None
   }
-
-  private def recentLogsWithin(hours: Int) = perfLog.takeRightWhile(_.time.isAfter(LocalDateTime.now.minusHours(hours)))
 
 
   private def optimize(currentSize: PoolSize, relevantLogs: PerformanceLog): ScaleTo = {
