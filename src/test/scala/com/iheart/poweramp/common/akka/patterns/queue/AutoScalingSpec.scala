@@ -32,6 +32,36 @@ class AutoScalingSpec extends SpecWithActorSystem {
     as.underlyingActor.perfLog must not(beEmpty)
   }
 
+  "start an underutilizationStreak" in new AutoScalingScope {
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+    tProcessor.expectNoMsg(5.millisecond)
+    as.underlyingActor.underUtilizationStreak.get.highestUtilization === 3
+  }
+
+  "stop an underutilizationStreak" in new AutoScalingScope {
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+    tProcessor.expectNoMsg(5.millisecond)
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
+    expectNoMsg(5.millisecond) //wait
+    as.underlyingActor.underUtilizationStreak must beEmpty
+  }
+
+  "update an underutilizationStreak" in new AutoScalingScope {
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+    tProcessor.expectNoMsg(50.millisecond)
+    val start = as.underlyingActor.underUtilizationStreak.get.start
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 5, numOfIdleWorkers = 1)
+
+    tProcessor.expectNoMsg(5.millisecond)
+    as.underlyingActor.underUtilizationStreak.get.start === start
+    as.underlyingActor.underUtilizationStreak.get.highestUtilization === 5
+  }
+
   "explore when currently maxed out and exploration rate is 1" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 1)
     subject ! OptimizeOrExplore
