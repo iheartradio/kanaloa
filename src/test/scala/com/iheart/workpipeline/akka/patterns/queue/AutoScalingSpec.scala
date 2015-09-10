@@ -1,15 +1,16 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import java.time.LocalDateTime
 
-import akka.actor.{Props, ActorRef, Actor, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit._
-import com.iheart.poweramp.common.akka.SpecWithActorSystem
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.AutoScaling.{UnderUtilizationStreak, PoolSize, PerformanceLogEntry, OptimizeOrExplore}
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.QueueDispatchInfo
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor.{ScaleTo, RunningStatus}
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{Idle, Working}
+import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
+import AutoScaling.{UnderUtilizationStreak, PoolSize, OptimizeOrExplore}
+import QueueProcessor.RunningStatus
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
+import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
+import com.iheart.workpipeline.akka.patterns.queue.Worker.{Idle, Working}
 import org.specs2.specification.Scope
 
 import scala.concurrent.duration._

@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.akka.helpers
+package com.iheart.workpipeline.akka.helpers
 
 import akka.actor.{Cancellable, ActorRef, ActorLogging, Actor}
 

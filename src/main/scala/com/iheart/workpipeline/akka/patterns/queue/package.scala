@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.akka.patterns
+package com.iheart.workpipeline.akka.patterns
 
 import akka.actor.ActorRef
 import scala.concurrent.duration._

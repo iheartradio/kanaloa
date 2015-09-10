@@ -1,13 +1,13 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
 import akka.actor._
 import akka.testkit.TestActorRef
-import com.iheart.poweramp.common.akka.SpecWithActorSystem
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.Queue._
+import com.iheart.workpipeline.akka.SpecWithActorSystem
+import com.iheart.workpipeline.akka.patterns.CommonProtocol._
+import Queue._
 import scala.concurrent.duration._
 
 import TestUtils._

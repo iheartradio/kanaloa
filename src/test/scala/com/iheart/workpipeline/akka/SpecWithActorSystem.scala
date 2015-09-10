@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.akka
+package com.iheart.workpipeline.akka
 
 import akka.actor.ActorSystem
 import org.specs2.mutable.Specification

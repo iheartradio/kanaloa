@@ -1,19 +1,13 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
-import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 import akka.actor._
-import akka.testkit.{TestActorRef, TestProbe, ImplicitSender, TestKit}
-import com.iheart.poweramp.common.akka.SpecWithActorSystem
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.OverCapacity
-import com.iheart.poweramp.common.akka.patterns.queue.Queue._
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
-import com.iheart.poweramp.common.akka.patterns.queue.CommonProtocol._
-import com.iheart.poweramp.common.akka.patterns.queue._
-import org.specs2.mutable.Specification
-import org.specs2.specification.{Scope, AfterAll}
+import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
+import patterns.CommonProtocol.QueryStatus
+import Queue._
+import QueueProcessor._
+import com.iheart.workpipeline.akka.patterns.queue.Queue.{QueueStatus, WorkEnqueued}
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown, ShutdownSuccessfully}
 import scala.concurrent.duration._
 import scala.util.Random
 

@@ -1,15 +1,17 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import akka.actor._
-import com.iheart.poweramp.common.akka.helpers.MessageScheduler
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.CommonProtocol.{WorkTimedOut, WorkFailed}
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor.MissionAccomplished
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.{Unregistered, Unregister, NoWorkLeft, RequestWork}
-import com.iheart.poweramp.common.akka.patterns.queue.Worker._
+import com.iheart.workpipeline.akka.helpers.MessageScheduler
+import com.iheart.workpipeline.akka.patterns
+import com.iheart.workpipeline.collection.FiniteCollection
+import patterns.CommonProtocol.QueryStatus
+import CommonProtocol.{WorkTimedOut, WorkFailed}
+import QueueProcessor.MissionAccomplished
+import Queue.{Unregistered, Unregister, NoWorkLeft, RequestWork}
+import Worker._
 
 import scala.concurrent.duration._
-import com.iheart.poweramp.common.collection.FiniteCollection._
+import FiniteCollection._
 
 trait Worker extends Actor with ActorLogging with MessageScheduler {
   type ResultHistory = Vector[Boolean]

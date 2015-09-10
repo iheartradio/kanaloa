@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.collection
+package com.iheart.workpipeline.collection
 
 import FiniteCollection._
 import org.specs2.mutable.Specification

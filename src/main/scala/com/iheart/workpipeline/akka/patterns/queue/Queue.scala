@@ -1,19 +1,21 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
 import akka.actor._
-import com.iheart.poweramp.common.akka.helpers.MessageScheduler
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.EnqueueRejected.{OverCapacity, Reason}
-import com.iheart.poweramp.common.akka.patterns.queue.Queue._
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
+import Queue.EnqueueRejected.{OverCapacity, Reason}
+import Queue._
+import com.iheart.workpipeline.akka.helpers.MessageScheduler
+import com.iheart.workpipeline.collection.FiniteCollection
+import com.iheart.workpipeline.time.Java8TimeExtensions
 import scala.annotation.tailrec
 import scala.collection.immutable.{ Queue => ScalaQueue }
 import scala.concurrent.duration._
-import com.iheart.poweramp.common.collection.FiniteCollection._
+import FiniteCollection._
 import Queue.QueueStatus
-import com.iheart.poweramp.common.time.Java8TimeExtensions._
+import Java8TimeExtensions._
 
 
 trait Queue extends Actor with ActorLogging with MessageScheduler {

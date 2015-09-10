@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.time
+package com.iheart.workpipeline.time
 
 import java.time.LocalDateTime
 import java.time.temporal.{ChronoUnit, Temporal}

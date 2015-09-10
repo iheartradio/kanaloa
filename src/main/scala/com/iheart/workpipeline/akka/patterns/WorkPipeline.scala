@@ -1,9 +1,9 @@
-package com.iheart.poweramp.common.akka.patterns
+package com.iheart.workpipeline.akka.patterns
 
 import akka.actor._
-import com.iheart.poweramp.common.akka.patterns.WorkPipeline.Settings
+import WorkPipeline.Settings
 
-import com.iheart.poweramp.common.akka.patterns.queue._
+import com.iheart.workpipeline.akka.patterns.queue._
 import queue.CommonProtocol.WorkRejected
 import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
 import EnqueueRejected.OverCapacity

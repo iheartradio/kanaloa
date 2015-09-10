@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import akka.actor.{ActorSystem, Props, Actor, ActorRef}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}

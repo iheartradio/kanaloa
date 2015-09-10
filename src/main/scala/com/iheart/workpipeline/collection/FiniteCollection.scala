@@ -1,5 +1,4 @@
-package com.iheart.poweramp.common.collection
-
+package com.iheart.workpipeline.collection
 
 object FiniteCollection {
 

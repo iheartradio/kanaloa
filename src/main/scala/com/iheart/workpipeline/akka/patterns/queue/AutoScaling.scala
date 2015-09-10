@@ -1,14 +1,15 @@
-package com.iheart.poweramp.common.akka.patterns.queue
-
+package com.iheart.workpipeline.akka.patterns.queue
 
 import akka.actor.{Props, Terminated, ActorLogging, Actor}
-import com.iheart.poweramp.common.akka.helpers.MessageScheduler
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.AutoScaling._
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.QueueDispatchInfo
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
-import com.iheart.poweramp.common.akka.patterns.queue.Worker.{Working, WorkerStatus}
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
+import AutoScaling._
+import QueueProcessor._
 import java.time.{LocalDateTime, Duration ⇒ JDuration}
+import com.iheart.workpipeline.akka.helpers.MessageScheduler
+import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
+import com.iheart.workpipeline.akka.patterns.queue.Worker.{Working, WorkerStatus}
+
 import scala.concurrent.duration._
 import scala.util.Random
 

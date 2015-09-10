@@ -1,4 +1,4 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 object CommonProtocol {
 

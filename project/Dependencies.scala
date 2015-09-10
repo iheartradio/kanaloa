@@ -1,10 +1,6 @@
-package com.iheart.poweramp.common
-
 import sbt._
 
 object Dependencies {
-
-
 
   val resolvers = Seq(
     Resolver.typesafeRepo("releases"),

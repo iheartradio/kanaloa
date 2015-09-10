@@ -1,13 +1,13 @@
-package com.iheart.poweramp.common.akka.patterns.queue
+package com.iheart.workpipeline.akka.patterns.queue
 
 import java.time.{ZoneOffset, LocalDateTime}
 
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
-import com.iheart.poweramp.common.akka.helpers.MessageScheduler
-import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
-import com.iheart.poweramp.common.akka.patterns.queue.Queue.{Retire}
+import com.iheart.workpipeline.akka.helpers.MessageScheduler
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
+import QueueProcessor._
+import Queue.{Retire}
 import scala.concurrent.duration._
 
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
