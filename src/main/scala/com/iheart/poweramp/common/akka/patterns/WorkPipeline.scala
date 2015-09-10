@@ -1,7 +1,7 @@
 package com.iheart.poweramp.common.akka.patterns
 
 import akka.actor._
-import com.iheart.poweramp.common.akka.patterns.WorkPullingPipeline.Settings
+import com.iheart.poweramp.common.akka.patterns.WorkPipeline.Settings
 
 import com.iheart.poweramp.common.akka.patterns.queue._
 import queue.CommonProtocol.WorkRejected
@@ -10,11 +10,11 @@ import EnqueueRejected.OverCapacity
 
 import scala.concurrent.duration._
 
-class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
+class WorkPipeline(name: String, settings: Settings, backendProps: Props)
                          (resultChecker: ResultChecker)
                          (implicit system: ActorSystem) {
 
-  private class WorkPullingHandler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
+  private class WorkPipelineHandler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
       case msg =>
         queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
@@ -46,11 +46,11 @@ class WorkPullingPipeline(name: String, settings: Settings, backendProps: Props)
 
 
   def handlerProps = {
-    Props(new WorkPullingHandler(settings, queue))
+    Props(new WorkPipelineHandler(settings, queue))
   }
 }
 
-object WorkPullingPipeline {
+object WorkPipeline {
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,

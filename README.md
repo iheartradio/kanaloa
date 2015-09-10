@@ -1,6 +1,6 @@
-# work-pulling-pattern
+# work-pipeline
 
-[![Build Status](https://travis-ci.org/iheartradio/work-pulling-pattern.svg)](https://travis-ci.org/iheartradio/work-pulling-pattern)
+[![Build Status](https://travis-ci.org/iheartradio/work-pipeline.svg)](https://travis-ci.org/iheartradio/work-pipeline)
 
 An Akka work pipeline with back pressure control, circuit breaker and auto scaling. 
 
