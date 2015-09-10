@@ -1,6 +1,7 @@
 package com.iheart.workpipeline.akka.patterns
 
 import akka.actor._
+import ActorDSL._
 import WorkPipeline.Settings
 
 import com.iheart.workpipeline.akka.patterns.queue._
@@ -14,7 +15,7 @@ class WorkPipeline(name: String, settings: Settings, backendProps: Props)
                          (resultChecker: ResultChecker)
                          (implicit system: ActorSystem) {
 
-  private class WorkPipelineHandler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
+  private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
       case msg =>
         queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
@@ -33,6 +34,7 @@ class WorkPipeline(name: String, settings: Settings, backendProps: Props)
     }
   }
 
+
   private val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSettings()), name + "-backing-queue")
 
   private val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
@@ -46,8 +48,14 @@ class WorkPipeline(name: String, settings: Settings, backendProps: Props)
 
 
   def handlerProps = {
-    Props(new WorkPipelineHandler(settings, queue))
+    Props(new Handler(settings, queue))
   }
+
+  lazy val proxy: ActorRef = actor(s"$name-proxy")( new Act {
+    become {
+      case m ⇒ context.actorOf(handlerProps) forward m
+    }
+  })
 }
 
 object WorkPipeline {
