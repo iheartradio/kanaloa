@@ -6,7 +6,7 @@ import akka.actor.{Props, ActorRef, Actor, ActorSystem}
 import akka.testkit._
 import com.iheart.poweramp.common.akka.SpecWithActorSystem
 import com.iheart.poweramp.common.akka.patterns.CommonProtocol.QueryStatus
-import com.iheart.poweramp.common.akka.patterns.queue.AutoScaling.{PoolSize, PerformanceLogEntry, OptimizeOrExplore}
+import com.iheart.poweramp.common.akka.patterns.queue.AutoScaling.{UnderUtilizationStreak, PoolSize, PerformanceLogEntry, OptimizeOrExplore}
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor.{ScaleTo, RunningStatus}
 import com.iheart.poweramp.common.akka.patterns.queue.Worker.{Idle, Working}
@@ -43,18 +43,15 @@ class AutoScalingSpec extends SpecWithActorSystem {
   }
 
 
-  "optimize when not currently maxed" in new AutoScalingScope {
+  "does not optimize when not currently maxed" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 1)
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 0)
     tProcessor.expectMsgType[ScaleTo]
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
-
-    scaleCmd.reason must beSome("optimizing")
+    tProcessor.expectNoMsg(30.millisecond)
   }
-
 
   "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 0)
@@ -108,16 +105,33 @@ class AutoScalingSpec extends SpecWithActorSystem {
   }
 
   "downsize if hasn't maxed out for more than relevant period of hours" in new AutoScalingScope {
-    val almost72HoursAgo =  LocalDateTime.now.minusHours(72).plusMinutes(30)
-    as.underlyingActor.perfLog = Vector(PerformanceLogEntry(50, 1.seconds, 12, almost72HoursAgo),
-      PerformanceLogEntry(50, 1.seconds, 40, LocalDateTime.now.minusHours(34)),
-      PerformanceLogEntry(50, 1.seconds, 24, LocalDateTime.now.minusHours(24))
-    )
+    val moreThan72HoursAgo =  LocalDateTime.now.minusHours(73)
+    as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(moreThan72HoursAgo, 40))
 
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
     val scaleCmd = tProcessor.expectMsgType[ScaleTo]
-    scaleCmd === ScaleTo(44, Some("downsizing"))
+    scaleCmd === ScaleTo(32, Some("downsizing"))
+  }
+
+  "do not thing if hasn't maxed out for shorter than relevant period of hours" in new AutoScalingScope {
+    val lessThan72HoursAgo =  LocalDateTime.now.minusHours(71)
+    as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(lessThan72HoursAgo, 40))
+
+    as ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
+    tProcessor.expectNoMsg(50.millis)
+  }
+
+  "do not go beyond upperBound when optimizing" in new AutoScalingScope {
+    val subject = autoScalingRef(explorationRatio = 0)
+    subject.underlyingActor.perfLog = Map(350 -> 2.nanosecond, 400 -> 1.nanosecond)
+    subject ! OptimizeOrExplore
+    replyStatus(numOfBusyWorkers = 295, dispatchDuration = 10.milliseconds)
+
+    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+    scaleCmd === ScaleTo(300, Some("optimizing"))
+
   }
 }
 
@@ -139,7 +153,10 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
       AutoScalingSettings(
         chanceOfScalingDownWhenFull = 0.3,
         actionFrequency = 1.hour, //manual action only
-        explorationRatio = explorationRatio
+        explorationRatio = explorationRatio,
+        bufferRatio = 0.8,
+        numOfAdjacentSizesToConsiderDuringOptimization = 6,
+        upperBound = 300
       )
     ))
 

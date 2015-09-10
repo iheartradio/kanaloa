@@ -1,6 +1,5 @@
 package com.iheart.poweramp.common.akka.patterns.queue
 
-import java.time.LocalDateTime
 
 import akka.actor.{Props, Terminated, ActorLogging, Actor}
 import com.iheart.poweramp.common.akka.helpers.MessageScheduler
@@ -9,17 +8,16 @@ import com.iheart.poweramp.common.akka.patterns.queue.AutoScaling._
 import com.iheart.poweramp.common.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.poweramp.common.akka.patterns.queue.QueueProcessor._
 import com.iheart.poweramp.common.akka.patterns.queue.Worker.{Working, WorkerStatus}
-import com.iheart.poweramp.common.collection.FiniteCollection.FiniteQueue
-
+import java.time.{LocalDateTime, Duration ⇒ JDuration}
 import scala.concurrent.duration._
 import scala.util.Random
 
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   val processor: QueueProcessorRef
-
   //accessible only for testing purpose
-  private[queue] var perfLog: PerformanceLog = Vector.empty
+  private[queue] var perfLog: PerformanceLog = Map.empty
+  private[queue] var underUtilizationStreak: Option[UnderUtilizationStreak] = None
 
   val settings: AutoScalingSettings
 
@@ -87,60 +85,57 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   private def chooseAction(dispatchWait: Duration, workerPool: WorkerPool, workerStatus: List[WorkerStatus]): Option[ScaleTo] = {
     val utilization = workerStatus.count(_ == Working)
-    val oldestRetention = LocalDateTime.now.minusHours(retentionInHours)
-    val newEntry = PerformanceLogEntry(workerPool.size, dispatchWait, utilization, LocalDateTime.now)
-    perfLog = (perfLog :+ newEntry) match {
-      case h +: tail if h.time.isBefore(oldestRetention) => tail
-      case l => l
-    }
 
-    val (fullyUtilizedEntries, rest) = perfLog.partition(_.fullyUtilized)
+    val currentSize: PoolSize = workerPool.size
+    val newEntry = PerformanceLogEntry(currentSize, dispatchWait, utilization, LocalDateTime.now)
 
-    if (fullyUtilizedEntries.isEmpty)
-      downsize(rest)
-    else
+    val fullyUtilized = utilization == currentSize
+
+    underUtilizationStreak = if (!fullyUtilized)
+      underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))
+    else None
+
+    if(fullyUtilized) {
+      val toUpdate = perfLog.get(currentSize).fold(dispatchWait) { oldSpeed ⇒
+        val nanos = (oldSpeed.toNanos * (1d - weightOfLatestMetric)) + (dispatchWait.toNanos * weightOfLatestMetric)
+        Duration.fromNanos(nanos)
+      }
+      perfLog =  perfLog + (currentSize → toUpdate)
+
       Some(
         if(newEntry.fullyUtilized && Random.nextDouble() < explorationRatio)
-          explore(workerPool.size)
+          explore(currentSize)
         else
-          optimize(workerPool.size, fullyUtilizedEntries)
+          optimize(currentSize)
       )
+    } else downsize
+
   }
 
-  private def downsize(logs: PerformanceLog): Option[ScaleTo] = {
-    val enoughUnUtilizedHistory = logs.headOption.map(_.time.isBefore(LocalDateTime.now.minusHours(retentionInHours - 1))).getOrElse(false)
-    if (enoughUnUtilizedHistory) {
-      val maxUtilization = logs.maxBy(_.actualUtilization).actualUtilization
-      val downsizeTo = maxUtilization * (1 + bufferRatio)
-      Some(ScaleTo(downsizeTo.toInt, Some("downsizing")))
+  private def downsize: Option[ScaleTo] = {
+    underUtilizationStreak.flatMap { streak ⇒
+      if(streak.start.isBefore(LocalDateTime.now.minus(downsizeAfterUnderUtilization)))
+        Some(ScaleTo((streak.highestUtilization * bufferRatio).toInt, Some("downsizing")))
+      else
+        None
     }
-    else
-      None
   }
 
+  private def optimize(currentSize: PoolSize): ScaleTo = {
 
-  private def optimize(currentSize: PoolSize, relevantLogs: PerformanceLog): ScaleTo = {
-
-    val avgDispatchWaitForEachSize: Map[PoolSize, Duration] = relevantLogs.groupBy(_.poolSize).mapValues{ logs =>
-      if(logs.length > 1) {
-        val init = logs.init
-        val avgOfInit = init.foldLeft[Duration](0.millisecond)(_ + _.dispatchWait) / init.size
-        (avgOfInit + logs.last.dispatchWait) / 2 //half weight on the latest speed, todo: this math could be improved.
-      } else logs.head.dispatchWait
-    }
 
     val adjacentDispatchWaits: Map[PoolSize, Duration] = {
       def adjacency = (size: Int) => Math.abs(currentSize - size)
-      val sizes = avgDispatchWaitForEachSize.keys.toSeq
+      val sizes = perfLog.keys.toSeq
       val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
       val leftBoundary=  sizes.filter(_ < currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
       val rightBoundary =  sizes.filter(_ >= currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
-      avgDispatchWaitForEachSize.filter { case (size, _) => size >= leftBoundary && size <= rightBoundary }
+      perfLog.filter { case (size, _) => size >= leftBoundary && size <= rightBoundary }
     }
 
     val optimalSize = adjacentDispatchWaits.minBy(_._2)._1
     val scaleStep = Math.ceil((optimalSize - currentSize) / 2).toInt
-    ScaleTo(currentSize + scaleStep, Some("optimizing"))
+    ScaleTo(Math.min(upperBound, currentSize + scaleStep), Some("optimizing"))
   }
 
   private def explore(currentSize: PoolSize): ScaleTo = {
@@ -151,7 +146,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       ScaleTo(currentSize + change, Some("exploring"))
   }
 
-
+  private implicit def durationToJDuration(d: FiniteDuration): JDuration = JDuration.ofNanos(d.toNanos)
 }
 
 object AutoScaling {
@@ -172,8 +167,9 @@ object AutoScaling {
     def fullyUtilized = poolSize == actualUtilization
   }
 
+  private[queue] case class UnderUtilizationStreak(start: LocalDateTime, highestUtilization: Int)
 
-  type PerformanceLog = Vector[PerformanceLogEntry]
+  private[queue]type PerformanceLog = Map[PoolSize, Duration]
 
   case class Default(queue: QueueRef, processor: QueueProcessorRef, settings: AutoScalingSettings) extends AutoScaling
 

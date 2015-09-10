@@ -70,7 +70,7 @@ object WorkPullingPipeline {
   )
 
   val defaultAutoScalingSettings = AutoScalingSettings(
-
+    bufferRatio = 0.8
   )
 
   case class Settings( workTimeout: FiniteDuration = 1.minute,
