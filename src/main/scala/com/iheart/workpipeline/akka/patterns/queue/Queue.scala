@@ -40,7 +40,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
     case Retire(timeout) =>
       log.info("Queue commanded to retire")
-      val newStatus = dispatchWork(status)
+      val newStatus = dispatchWork(status, retiring = true)
       context become retiring(newStatus)
       newStatus.queuedWorkers.foreach { (qw) =>
         qw ! NoWorkLeft
@@ -96,7 +96,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   @tailrec
-  protected final def dispatchWork(status: QueueStatus, dispatched: Int = 0): QueueStatus = {
+  protected final def dispatchWork(status: QueueStatus, dispatched: Int = 0, retiring: Boolean = false): QueueStatus = {
     def updatedHistory = {
       val lastHistory = status.bufferHistory
       val newEntry = BufferHistoryEntry(dispatched, status.workBuffer.length, LocalDateTime.now)
@@ -113,10 +113,10 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     ) yield {
       worker ! work
       context unwatch worker
-      if(workBuffer.isEmpty) onQueuedWorkExhausted()
+      if(workBuffer.isEmpty && !retiring) onQueuedWorkExhausted()
       status.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = status.countOfWorkSent + 1)
     }) match {
-      case Some(newStatus) => dispatchWork(newStatus, dispatched + 1) //actually in most cases, either works queue or workers queue is empty after one dispatch
+      case Some(newStatus) => dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None =>
         if(bufferHistoryLength > 0)
           status.copy(bufferHistory = updatedHistory)
@@ -173,6 +173,10 @@ class QueueOfIterator[T](private val iterator: Iterator[T], val defaultWorkSetti
       self ! Retire()
     }
   }
+}
+
+object QueueOfIterator {
+  def props[T](iterator: Iterator[T],defaultWorkSettings: WorkSettings): Props = Props(new QueueOfIterator(iterator, defaultWorkSettings))
 }
 
 object Queue {
