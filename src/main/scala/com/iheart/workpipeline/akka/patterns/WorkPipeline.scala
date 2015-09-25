@@ -3,7 +3,7 @@ package com.iheart.workpipeline.akka.patterns
 import akka.actor._
 import ActorDSL._
 import WorkPipeline.Settings
-
+import WorkPipeline._
 import com.iheart.workpipeline.akka.patterns.queue._
 import queue.CommonProtocol.WorkRejected
 import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
@@ -11,9 +11,28 @@ import EnqueueRejected.OverCapacity
 
 import scala.concurrent.duration._
 
-class WorkPipeline(name: String, settings: Settings, backendProps: Props)
-                         (resultChecker: ResultChecker)
-                         (implicit system: ActorSystem) {
+class WorkPipeline(name: String, settings: Settings, backendProps: Props, resultChecker: ResultChecker)
+  extends Actor with ActorLogging {
+
+
+  private val queue = context.actorOf(Queue.withBackPressure(settings.backPressure, WorkSettings()), name + "-backing-queue")
+
+  private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(queue,
+                                              backendProps,
+                                              settings.workerPool,
+                                              settings.circuitBreaker)(resultChecker), name + "-queue-processor")
+
+  private val autoScaler =  settings.autoScalingSettings.foreach { s =>
+    context.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
+  }
+
+
+  def receive = {
+    case m ⇒ context.actorOf(handlerProps(settings, queue)) forward m
+  }
+}
+
+object WorkPipeline {
 
   private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
@@ -34,31 +53,12 @@ class WorkPipeline(name: String, settings: Settings, backendProps: Props)
     }
   }
 
-
-  private val queue = system.actorOf(Queue.withBackPressure(settings.backPressure, WorkSettings()), name + "-backing-queue")
-
-  private val processor = system.actorOf(QueueProcessor.withCircuitBreaker(queue,
-                                              backendProps,
-                                              settings.workerPool,
-                                              settings.circuitBreaker)(resultChecker), name + "-queue-processor")
-
-  private val autoScaler =  settings.autoScalingSettings.foreach { s =>
-    system.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
-  }
-
-
-  def handlerProps = {
+  private def handlerProps(settings: Settings, queue: QueueRef) = {
     Props(new Handler(settings, queue))
   }
 
-  lazy val proxy: ActorRef = actor(s"$name-proxy")( new Act {
-    become {
-      case m ⇒ context.actorOf(handlerProps) forward m
-    }
-  })
-}
-
-object WorkPipeline {
+  def props(name: String, settings: Settings, backendProps: Props)
+           (resultChecker: ResultChecker) = Props(new WorkPipeline(name, settings, backendProps, resultChecker))
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
