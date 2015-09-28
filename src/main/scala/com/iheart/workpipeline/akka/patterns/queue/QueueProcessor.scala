@@ -5,7 +5,7 @@ import java.time.{ZoneOffset, LocalDateTime}
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
-import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
 import QueueProcessor._
 import Queue.{Retire}
 import scala.concurrent.duration._
@@ -157,7 +157,6 @@ object QueueProcessor {
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes, retireQueue: Boolean = true)
-  case object ShutdownSuccessfully
   private case object ShutdownTimeout
 
   def default(queue: QueueRef,

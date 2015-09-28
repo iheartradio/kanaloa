@@ -159,7 +159,7 @@ trait QueueWithoutBackPressure extends Queue {
 
 case class DefaultQueue(defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure
 
-class QueueOfIterator[T](private val iterator: Iterator[T], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
+class QueueOfIterator(private val iterator: Iterator[_], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
   override def preStart(): Unit = {
     super.preStart()
     onQueuedWorkExhausted()
@@ -176,7 +176,7 @@ class QueueOfIterator[T](private val iterator: Iterator[T], val defaultWorkSetti
 }
 
 object QueueOfIterator {
-  def props[T](iterator: Iterator[T],defaultWorkSettings: WorkSettings): Props = Props(new QueueOfIterator(iterator, defaultWorkSettings))
+  def props(iterator: Iterator[_], defaultWorkSettings: WorkSettings): Props = Props(new QueueOfIterator(iterator, defaultWorkSettings))
 }
 
 object Queue {
@@ -234,20 +234,13 @@ object Queue {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
   }
 
-  def ofIterator[T](iterator: Iterator[T], defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new QueueOfIterator[T](iterator, defaultWorkSetting))
+  def ofIterator(iterator: Iterator[_], defaultWorkSetting: WorkSettings = WorkSettings()): Props = QueueOfIterator.props(iterator, defaultWorkSetting)
   
   def default(defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new DefaultQueue(defaultWorkSetting))
 
   def withBackPressure(backPressureSetting: BackPressureSettings,
                        defaultWorkSettings: WorkSettings = WorkSettings()): Props =
     Props(QueueWithBackPressure(backPressureSetting, defaultWorkSettings))
-
-  /**
-   *
-   * @param maxBufferSize
-   * @param thresholdForExpectedWaitTime
-   * @param maxHistoryLength
-   */
 
 }
 

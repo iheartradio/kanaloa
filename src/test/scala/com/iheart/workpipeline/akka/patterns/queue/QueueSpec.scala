@@ -3,11 +3,11 @@ package com.iheart.workpipeline.akka.patterns.queue
 
 import akka.actor._
 import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
-import patterns.CommonProtocol.QueryStatus
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
 import Queue._
 import QueueProcessor._
 import com.iheart.workpipeline.akka.patterns.queue.Queue.{QueueStatus, WorkEnqueued}
-import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown, ShutdownSuccessfully}
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown}
 import scala.concurrent.duration._
 import scala.util.Random
 
