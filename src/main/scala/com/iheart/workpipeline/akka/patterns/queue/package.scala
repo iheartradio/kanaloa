@@ -25,7 +25,12 @@ package object queue {
                                    thresholdForExpectedWaitTime: FiniteDuration = 1.minute,
                                    maxHistoryLength: FiniteDuration = 10.seconds)
 
-
+  /**
+   *
+   * @param startingPoolSize
+   * @param maxProcessingTime timeout for the whole queue to be processed
+   * @param minPoolSize
+   */
   case class ProcessingWorkerPoolSettings( startingPoolSize: Int = 5,
                                            maxProcessingTime: Option[FiniteDuration] = None,
                                            minPoolSize: Int = 3)

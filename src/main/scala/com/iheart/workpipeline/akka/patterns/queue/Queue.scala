@@ -40,7 +40,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
     case Retire(timeout) =>
       log.info("Queue commanded to retire")
-      val newStatus = dispatchWork(status)
+      val newStatus = dispatchWork(status, retiring = true)
       context become retiring(newStatus)
       newStatus.queuedWorkers.foreach { (qw) =>
         qw ! NoWorkLeft
@@ -96,7 +96,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   @tailrec
-  protected final def dispatchWork(status: QueueStatus, dispatched: Int = 0): QueueStatus = {
+  protected final def dispatchWork(status: QueueStatus, dispatched: Int = 0, retiring: Boolean = false): QueueStatus = {
     def updatedHistory = {
       val lastHistory = status.bufferHistory
       val newEntry = BufferHistoryEntry(dispatched, status.workBuffer.length, LocalDateTime.now)
@@ -113,10 +113,10 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     ) yield {
       worker ! work
       context unwatch worker
-      if(workBuffer.isEmpty) onQueuedWorkExhausted()
+      if(workBuffer.isEmpty && !retiring) onQueuedWorkExhausted()
       status.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = status.countOfWorkSent + 1)
     }) match {
-      case Some(newStatus) => dispatchWork(newStatus, dispatched + 1) //actually in most cases, either works queue or workers queue is empty after one dispatch
+      case Some(newStatus) => dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None =>
         if(bufferHistoryLength > 0)
           status.copy(bufferHistory = updatedHistory)
@@ -159,20 +159,32 @@ trait QueueWithoutBackPressure extends Queue {
 
 case class DefaultQueue(defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure
 
-class QueueOfIterator[T](private val iterator: Iterator[T], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
+class QueueOfIterator(private val iterator: Iterator[_], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
+  private case object EnqueueMore
+  private class Enqueuer extends Actor {
+    def receive = {
+      case EnqueueMore ⇒
+        if(iterator.hasNext) {
+          context.parent ! Enqueue(iterator.next)
+        } else {
+          log.info("iterator queue completes")
+          context.parent ! Retire()
+        }
+    }
+  }
+
+  val enqueuer = context.actorOf(Props(new Enqueuer))
+
   override def preStart(): Unit = {
     super.preStart()
     onQueuedWorkExhausted()
   }
 
-  override def onQueuedWorkExhausted(): Unit = {
-    if(iterator.hasNext) {
-      self ! Enqueue(iterator.next)
-    } else {
-      log.info("iterator queue completes")
-      self ! Retire()
-    }
-  }
+  override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
+}
+
+object QueueOfIterator {
+  def props(iterator: Iterator[_], defaultWorkSettings: WorkSettings): Props = Props(new QueueOfIterator(iterator, defaultWorkSettings))
 }
 
 object Queue {
@@ -230,20 +242,13 @@ object Queue {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
   }
 
-  def ofIterator[T](iterator: Iterator[T], defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new QueueOfIterator[T](iterator, defaultWorkSetting))
+  def ofIterator(iterator: Iterator[_], defaultWorkSetting: WorkSettings = WorkSettings()): Props = QueueOfIterator.props(iterator, defaultWorkSetting)
   
   def default(defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new DefaultQueue(defaultWorkSetting))
 
   def withBackPressure(backPressureSetting: BackPressureSettings,
                        defaultWorkSettings: WorkSettings = WorkSettings()): Props =
     Props(QueueWithBackPressure(backPressureSetting, defaultWorkSettings))
-
-  /**
-   *
-   * @param maxBufferSize
-   * @param thresholdForExpectedWaitTime
-   * @param maxHistoryLength
-   */
 
 }
 
