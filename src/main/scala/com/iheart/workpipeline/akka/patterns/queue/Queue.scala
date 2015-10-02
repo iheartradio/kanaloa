@@ -160,19 +160,27 @@ trait QueueWithoutBackPressure extends Queue {
 case class DefaultQueue(defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure
 
 class QueueOfIterator(private val iterator: Iterator[_], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
+  private case object EnqueueMore
+  private class Enqueuer extends Actor {
+    def receive = {
+      case EnqueueMore ⇒
+        if(iterator.hasNext) {
+          context.parent ! Enqueue(iterator.next)
+        } else {
+          log.info("iterator queue completes")
+          context.parent ! Retire()
+        }
+    }
+  }
+
+  val enqueuer = context.actorOf(Props(new Enqueuer))
+
   override def preStart(): Unit = {
     super.preStart()
     onQueuedWorkExhausted()
   }
 
-  override def onQueuedWorkExhausted(): Unit = {
-    if(iterator.hasNext) {
-      self ! Enqueue(iterator.next)
-    } else {
-      log.info("iterator queue completes")
-      self ! Retire()
-    }
-  }
+  override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }
 
 object QueueOfIterator {
