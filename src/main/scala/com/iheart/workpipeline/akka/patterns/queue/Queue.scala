@@ -52,7 +52,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   final def retiring(status: QueueStatus): Receive =
     if(status.workBuffer.isEmpty) {
-      finish(status, s"Queue successfully retired")
+      finish(status, "Queue successfully retired")
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(status, retiring) orElse {
       case Enqueue(_, replyTo, _) =>
@@ -62,7 +62,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def finish(status: QueueStatus, withMessage: String): Unit = {
-    log.info(withMessage + "- ${status.countOfWorkSent} work sent.")
+    log.info(withMessage + s"- ${status.countOfWorkSent} work sent.")
     status.queuedWorkers.foreach( _ ! NoWorkLeft)
     context stop self
   }
