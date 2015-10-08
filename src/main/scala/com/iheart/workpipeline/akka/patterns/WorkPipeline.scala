@@ -77,9 +77,9 @@ case class PushingWorkPipeline(name: String,
                    resultChecker: ResultChecker)
   extends WorkPipeline {
 
-  protected val pipelineSettings = settings.workPipeLineSettings
+  protected def pipelineSettings = settings.workPipeLineSettings
 
-  protected val queueProps = Queue.withBackPressure(settings.backPressureSettings, WorkSettings())
+  protected def queueProps = Queue.withBackPressure(settings.backPressureSettings, WorkSettings())
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingWorkPipeline.handlerProps(settings, queue)) forward m
