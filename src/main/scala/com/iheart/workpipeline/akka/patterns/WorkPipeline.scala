@@ -77,7 +77,7 @@ case class PushingWorkPipeline(name: String,
                    resultChecker: ResultChecker)
   extends WorkPipeline {
 
-  protected val pipelineSettings = settings.workPipeLineSettings
+  protected val pipelineSettings = settings.workPipelineSettings
 
   protected val queueProps = Queue.withBackPressure(settings.backPressureSettings, WorkSettings())
 
@@ -90,7 +90,7 @@ object PushingWorkPipeline {
   private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
       case msg =>
-        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workPipeLineSettings.workRetry, settings.workPipeLineSettings.workTimeout, Some(sender))))
+        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workPipelineSettings.workRetry, settings.workPipelineSettings.workTimeout, Some(sender))))
         context become waitingForQueueConfirmation(sender)
     }
 
@@ -120,7 +120,7 @@ object PushingWorkPipeline {
 
 
 
-  case class Settings(workPipeLineSettings: WorkPipeline.Settings, backPressureSettings: BackPressureSettings)
+  case class Settings(workPipelineSettings: WorkPipeline.Settings, backPressureSettings: BackPressureSettings)
 
   val defaultSettings: Settings = Settings(WorkPipeline.defaultWorkPipelineSettings, defaultBackPressureSettings)
 
