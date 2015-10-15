@@ -8,9 +8,9 @@ package object queue {
   type QueueProcessorRef = ActorRef
   type WorkerRef = ActorRef
   type ResultChecker = PartialFunction[Any, Either[String, Any]]
+}
 
-
-
+package queue {
   private[queue] case class Work(messageToDelegatee: Any, settings: WorkSettings = WorkSettings())
 
   private[queue] case class Rejected(work: Work, reason: String)

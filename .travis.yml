@@ -1,7 +1,7 @@
 language: scala
 sudo: true #use legacy travis infra which works better
 scala:
-   - 2.11.6
+   - 2.11.7
 jdk:
    - oraclejdk8
 

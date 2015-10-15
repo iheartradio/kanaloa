@@ -62,7 +62,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def finish(status: QueueStatus, withMessage: String): Unit = {
-    log.info(withMessage + "- ${status.countOfWorkSent} work sent.")
+    log.info(withMessage + s"- ${status.countOfWorkSent} work sent.")
     status.queuedWorkers.foreach( _ ! NoWorkLeft)
     context stop self
   }
@@ -216,7 +216,7 @@ object Queue {
   trait QueueDispatchInfo {
     def avgDispatchDurationLowerBound: Option[Duration]
   }
-  private[queue] case class QueueStatus(
+  protected[queue] case class QueueStatus(
                                     workBuffer: ScalaQueue[Work] = ScalaQueue.empty,
                                     queuedWorkers: ScalaQueue[ActorRef] = ScalaQueue.empty,
                                     countOfWorkSent: Int = 0,

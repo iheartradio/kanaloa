@@ -21,7 +21,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected def monitor: ActorRef = context.parent
 
   def receive = idle()
-  
+
   def resultHistoryLength: Int
 
   //hate to have a var here, but this field avoid having to pass this history all over the places.
@@ -149,10 +149,10 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
 
   protected def resultChecker: ResultChecker
-  
+
   protected def holdOnGettingMoreWork: Option[FiniteDuration]
 
-  private case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
+  protected case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
     def done(result: Any): Unit = {
       cancel()
       reportResult(result)

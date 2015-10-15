@@ -12,6 +12,7 @@ import com.iheart.workpipeline.akka.patterns.queue.Worker.{Working, WorkerStatus
 
 import scala.concurrent.duration._
 import scala.util.Random
+import scala.language.implicitConversions
 
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
