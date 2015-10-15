@@ -32,7 +32,7 @@ trait WorkPipeline extends Actor {
     context.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
   }
 
-  def receive = ({
+  def receive: Receive = ({
     case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout, true)
     case Terminated(`processor`) ⇒ context stop self
   }: Receive) orElse extraReceive

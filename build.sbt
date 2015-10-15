@@ -1,4 +1,3 @@
-
 organization in ThisBuild := "com.iheart"
 
 version in ThisBuild := "1.0.0-" + Versions.releaseType
@@ -12,6 +11,5 @@ resolvers ++= Dependencies.resolvers
 libraryDependencies ++= Dependencies.akka ++
                         Dependencies.test
 
-
-
+scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 

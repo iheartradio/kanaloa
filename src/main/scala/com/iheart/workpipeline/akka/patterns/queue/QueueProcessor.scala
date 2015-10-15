@@ -17,8 +17,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def settings: ProcessingWorkerPoolSettings
 
   override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
-      case _: Exception                => Restart
+    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
+      case _: Exception => Restart
     }
 
   def workerProp(queueRef: QueueRef, delegateeProps: Props): Props
