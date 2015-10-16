@@ -23,6 +23,7 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
       case Event.EnqueueRejected => increment("queue.enqueueRejected")
       case Event.WorkCompleted => increment("work.completed")
       case Event.WorkFailed => increment("work.failed")
+      case Event.WorkTimedOut => increment("work.timedOut")
 
       case Status.PoolSize(size, utilized) =>
         statsd.gauge("pool.size", size)

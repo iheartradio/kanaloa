@@ -9,6 +9,7 @@ import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
 import com.iheart.workpipeline.akka.patterns.queue.Worker.{Working, WorkerStatus}
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Event, Status}
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -17,6 +18,8 @@ import scala.language.implicitConversions
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   val processor: QueueProcessorRef
+  val metricsCollector: MetricsCollector
+
   //accessible only for testing purpose
   private[queue] var perfLog: PerformanceLog = Map.empty
   private[queue] var underUtilizationStreak: Option[UnderUtilizationStreak] = None
@@ -33,7 +36,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     case Terminated(`queue`) | Terminated(`processor`) | Queue.Retiring | QueueProcessor.ShuttingDown => context stop self
   }
 
-  private  def idle: Receive = watchingQueueAndProcessor orElse {
+  private def idle: Receive = watchingQueueAndProcessor orElse {
     case OptimizeOrExplore =>
       queue ! QueryStatus()
       delayedMsg(statusCollectionTimeout, StatusCollectionTimedOut)
@@ -93,11 +96,15 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
     val fullyUtilized = utilization == currentSize
 
+    // Send metrics
+    metricsCollector.send(Status.PoolSize(currentSize, utilization))
+    metricsCollector.send(Status.AverageWaitTime(dispatchWait))
+
     underUtilizationStreak = if (!fullyUtilized)
       underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))
     else None
 
-    if(fullyUtilized) {
+    if (fullyUtilized) {
       val toUpdate = perfLog.get(currentSize).fold(dispatchWait) { oldSpeed ⇒
         val nanos = (oldSpeed.toNanos * (1d - weightOfLatestMetric)) + (dispatchWait.toNanos * weightOfLatestMetric)
         Duration.fromNanos(nanos)
@@ -157,7 +164,7 @@ object AutoScaling {
 
   private case class SystemStatus(dispatchWait: Option[Duration] = None,
                                   workerPool: Option[WorkerPool] = None,
-                                  workersStatus: List[WorkerStatus] = Nil ) {
+                                  workersStatus: List[WorkerStatus] = Nil) {
     def collected: Boolean = (for {
       _ <- dispatchWait
       pool <- workerPool
@@ -171,9 +178,18 @@ object AutoScaling {
 
   private[queue] case class UnderUtilizationStreak(start: LocalDateTime, highestUtilization: Int)
 
-  private[queue]type PerformanceLog = Map[PoolSize, Duration]
+  private[queue] type PerformanceLog = Map[PoolSize, Duration]
 
-  case class Default(queue: QueueRef, processor: QueueProcessorRef, settings: AutoScalingSettings) extends AutoScaling
+  case class Default(queue: QueueRef,
+                     processor: QueueProcessorRef,
+                     settings: AutoScalingSettings,
+                     metricsCollector: MetricsCollector = NoOpMetricsCollector) extends AutoScaling
 
-  def default(queue: QueueRef, processor: QueueProcessorRef, settings: AutoScalingSettings) = Props(Default(queue, processor, settings))
+  def default(queue: QueueRef,
+              processor: QueueProcessorRef,
+              settings: AutoScalingSettings,
+              metricsCollector: MetricsCollector = NoOpMetricsCollector) =
+    Props(Default(queue, processor, settings, metricsCollector)
+  )
 }
+

@@ -11,6 +11,7 @@ object Event {
   case object EnqueueRejected extends Metric
 
   case object WorkCompleted extends Metric
+  case object WorkTimedOut extends Metric
   case object WorkFailed extends Metric
 }
 

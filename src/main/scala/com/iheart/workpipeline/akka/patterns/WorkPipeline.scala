@@ -5,6 +5,7 @@ import ActorDSL._
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.ShutdownGracefully
 import com.iheart.workpipeline.akka.patterns.WorkPipeline.Settings
 import com.iheart.workpipeline.akka.patterns.queue._
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector}
 import queue.CommonProtocol.WorkRejected
 import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
 import EnqueueRejected.OverCapacity
@@ -16,6 +17,7 @@ trait WorkPipeline extends Actor {
   protected def pipelineSettings: WorkPipeline.Settings
   def backendProps: Props
   def resultChecker: ResultChecker
+  def metricsCollector: MetricsCollector
 
   protected def queueProps: Props
 
@@ -29,7 +31,7 @@ trait WorkPipeline extends Actor {
   context watch processor
 
   private val autoScaler =  pipelineSettings.autoScalingSettings.foreach { s =>
-    context.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
+    context.actorOf(AutoScaling.default(queue, processor, s, metricsCollector), name + "-auto-scaler" )
   }
 
   def receive: Receive = ({
@@ -74,12 +76,14 @@ object WorkPipeline {
 case class PushingWorkPipeline(name: String,
                    settings: PushingWorkPipeline.Settings,
                    backendProps: Props,
-                   resultChecker: ResultChecker)
+                   resultChecker: ResultChecker,
+                   metricsCollector: MetricsCollector = NoOpMetricsCollector)
   extends WorkPipeline {
 
   protected val pipelineSettings = settings.workPipelineSettings
 
-  protected val queueProps = Queue.withBackPressure(settings.backPressureSettings, WorkSettings())
+  protected val queueProps = Queue.withBackPressure(
+    settings.backPressureSettings, WorkSettings(), metricsCollector)
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingWorkPipeline.handlerProps(settings, queue)) forward m
@@ -131,9 +135,10 @@ case class PullingWorkPipeline( name: String,
                                 iterator: Iterator[_],
                                 pipelineSettings: WorkPipeline.Settings,
                                 backendProps: Props,
-                                resultChecker: ResultChecker) extends WorkPipeline {
+                                resultChecker: ResultChecker,
+                                metricsCollector: MetricsCollector = NoOpMetricsCollector) extends WorkPipeline {
 
-  protected def queueProps = QueueOfIterator.props(iterator, WorkSettings())
+  protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(), metricsCollector)
 
 }
 
