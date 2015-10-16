@@ -9,7 +9,8 @@ lazy val workPipeline = project in file(".")
 resolvers ++= Dependencies.resolvers
 
 libraryDependencies ++= Dependencies.akka ++
-                        Dependencies.test
+                        Dependencies.test ++
+                        Dependencies.metrics
 
 scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
