@@ -21,7 +21,6 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
 
     def receive: Receive = {
       case WorkEnqueued => increment("queue.enqueued")
-      case WorkDequeued => increment("queue.dequeued")
       case EnqueueRejected => increment("queue.enqueueRejected")
       case WorkCompleted => increment("work.completed")
       case WorkFailed => increment("work.failed")

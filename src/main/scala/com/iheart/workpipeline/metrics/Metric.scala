@@ -8,7 +8,6 @@ object Metric {
   trait Event extends Metric
 
   case object WorkEnqueued extends Event
-  case object WorkDequeued extends Event
   case object EnqueueRejected extends Event
 
   case object WorkCompleted extends Event

@@ -263,7 +263,7 @@ object Queue {
                  defaultWorkSetting: WorkSettings = WorkSettings(),
                  metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
     QueueOfIterator.props(iterator, defaultWorkSetting, metricsCollector)
-  
+
   def default(defaultWorkSetting: WorkSettings = WorkSettings(),
               metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
     Props(new DefaultQueue(defaultWorkSetting, metricsCollector))

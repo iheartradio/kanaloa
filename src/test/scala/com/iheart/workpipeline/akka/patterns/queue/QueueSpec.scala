@@ -176,26 +176,7 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 }
 
 
-class DefaultQueueSpec extends SpecWithActorSystem with Mockito {
-
-    "send metric on Enqueue" in new QueueScope {
-      override val metricsCollector = mock[MetricsCollector]
-      val mc = metricsCollector
-
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 3)
-
-      queue ! Enqueue("a", replyTo = Some(self))
-      expectMsg(WorkEnqueued)
-
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
-
-      there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
-        one(mc).send(Metric.WorkQueueLength(1)) andThen
-        one(mc).send(Metric.WorkQueueLength(0))
-    }
-
+class DefaultQueueSpec extends SpecWithActorSystem {
     "dispatch work on demand on parallel" in new QueueScope {
       val queue = defaultQueue()
       initQueue(queue, numberOfWorkers = 3)
@@ -217,7 +198,6 @@ class DefaultQueueSpec extends SpecWithActorSystem with Mockito {
     }
 
     "won't over burden" in new QueueScope {
-
       val queue = defaultQueue()
       initQueue(queue, numberOfWorkers = 2)
 
@@ -267,6 +247,47 @@ class DefaultQueueSpec extends SpecWithActorSystem with Mockito {
     }
 }
 
+class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
+  "send metric on Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
+
+    there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueLength(1)) andThen
+      one(mc).send(Metric.WorkQueueLength(0))
+  }
+
+  "send metric on failed Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    queue ! Enqueue("b", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    queue ! Enqueue("c", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
+      two(mc).send(Metric.EnqueueRejected)
+  }
+
+
+}
+
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
@@ -302,7 +323,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
 
   def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
-                        defaultWorkSetting: WorkSettings = WorkSettings()) =
+                       defaultWorkSetting: WorkSettings = WorkSettings()) =
     system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
                    "with-back-pressure-queue" + Random.nextInt(500000))
 }
