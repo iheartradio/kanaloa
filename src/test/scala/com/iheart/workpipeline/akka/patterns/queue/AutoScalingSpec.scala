@@ -11,7 +11,7 @@ import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
 import com.iheart.workpipeline.akka.patterns.queue.Worker.{Idle, Working}
-import com.iheart.workpipeline.metrics.{Status, MetricsCollector, NoOpMetricsCollector}
+import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import org.specs2.specification.Scope
 import org.specs2.mock.Mockito
 
@@ -35,8 +35,8 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
       numOfIdleWorkers = 1,
       dispatchDuration = 5.seconds)
 
-    there was one(metrics).send(Status.PoolSize(size = 4, utilized = 3))
-    there was one(metrics).send(Status.AverageWaitTime(duration = 5.seconds))
+    there was one(metrics).send(Metric.PoolSize(size = 4, utilized = 3))
+    there was one(metrics).send(Metric.AverageWaitTime(duration = 5.seconds))
   }
 
   "record perfLog" in new AutoScalingScope {

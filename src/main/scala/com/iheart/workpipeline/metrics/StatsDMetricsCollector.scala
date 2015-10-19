@@ -18,24 +18,24 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
     private def increment(key: String) = statsd.count(key, 1, sampleRate)
 
     def receive: Receive = {
-      case Event.WorkEnqueued => increment("queue.enqueued")
-      case Event.WorkDequeued => increment("queue.dequeued")
-      case Event.EnqueueRejected => increment("queue.enqueueRejected")
-      case Event.WorkCompleted => increment("work.completed")
-      case Event.WorkFailed => increment("work.failed")
-      case Event.WorkTimedOut => increment("work.timedOut")
+      case Metric.WorkEnqueued => increment("queue.enqueued")
+      case Metric.WorkDequeued => increment("queue.dequeued")
+      case Metric.EnqueueRejected => increment("queue.enqueueRejected")
+      case Metric.WorkCompleted => increment("work.completed")
+      case Metric.WorkFailed => increment("work.failed")
+      case Metric.WorkTimedOut => increment("work.timedOut")
 
-      case Status.PoolSize(size, utilized) =>
+      case Metric.PoolSize(size, utilized) =>
         statsd.gauge("pool.size", size)
         statsd.gauge("pool.utilized", utilized)
 
-      case Status.AverageWaitTime(duration) =>
+      case Metric.AverageWaitTime(duration) =>
         statsd.time("queue.waitTime", duration.toMillis)
 
-      case Status.WorkQueueLength(length) =>
+      case Metric.WorkQueueLength(length) =>
         statsd.gauge("queue.length", length)
 
-      case Status.WorkQueueMaxLength(length) =>
+      case Metric.WorkQueueMaxLength(length) =>
         statsd.gauge("queue.maxLength", length)
 
       case _ => // Ignore

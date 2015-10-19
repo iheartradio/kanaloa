@@ -9,7 +9,7 @@ import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
 import com.iheart.workpipeline.akka.patterns.queue.Worker.{Working, WorkerStatus}
-import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Event, Status}
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -97,8 +97,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     val fullyUtilized = utilization == currentSize
 
     // Send metrics
-    metricsCollector.send(Status.PoolSize(currentSize, utilization))
-    metricsCollector.send(Status.AverageWaitTime(dispatchWait))
+    metricsCollector.send(Metric.PoolSize(currentSize, utilization))
+    metricsCollector.send(Metric.AverageWaitTime(dispatchWait))
 
     underUtilizationStreak = if (!fullyUtilized)
       underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))

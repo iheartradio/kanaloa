@@ -4,7 +4,7 @@ import akka.actor._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns
 import com.iheart.workpipeline.collection.FiniteCollection
-import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Event}
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 import patterns.CommonProtocol.QueryStatus
 import CommonProtocol.{WorkTimedOut, WorkFailed}
 import QueueProcessor.MissionAccomplished
@@ -156,17 +156,17 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   protected case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
     def success(result: Any): Unit = {
-      metricsCollector.send(Event.WorkCompleted)
+      metricsCollector.send(Metric.WorkCompleted)
       done(result)
     }
 
     def fail(result: Any): Unit = {
-      metricsCollector.send(Event.WorkFailed)
+      metricsCollector.send(Metric.WorkFailed)
       done(result)
     }
 
     def timeout(): Unit = {
-      metricsCollector.send(Event.WorkTimedOut)
+      metricsCollector.send(Metric.WorkTimedOut)
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
     }
 

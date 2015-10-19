@@ -10,7 +10,7 @@ import Queue._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.collection.FiniteCollection
 import com.iheart.workpipeline.time.Java8TimeExtensions
-import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Event, Status}
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
 import scala.concurrent.duration._
@@ -31,16 +31,16 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
     case Enqueue(workMessage, replyTo, setting) =>
-      metricsCollector.send(Status.WorkQueueLength(status.workBuffer.length))
+      metricsCollector.send(Metric.WorkQueueLength(status.workBuffer.length))
 
       if(isOverCapacity(status)) {
         replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
-        metricsCollector.send(Event.EnqueueRejected)
+        metricsCollector.send(Metric.EnqueueRejected)
       } else {
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
         val newStatus = dispatchWork(status.copy(workBuffer = status.workBuffer.enqueue(newWork)))
         context become processing(newStatus)
-        metricsCollector.send(Event.WorkEnqueued)
+        metricsCollector.send(Metric.WorkEnqueued)
         replyTo.foreach(_ ! WorkEnqueued)
       }
 
@@ -141,7 +141,7 @@ case class QueueWithBackPressure(settings: BackPressureSettings,
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms" )
 
-  metricsCollector.send(Status.WorkQueueMaxLength(settings.maxBufferSize))
+  metricsCollector.send(Metric.WorkQueueMaxLength(settings.maxBufferSize))
 
   def isOverCapacity(qs: QueueStatus): Boolean =
     if(qs.currentQueueLength == 0)
