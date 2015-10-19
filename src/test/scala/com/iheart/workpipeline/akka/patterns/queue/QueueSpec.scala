@@ -93,16 +93,17 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
 
   "send PoolSize metric when pool size changes" in new QueueScope {
     override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
 
     val queueProcessor = initQueue(
-      iteratorQueue(Iterator.empty),
+      iteratorQueue(Iterator("a")),
       numberOfWorkers = 1)
     queueProcessor ! ScaleTo(3)
     queueProcessor ! ScaleTo(5)
 
-    there.was(one(metricsCollector).send(Metric.PoolSize(1)))
-      .andThen(one(metricsCollector).send(Metric.PoolSize(3)))
-      .andThen(one(metricsCollector).send(Metric.PoolSize(5)))
+    there was after(50.milliseconds).one(mc).send(Metric.PoolSize(1)) andThen
+      one(mc).send(Metric.PoolSize(3)) andThen
+      one(mc).send(Metric.PoolSize(5))
   }
 
   "retiring a worker when there is no work" in new QueueScope {
@@ -175,7 +176,25 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 }
 
 
-class DefaultQueueSpec extends SpecWithActorSystem {
+class DefaultQueueSpec extends SpecWithActorSystem with Mockito {
+
+    "send metric on Enqueue" in new QueueScope {
+      override val metricsCollector = mock[MetricsCollector]
+      val mc = metricsCollector
+
+      val queue = defaultQueue()
+      initQueue(queue, numberOfWorkers = 3)
+
+      queue ! Enqueue("a", replyTo = Some(self))
+      expectMsg(WorkEnqueued)
+
+      delegatee.expectMsg("a")
+      delegatee.reply(MessageProcessed("a"))
+
+      there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
+        one(mc).send(Metric.WorkQueueLength(1)) andThen
+        one(mc).send(Metric.WorkQueueLength(0))
+    }
 
     "dispatch work on demand on parallel" in new QueueScope {
       val queue = defaultQueue()
@@ -272,16 +291,19 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
         registered
     }
   }
-  
+
   def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(iteratorQueueProps(iterator, workSetting), "iterator-queue-" + Random.nextInt(100000))
+    system.actorOf(iteratorQueueProps(iterator, workSetting, metricsCollector),
+                   "iterator-queue-" + Random.nextInt(100000))
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(Queue.default(workSetting), "default-queue-" + Random.nextInt(100000))
+    system.actorOf(Queue.default(workSetting, metricsCollector),
+                   "default-queue-" + Random.nextInt(100000))
 
 
   def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
                         defaultWorkSetting: WorkSettings = WorkSettings()) =
-      system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting), "with-back-pressure-queue" + Random.nextInt(500000))
+    system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
+                   "with-back-pressure-queue" + Random.nextInt(500000))
 }
 

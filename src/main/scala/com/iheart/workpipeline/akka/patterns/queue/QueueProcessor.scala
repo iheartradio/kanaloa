@@ -18,6 +18,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def settings: ProcessingWorkerPoolSettings
   val metricsCollector: MetricsCollector
 
+  metricsCollector.send(Metric.PoolSize(settings.startingPoolSize))
+
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
       case _: Exception => Restart
@@ -26,8 +28,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def workerProp(queueRef: QueueRef, delegateeProps: Props): Props
 
   def receive: Receive = {
-    metricsCollector.send(Metric.PoolSize(settings.startingPoolSize))
-
     val workers = (1 to settings.startingPoolSize).map(createWorker).toSet
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue

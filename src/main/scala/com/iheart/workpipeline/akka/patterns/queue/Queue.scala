@@ -28,19 +28,22 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   final def receive = processing(QueueStatus())
 
+  metricsCollector.send(Metric.WorkQueueLength(0))
+
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
     case Enqueue(workMessage, replyTo, setting) =>
-      metricsCollector.send(Metric.WorkQueueLength(status.workBuffer.length))
-
       if(isOverCapacity(status)) {
         replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
         metricsCollector.send(Metric.EnqueueRejected)
       } else {
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
-        val newStatus = dispatchWork(status.copy(workBuffer = status.workBuffer.enqueue(newWork)))
+        val newWorkBuffer = status.workBuffer.enqueue(newWork)
+        val newStatus = dispatchWork(status.copy(workBuffer = newWorkBuffer))
+
+        metricsCollector.send(Metric.WorkQueueLength(newWorkBuffer.length))
+
         context become processing(newStatus)
-        metricsCollector.send(Metric.WorkEnqueued)
         replyTo.foreach(_ ! WorkEnqueued)
       }
 
@@ -256,9 +259,14 @@ object Queue {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
   }
 
-  def ofIterator(iterator: Iterator[_], defaultWorkSetting: WorkSettings = WorkSettings()): Props = QueueOfIterator.props(iterator, defaultWorkSetting)
+  def ofIterator(iterator: Iterator[_],
+                 defaultWorkSetting: WorkSettings = WorkSettings(),
+                 metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    QueueOfIterator.props(iterator, defaultWorkSetting, metricsCollector)
   
-  def default(defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new DefaultQueue(defaultWorkSetting))
+  def default(defaultWorkSetting: WorkSettings = WorkSettings(),
+              metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    Props(new DefaultQueue(defaultWorkSetting, metricsCollector))
 
   def withBackPressure(backPressureSetting: BackPressureSettings,
                        defaultWorkSettings: WorkSettings = WorkSettings(),
