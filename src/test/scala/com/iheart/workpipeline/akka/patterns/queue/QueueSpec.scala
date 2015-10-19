@@ -4,12 +4,14 @@ package com.iheart.workpipeline.akka.patterns.queue
 import akka.actor._
 import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
+import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import Queue._
 import QueueProcessor._
 import com.iheart.workpipeline.akka.patterns.queue.Queue.{QueueStatus, WorkEnqueued}
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown}
 import scala.concurrent.duration._
 import scala.util.Random
+import org.specs2.mock.Mockito
 
 import TestUtils._
 
@@ -87,7 +89,21 @@ class QueueSpec extends SpecWithActorSystem {
   }
 }
 
-class ScalingWhenWorkingSpec extends SpecWithActorSystem {
+class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
+
+  "send PoolSize metric when pool size changes" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+
+    val queueProcessor = initQueue(
+      iteratorQueue(Iterator.empty),
+      numberOfWorkers = 1)
+    queueProcessor ! ScaleTo(3)
+    queueProcessor ! ScaleTo(5)
+
+    there.was(one(metricsCollector).send(Metric.PoolSize(1)))
+      .andThen(one(metricsCollector).send(Metric.PoolSize(3)))
+      .andThen(one(metricsCollector).send(Metric.PoolSize(5)))
+  }
 
   "retiring a worker when there is no work" in new QueueScope {
     val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
@@ -233,16 +249,17 @@ class DefaultQueueSpec extends SpecWithActorSystem {
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
+  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings) {
+    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
       case MessageProcessed(msg) => Right(msg)
       case MessageFailed => Left("doesn't matter")
     }
 
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : QueueProcessorRef = {
-    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize))
+    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(processorProps)
   }
 
@@ -267,3 +284,4 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
                         defaultWorkSetting: WorkSettings = WorkSettings()) =
       system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting), "with-back-pressure-queue" + Random.nextInt(500000))
 }
+

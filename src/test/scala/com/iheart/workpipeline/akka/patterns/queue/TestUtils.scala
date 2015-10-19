@@ -2,6 +2,7 @@ package com.iheart.workpipeline.akka.patterns.queue
 
 import akka.actor.{ActorSystem, Props, Actor, ActorRef}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector}
 
 import org.specs2.specification.Scope
 
@@ -35,6 +36,9 @@ object TestUtils {
 
     val delegateeProps = Wrapper.props(delegatee.ref)
 
-    def defaultProcessorProps(queue: QueueRef, settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1)) = QueueProcessor.default(queue, delegateeProps, settings)(resultChecker)
+    def defaultProcessorProps(queue: QueueRef,
+                              settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
+                              metricsCollector: MetricsCollector = NoOpMetricsCollector) =
+      QueueProcessor.default(queue, delegateeProps, settings, metricsCollector)(resultChecker)
   }
 }

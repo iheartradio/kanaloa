@@ -17,7 +17,8 @@ object Metric {
 
   trait Status extends Metric
 
-  case class PoolSize(size: Int, utilized: Int) extends Status
+  case class PoolSize(size: Int) extends Status
+  case class PoolUtilized(numWorkers: Int) extends Status
   case class AverageWaitTime(duration: Duration) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueMaxLength(length: Int) extends Status

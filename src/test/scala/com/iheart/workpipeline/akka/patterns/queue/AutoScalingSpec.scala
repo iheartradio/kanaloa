@@ -18,8 +18,6 @@ import org.specs2.mock.Mockito
 import scala.concurrent.duration._
 
 class AutoScalingSpec extends SpecWithActorSystem with Mockito {
-  val metrics: MetricsCollector = mock[MetricsCollector]
-
   "when no history" in new AutoScalingScope {
     as ! OptimizeOrExplore
     tQueue.expectMsgType[QueryStatus]
@@ -27,7 +25,9 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     tProcessor.expectNoMsg(40.milliseconds)
   }
 
-  "send metrics to metricsCollector" in new AutoScalingScope(metrics) {
+  "send metrics to metricsCollector" in new AutoScalingScope {
+    override val metricsCollector: MetricsCollector = mock[MetricsCollector]
+
     as ! OptimizeOrExplore
 
     replyStatus(
@@ -35,8 +35,8 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
       numOfIdleWorkers = 1,
       dispatchDuration = 5.seconds)
 
-    there was one(metrics).send(Metric.PoolSize(size = 4, utilized = 3))
-    there was one(metrics).send(Metric.AverageWaitTime(duration = 5.seconds))
+    there was one(metricsCollector).send(Metric.PoolUtilized(3))
+    there was one(metricsCollector).send(Metric.AverageWaitTime(5.seconds))
   }
 
   "record perfLog" in new AutoScalingScope {
@@ -182,8 +182,10 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   }
 }
 
-class AutoScalingScope(metricsCollector: MetricsCollector = NoOpMetricsCollector)(implicit system: ActorSystem)
+class AutoScalingScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender with Scope {
+
+  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
   val tQueue = TestProbe()
   val tProcessor = TestProbe()
@@ -229,6 +231,6 @@ class AutoScalingScope(metricsCollector: MetricsCollector = NoOpMetricsCollector
 
   }
 
-  val as = autoScalingRef()
+  lazy val as = autoScalingRef()
 }
 

@@ -25,9 +25,9 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
       case Metric.WorkFailed => increment("work.failed")
       case Metric.WorkTimedOut => increment("work.timedOut")
 
-      case Metric.PoolSize(size, utilized) =>
+      case Metric.PoolSize(size) =>
         statsd.gauge("pool.size", size)
-        statsd.gauge("pool.utilized", utilized)
+        // statsd.gauge("pool.utilized", utilized) // TODO
 
       case Metric.AverageWaitTime(duration) =>
         statsd.time("queue.waitTime", duration.toMillis)

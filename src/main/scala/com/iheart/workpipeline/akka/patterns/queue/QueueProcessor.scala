@@ -4,6 +4,7 @@ import java.time.{ZoneOffset, LocalDateTime}
 
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
+import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
 import QueueProcessor._
@@ -15,6 +16,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   def delegateeProps: Props
   def settings: ProcessingWorkerPoolSettings
+  val metricsCollector: MetricsCollector
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
@@ -24,6 +26,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def workerProp(queueRef: QueueRef, delegateeProps: Props): Props
 
   def receive: Receive = {
+    metricsCollector.send(Metric.PoolSize(settings.startingPoolSize))
+
     val workers = (1 to settings.startingPoolSize).map(createWorker).toSet
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
@@ -36,15 +40,19 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     case ScaleTo(newPoolSize, reason) =>
       log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
+      metricsCollector.send(Metric.PoolSize(newPoolSize))
+
       val diff = newPoolSize - pool.size
       if (diff > 0)
         context become monitoring(pool ++ (1 to diff).map(createWorker))
       else if (diff < 0 && newPoolSize >= settings.minPoolSize)
         pool.take(-diff).foreach(_ ! Worker.Retire)
 
-    case MissionAccomplished(worker) => removeWorker(pool, worker, monitoring, "successfully after all work is done")
+    case MissionAccomplished(worker) =>
+      removeWorker(pool, worker, monitoring, "successfully after all work is done")
 
-    case Terminated(worker) if pool.contains(worker) => removeWorker(pool, worker, monitoring, "unexpected termination when all workers retired")
+    case Terminated(worker) if pool.contains(worker) =>
+      removeWorker(pool, worker, monitoring, "unexpected termination when all workers retired")
 
     case Terminated(`queue`) =>
       log.info(s"Queue ${queue.path} is terminated")
@@ -90,7 +98,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   private def createWorker(index: Int): WorkerRef = {
     val timestamp = LocalDateTime.now.toInstant(ZoneOffset.UTC).toEpochMilli
-    val worker = context.actorOf(workerProp(queue, delegateeProps), s"worker-${queue.path.name}-$index-${timestamp}")
+    val worker = context.actorOf(workerProp(queue, delegateeProps),
+                                 s"worker-${queue.path.name}-$index-${timestamp}")
     context watch worker
     worker
   }
@@ -128,14 +137,17 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 case class DefaultQueueProcessor(queue: QueueRef,
                                  delegateeProps: Props,
                                  settings: ProcessingWorkerPoolSettings,
+                                 metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                  resultChecker: ResultChecker) extends QueueProcessor {
-  def workerProp(queue: QueueRef, delegateeProps: Props): Props = Worker.default(queue, delegateeProps)(resultChecker)
+  def workerProp(queue: QueueRef, delegateeProps: Props): Props =
+    Worker.default(queue, delegateeProps)(resultChecker)
 }
 
 case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
                                             delegateeProps: Props,
                                             settings: ProcessingWorkerPoolSettings,
                                             circuitBreakerSettings: CircuitBreakerSettings,
+                                            metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                             resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
     Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings)(resultChecker)
@@ -161,11 +173,24 @@ object QueueProcessor {
 
   def default(queue: QueueRef,
               delegateeProps: Props,
-              settings: ProcessingWorkerPoolSettings)(resultChecker: ResultChecker): Props = Props(new DefaultQueueProcessor(queue, delegateeProps, settings, resultChecker))
+              settings: ProcessingWorkerPoolSettings,
+              metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    Props(new DefaultQueueProcessor(queue,
+                                    delegateeProps,
+                                    settings,
+                                    metricsCollector,
+                                    resultChecker))
 
   def withCircuitBreaker(queue: QueueRef,
                          delegateeProps: Props,
                          settings: ProcessingWorkerPoolSettings,
-                         circuitBreakerSettings: CircuitBreakerSettings)(resultChecker: ResultChecker): Props =
-    Props(new QueueProcessorWithCircuitBreaker(queue, delegateeProps, settings, circuitBreakerSettings, resultChecker))
+                         circuitBreakerSettings: CircuitBreakerSettings,
+                         metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    Props(new QueueProcessorWithCircuitBreaker(queue,
+                                               delegateeProps,
+                                               settings,
+                                               circuitBreakerSettings,
+                                               metricsCollector,
+                                               resultChecker))
 }
+
