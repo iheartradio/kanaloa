@@ -177,74 +177,74 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 
 
 class DefaultQueueSpec extends SpecWithActorSystem {
-    "dispatch work on demand on parallel" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 3)
+  "dispatch work on demand on parallel" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
 
-      delegatee.expectNoMsg(40.milliseconds)
+    delegatee.expectNoMsg(40.milliseconds)
 
-      queue ! Enqueue("a", replyTo = Some(self))
+    queue ! Enqueue("a", replyTo = Some(self))
 
-      expectMsg(WorkEnqueued)
+    expectMsg(WorkEnqueued)
 
-      delegatee.expectMsg("a")
+    delegatee.expectMsg("a")
 
-      queue ! Enqueue("b", Some(self))
+    queue ! Enqueue("b", Some(self))
 
-      expectMsg(WorkEnqueued)
+    expectMsg(WorkEnqueued)
 
-      delegatee.expectMsg("b")
+    delegatee.expectMsg("b")
 
-    }
+  }
 
-    "won't over burden" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+  "won't over burden" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
 
-      queue ! Enqueue("c")
+    queue ! Enqueue("c")
 
-      delegatee.expectNoMsg(100.milliseconds)
-    }
+    delegatee.expectNoMsg(100.milliseconds)
+  }
 
-    "reuse workers" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+  "reuse workers" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageProcessed("b"))
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
+    delegatee.reply(MessageProcessed("b"))
 
-      queue ! Enqueue("c")
-      delegatee.expectMsg("c")
-    }
+    queue ! Enqueue("c")
+    delegatee.expectMsg("c")
+  }
 
-    "shutdown with all outstanding work done" in new QueueScope {
+  "shutdown with all outstanding work done" in new QueueScope {
 
-      val queue = defaultQueue()
-      val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
 
-      queue ! Enqueue("a")
+    queue ! Enqueue("a")
 
-      delegatee.expectMsg("a")
+    delegatee.expectMsg("a")
 
-      queueProcessor ! Shutdown(Some(self))
+    queueProcessor ! Shutdown(Some(self))
 
-      expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
+    expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      delegatee.reply(MessageProcessed("a"))
+    delegatee.reply(MessageProcessed("a"))
 
-      expectMsg(ShutdownSuccessfully)
-    }
+    expectMsg(ShutdownSuccessfully)
+  }
 }
 
 class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
