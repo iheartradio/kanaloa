@@ -17,28 +17,30 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
   protected class StatsDActor(statsd: StatsDClient) extends Actor with ActorLogging {
     private def increment(key: String) = statsd.count(key, 1, sampleRate)
 
+    import Metric._
+
     def receive: Receive = {
-      case Metric.WorkEnqueued => increment("queue.enqueued")
-      case Metric.WorkDequeued => increment("queue.dequeued")
-      case Metric.EnqueueRejected => increment("queue.enqueueRejected")
-      case Metric.WorkCompleted => increment("work.completed")
-      case Metric.WorkFailed => increment("work.failed")
-      case Metric.WorkTimedOut => increment("work.timedOut")
+      case WorkEnqueued => increment("queue.enqueued")
+      case WorkDequeued => increment("queue.dequeued")
+      case EnqueueRejected => increment("queue.enqueueRejected")
+      case WorkCompleted => increment("work.completed")
+      case WorkFailed => increment("work.failed")
+      case WorkTimedOut => increment("work.timedOut")
 
-      case Metric.PoolSize(size) =>
+      case PoolSize(size) =>
         statsd.gauge("pool.size", size)
-        // statsd.gauge("pool.utilized", utilized) // TODO
 
-      case Metric.AverageWaitTime(duration) =>
+      case PoolUtilized(numWorkers) =>
+        statsd.gauge("pool.utilized", numWorkers)
+
+      case AverageWaitTime(duration) =>
         statsd.time("queue.waitTime", duration.toMillis)
 
-      case Metric.WorkQueueLength(length) =>
+      case WorkQueueLength(length) =>
         statsd.gauge("queue.length", length)
 
-      case Metric.WorkQueueMaxLength(length) =>
+      case WorkQueueMaxLength(length) =>
         statsd.gauge("queue.maxLength", length)
-
-      case _ => // Ignore
     }
   }
 
