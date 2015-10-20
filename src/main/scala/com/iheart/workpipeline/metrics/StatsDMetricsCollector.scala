@@ -4,20 +4,20 @@ import akka.actor._
 import com.timgroup.statsd.{ StatsDClient, NonBlockingStatsDClient }
 import scala.util.Random
 
-class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRate: Double = 1.0)
+class StatsDMetricCollector(statsd: StatsDClient, sampleRate: Double = 1.0)(implicit system: ActorSystem)
   extends MetricsCollector {
 
   lazy val actor: ActorRef = system.actorOf(Props(new StatsDActor(statsd)))
 
-  def send(metric: Metric): Unit =
-    if (sampleRate >= 1 || Random.nextDouble <= sampleRate) {
-      actor ! metric
-    }
+  def send(metric: Metric): Unit = actor ! metric
 
   protected class StatsDActor(statsd: StatsDClient) extends Actor with ActorLogging {
-    private def increment(key: String) = statsd.count(key, 1, sampleRate)
-
     import Metric._
+
+    private def increment(key: String) =
+      if (sampleRate >= 1 || Random.nextDouble <= sampleRate) {
+        statsd.count(key, 1, sampleRate)
+      }
 
     def receive: Receive = {
       case WorkEnqueued => increment("queue.enqueued")
@@ -43,5 +43,17 @@ class StatsDMetricCollector(system: ActorSystem, statsd: StatsDClient, sampleRat
     }
   }
 
+}
+
+object StatsDMetricCollector {
+  def fromClient(statsd: StatsDClient, sampleRate: Double = 1.0)(implicit system: ActorSystem) =
+    new StatsDMetricCollector(statsd, sampleRate)
+
+
+  def apply(prefix: String,
+            host: String,
+            port: Int,
+            sampleRate: Double = 1.0)(implicit system: ActorSystem) =
+    new StatsDMetricCollector(new NonBlockingStatsDClient(prefix, host, port), sampleRate)
 }
 

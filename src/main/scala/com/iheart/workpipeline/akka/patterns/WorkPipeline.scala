@@ -76,8 +76,8 @@ object WorkPipeline {
 case class PushingWorkPipeline(name: String,
                    settings: PushingWorkPipeline.Settings,
                    backendProps: Props,
-                   resultChecker: ResultChecker,
-                   metricsCollector: MetricsCollector = NoOpMetricsCollector)
+                   metricsCollector: MetricsCollector = NoOpMetricsCollector,
+                   resultChecker: ResultChecker)
   extends WorkPipeline {
 
   protected val pipelineSettings = settings.workPipelineSettings
@@ -114,8 +114,11 @@ object PushingWorkPipeline {
     Props(new Handler(settings, queue))
   }
 
-  def props(name: String, settings: Settings, backendProps: Props)
-           (resultChecker: ResultChecker) = Props(PushingWorkPipeline(name, settings, backendProps, resultChecker))
+  def props(name: String,
+            settings: Settings,
+            backendProps: Props,
+            metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker) =
+    Props(PushingWorkPipeline(name, settings, backendProps, metricsCollector, resultChecker))
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
@@ -135,15 +138,19 @@ case class PullingWorkPipeline( name: String,
                                 iterator: Iterator[_],
                                 pipelineSettings: WorkPipeline.Settings,
                                 backendProps: Props,
-                                resultChecker: ResultChecker,
-                                metricsCollector: MetricsCollector = NoOpMetricsCollector) extends WorkPipeline {
+                                metricsCollector: MetricsCollector = NoOpMetricsCollector,
+                                resultChecker: ResultChecker) extends WorkPipeline {
 
   protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(), metricsCollector)
 
 }
 
 object PullingWorkPipeline {
-  def props(name: String, iterator: Iterator[_], settings: WorkPipeline.Settings, backendProps: Props)
-           (resultChecker: ResultChecker) = Props(PullingWorkPipeline(name, iterator, settings, backendProps, resultChecker))
+  def props(name: String,
+            iterator: Iterator[_],
+            settings: WorkPipeline.Settings,
+            backendProps: Props,
+            metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker) =
+    Props(PullingWorkPipeline(name, iterator, settings, backendProps, metricsCollector, resultChecker))
 }
 
