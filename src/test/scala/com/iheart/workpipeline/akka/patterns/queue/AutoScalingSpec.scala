@@ -36,7 +36,8 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
       numOfIdleWorkers = 1,
       dispatchDuration = 5.seconds)
 
-    there was after(50.milliseconds).one(mc).send(Metric.PoolUtilized(3)) andThen
+    there was after(50.milliseconds).
+      one(mc).send(Metric.PoolUtilized(3)) andThen
       one(mc).send(Metric.AverageWaitTime(5.seconds))
   }
 

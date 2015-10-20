@@ -101,7 +101,8 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
     queueProcessor ! ScaleTo(3)
     queueProcessor ! ScaleTo(5)
 
-    there was after(50.milliseconds).one(mc).send(Metric.PoolSize(1)) andThen
+    there was after(50.milliseconds).
+      one(mc).send(Metric.PoolSize(1)) andThen
       one(mc).send(Metric.PoolSize(3)) andThen
       one(mc).send(Metric.PoolSize(5))
   }
@@ -261,7 +262,8 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
     delegatee.expectMsg("a")
     delegatee.reply(MessageProcessed("a"))
 
-    there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
       one(mc).send(Metric.WorkQueueLength(1)) andThen
       one(mc).send(Metric.WorkQueueLength(0))
   }
@@ -281,7 +283,9 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
     queue ! Enqueue("c", replyTo = Some(self))
     expectMsgType[EnqueueRejected]
 
-    there was after(100.milliseconds).one(mc).send(Metric.WorkQueueLength(0)) andThen
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
       two(mc).send(Metric.EnqueueRejected)
   }
 
