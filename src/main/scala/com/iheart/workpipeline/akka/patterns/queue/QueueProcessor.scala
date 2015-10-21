@@ -78,7 +78,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   def shuttingDown(pool: WorkerPool, reportTo: Option[ActorRef]): Receive = {
     case MissionAccomplished(worker) =>
-      removeWorker(pool, worker, shuttingDown(_, reportTo),"successfully after command", reportTo)
+      removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
     case Terminated(worker) if pool.contains(worker) =>
       removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)

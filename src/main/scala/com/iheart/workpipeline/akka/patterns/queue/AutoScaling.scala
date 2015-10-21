@@ -99,7 +99,6 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     // Send metrics
     metricsCollector.send(Metric.PoolSize(currentSize))
     metricsCollector.send(Metric.PoolUtilized(utilization))
-    metricsCollector.send(Metric.AverageWaitTime(dispatchWait))
 
     underUtilizationStreak = if (!fullyUtilized)
       underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))

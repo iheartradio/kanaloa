@@ -38,10 +38,15 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         metricsCollector.send(Metric.EnqueueRejected)
       } else {
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
-        val newWorkBuffer = status.workBuffer.enqueue(newWork)
-        val newStatus = dispatchWork(status.copy(workBuffer = newWorkBuffer))
+        val newBuffer: ScalaQueue[Work] = status.workBuffer.enqueue(newWork)
+        val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
 
-        metricsCollector.send(Metric.WorkQueueLength(newWorkBuffer.length))
+        // Send metrics
+        metricsCollector.send(Metric.WorkEnqueued)
+        metricsCollector.send(Metric.WorkQueueLength(newBuffer.length))
+        status.avgDispatchDurationLowerBound.foreach { (d: Duration) =>
+          metricsCollector.send(Metric.DispatchWait(d))
+        }
 
         context become processing(newStatus)
         replyTo.foreach(_ ! WorkEnqueued)
@@ -150,7 +155,7 @@ case class QueueWithBackPressure(settings: BackPressureSettings,
     if(qs.currentQueueLength == 0)
       false
     else if(qs.currentQueueLength >= settings.maxBufferSize){
-      log.error("buffer overflowed" + settings.maxBufferSize)
+      log.error("buffer overflowed " + settings.maxBufferSize)
       true
     } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBound.getOrElse(Duration.Zero) * qs.currentQueueLength

@@ -32,7 +32,7 @@ class StatsDMetricCollector(statsd: StatsDClient, sampleRate: Double = 1.0)(impl
       case PoolUtilized(numWorkers) =>
         statsd.gauge("pool.utilized", numWorkers)
 
-      case AverageWaitTime(duration) =>
+      case DispatchWait(duration) =>
         statsd.time("queue.waitTime", duration.toMillis)
 
       case WorkQueueLength(length) =>

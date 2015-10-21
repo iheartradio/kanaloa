@@ -33,13 +33,11 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
     replyStatus(
       numOfBusyWorkers = 3,
-      numOfIdleWorkers = 1,
-      dispatchDuration = 5.seconds)
+      numOfIdleWorkers = 1)
 
     there was after(50.milliseconds).
       one(mc).send(Metric.PoolSize(4)) andThen
-      one(mc).send(Metric.PoolUtilized(3)) andThen
-      one(mc).send(Metric.AverageWaitTime(5.seconds))
+      one(mc).send(Metric.PoolUtilized(3))
   }
 
   "record perfLog" in new AutoScalingScope {
