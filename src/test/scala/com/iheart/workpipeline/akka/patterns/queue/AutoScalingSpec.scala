@@ -37,6 +37,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
       dispatchDuration = 5.seconds)
 
     there was after(50.milliseconds).
+      one(mc).send(Metric.PoolSize(4)) andThen
       one(mc).send(Metric.PoolUtilized(3)) andThen
       one(mc).send(Metric.AverageWaitTime(5.seconds))
   }

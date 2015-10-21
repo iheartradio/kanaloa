@@ -23,6 +23,7 @@ trait WorkPipeline extends Actor {
 
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
+
   private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(queue,
     backendProps,
     pipelineSettings.workerPool,
@@ -80,10 +81,11 @@ case class PushingWorkPipeline(name: String,
                    resultChecker: ResultChecker)
   extends WorkPipeline {
 
-  protected val pipelineSettings = settings.workPipelineSettings
+  protected lazy val pipelineSettings = settings.workPipelineSettings
 
-  protected val queueProps = Queue.withBackPressure(
+  protected lazy val queueProps = Queue.withBackPressure(
     settings.backPressureSettings, WorkSettings(), metricsCollector)
+
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingWorkPipeline.handlerProps(settings, queue)) forward m

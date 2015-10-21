@@ -9,15 +9,15 @@ class StatsDMetricCollector(statsd: StatsDClient, sampleRate: Double = 1.0)(impl
 
   lazy val actor: ActorRef = system.actorOf(Props(new StatsDActor(statsd)))
 
-  def send(metric: Metric): Unit = actor ! metric
+  def send(metric: Metric): Unit =
+    if (sampleRate >= 1 || Random.nextDouble <= sampleRate) {
+      actor ! metric
+    }
 
   protected class StatsDActor(statsd: StatsDClient) extends Actor with ActorLogging {
     import Metric._
 
-    private def increment(key: String) =
-      if (sampleRate >= 1 || Random.nextDouble <= sampleRate) {
-        statsd.count(key, 1, sampleRate)
-      }
+    private def increment(key: String) = statsd.count(key, 1, sampleRate)
 
     def receive: Receive = {
       case WorkEnqueued => increment("queue.enqueued")
