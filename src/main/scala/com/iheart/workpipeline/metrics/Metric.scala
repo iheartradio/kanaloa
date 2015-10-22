@@ -5,7 +5,7 @@ import scala.concurrent.duration._
 sealed trait Metric
 
 object Metric {
-  trait Event extends Metric
+  sealed trait Event extends Metric
 
   case object WorkEnqueued extends Event
   case object EnqueueRejected extends Event
@@ -14,7 +14,7 @@ object Metric {
   case object WorkTimedOut extends Event
   case object WorkFailed extends Event
 
-  trait Status extends Metric
+  sealed trait Status extends Metric
 
   case class PoolSize(size: Int) extends Status
   case class PoolUtilized(numWorkers: Int) extends Status

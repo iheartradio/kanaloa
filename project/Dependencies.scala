@@ -18,9 +18,5 @@ object Dependencies {
     "org.specs2" %% "specs2-scalacheck" % Versions.specs2 % "test"
   )
 
-  val metrics = Seq(
-    "com.timgroup" % "java-statsd-client" % "3.1.0"
-  )
-
 }
 

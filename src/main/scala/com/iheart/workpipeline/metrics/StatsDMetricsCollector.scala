@@ -1,59 +1,38 @@
 package com.iheart.workpipeline.metrics
 
 import akka.actor._
-import com.timgroup.statsd.{ StatsDClient, NonBlockingStatsDClient }
-import scala.util.Random
 
-class StatsDMetricCollector(statsd: StatsDClient, sampleRate: Double = 1.0)(implicit system: ActorSystem)
+class StatsDMetricCollector(statsd: StatsDClient)(implicit system: ActorSystem)
   extends MetricsCollector {
 
-  lazy val actor: ActorRef = system.actorOf(Props(new StatsDActor(statsd)))
+  def this(prefix: String, host: String, port: Int, sampleRate: Double = 1.0)(implicit system: ActorSystem) =
+    this(new StatsDClient(system, host, port, prefix = prefix, defaultSampleRate = sampleRate))
 
-  def send(metric: Metric): Unit =
-    if (sampleRate >= 1 || Random.nextDouble <= sampleRate) {
-      actor ! metric
-    }
+  import Metric._
 
-  protected class StatsDActor(statsd: StatsDClient) extends Actor with ActorLogging {
-    import Metric._
+  private def gauge(key: String, value: Int) = statsd.gauge(key, value.toString)
 
-    private def increment(key: String) = statsd.count(key, 1, sampleRate)
+  def send(metric: Metric): Unit = metric match {
+    case WorkEnqueued => statsd.increment("queue.enqueued")
+    case EnqueueRejected => statsd.increment("queue.enqueueRejected")
+    case WorkCompleted => statsd.increment("work.completed")
+    case WorkFailed => statsd.increment("work.failed")
+    case WorkTimedOut => statsd.increment("work.timedOut")
 
-    def receive: Receive = {
-      case WorkEnqueued => increment("queue.enqueued")
-      case EnqueueRejected => increment("queue.enqueueRejected")
-      case WorkCompleted => increment("work.completed")
-      case WorkFailed => increment("work.failed")
-      case WorkTimedOut => increment("work.timedOut")
+    case PoolSize(size) =>
+      gauge("pool.size", size)
 
-      case PoolSize(size) =>
-        statsd.gauge("pool.size", size)
+    case PoolUtilized(numWorkers) =>
+      gauge("pool.utilized", numWorkers)
 
-      case PoolUtilized(numWorkers) =>
-        statsd.gauge("pool.utilized", numWorkers)
+    case DispatchWait(duration) =>
+      statsd.timing("queue.waitTime", duration.toMillis.toInt)
 
-      case DispatchWait(duration) =>
-        statsd.time("queue.waitTime", duration.toMillis)
+    case WorkQueueLength(length) =>
+      gauge("queue.length", length)
 
-      case WorkQueueLength(length) =>
-        statsd.gauge("queue.length", length)
-
-      case WorkQueueMaxLength(length) =>
-        statsd.gauge("queue.maxLength", length)
-    }
+    case WorkQueueMaxLength(length) =>
+      gauge("queue.maxLength", length)
   }
-
-}
-
-object StatsDMetricCollector {
-  def fromClient(statsd: StatsDClient, sampleRate: Double = 1.0)(implicit system: ActorSystem) =
-    new StatsDMetricCollector(statsd, sampleRate)
-
-
-  def apply(prefix: String,
-            host: String,
-            port: Int,
-            sampleRate: Double = 1.0)(implicit system: ActorSystem) =
-    new StatsDMetricCollector(new NonBlockingStatsDClient(prefix, host, port), sampleRate)
 }
 
