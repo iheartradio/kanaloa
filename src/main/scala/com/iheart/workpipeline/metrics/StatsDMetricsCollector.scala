@@ -1,8 +1,9 @@
 package com.iheart.workpipeline.metrics
 
 import akka.actor._
+import com.typesafe.config.{Config, ConfigFactory}
 
-class StatsDMetricCollector(statsd: StatsDClient)(implicit system: ActorSystem)
+class StatsDMetricsCollector(statsd: StatsDClient)(implicit system: ActorSystem)
   extends MetricsCollector {
 
   def this(prefix: String, host: String, port: Int, sampleRate: Double = 1.0)(implicit system: ActorSystem) =
@@ -34,5 +35,15 @@ class StatsDMetricCollector(statsd: StatsDClient)(implicit system: ActorSystem)
     case WorkQueueMaxLength(length) =>
       gauge("queue.maxLength", length)
   }
+}
+
+object StatsDMetricsCollector {
+  def fromConfig(conf: Config)(implicit system: ActorSystem): StatsDMetricsCollector =
+    new StatsDMetricsCollector(
+      prefix = conf.getString("prefix"),
+      host = conf.getString("host"),
+      port = conf.getInt("port"),
+      sampleRate = conf.getDouble("sampleRate")
+    )
 }
 
