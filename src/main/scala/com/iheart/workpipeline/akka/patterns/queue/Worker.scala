@@ -211,8 +211,7 @@ object Worker {
                                   protected val delegateeProps: Props,
                                   protected val resultChecker: ResultChecker,
                                   circuitBreakerSettings: CircuitBreakerSettings,
-                                  protected val metricsCollector: MetricsCollector = NoOpMetricsCollector
-                                  ) extends Worker {
+                                  protected val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Worker {
 
     protected def holdOnGettingMoreWork: Option[FiniteDuration] = {
       if( (resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold  )

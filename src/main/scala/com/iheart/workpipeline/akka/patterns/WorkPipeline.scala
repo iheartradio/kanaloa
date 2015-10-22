@@ -27,7 +27,8 @@ trait WorkPipeline extends Actor {
   private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(queue,
     backendProps,
     pipelineSettings.workerPool,
-    pipelineSettings.circuitBreaker)(resultChecker), name + "-queue-processor")
+    pipelineSettings.circuitBreaker,
+    metricsCollector)(resultChecker), name + "-queue-processor")
 
   context watch processor
 

@@ -140,7 +140,7 @@ case class DefaultQueueProcessor(queue: QueueRef,
                                  metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                  resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
-    Worker.default(queue, delegateeProps)(resultChecker)
+    Worker.default(queue, delegateeProps, metricsCollector)(resultChecker)
 }
 
 case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
@@ -150,7 +150,7 @@ case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
                                             metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                             resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
-    Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings)(resultChecker)
+    Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings, metricsCollector)(resultChecker)
 
 }
 
