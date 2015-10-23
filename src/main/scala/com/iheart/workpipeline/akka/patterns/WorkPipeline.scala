@@ -5,6 +5,9 @@ import ActorDSL._
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.ShutdownGracefully
 import com.iheart.workpipeline.akka.patterns.WorkPipeline.Settings
 import com.iheart.workpipeline.akka.patterns.queue._
+import com.iheart.util.ConfigWrapper.ImplicitConfigWrapper
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector}
+import com.typesafe.config.{Config, ConfigFactory}
 import queue.CommonProtocol.WorkRejected
 import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
 import EnqueueRejected.OverCapacity
@@ -16,20 +19,23 @@ trait WorkPipeline extends Actor {
   protected def pipelineSettings: WorkPipeline.Settings
   def backendProps: Props
   def resultChecker: ResultChecker
+  def metricsCollector: MetricsCollector
 
   protected def queueProps: Props
 
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
+
   private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(queue,
     backendProps,
     pipelineSettings.workerPool,
-    pipelineSettings.circuitBreaker)(resultChecker), name + "-queue-processor")
+    pipelineSettings.circuitBreaker,
+    metricsCollector)(resultChecker), name + "-queue-processor")
 
   context watch processor
 
   private val autoScaler =  pipelineSettings.autoScalingSettings.foreach { s =>
-    context.actorOf(AutoScaling.default(queue, processor, s), name + "-auto-scaler" )
+    context.actorOf(AutoScaling.default(queue, processor, s, metricsCollector), name + "-auto-scaler" )
   }
 
   def receive: Receive = ({
@@ -74,12 +80,15 @@ object WorkPipeline {
 case class PushingWorkPipeline(name: String,
                    settings: PushingWorkPipeline.Settings,
                    backendProps: Props,
+                   metricsCollector: MetricsCollector = NoOpMetricsCollector,
                    resultChecker: ResultChecker)
   extends WorkPipeline {
 
-  protected val pipelineSettings = settings.workPipeLineSettings
+  protected lazy val pipelineSettings = settings.workPipelineSettings
 
-  protected val queueProps = Queue.withBackPressure(settings.backPressureSettings, WorkSettings())
+  protected lazy val queueProps = Queue.withBackPressure(
+    settings.backPressureSettings, WorkSettings(), metricsCollector)
+
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingWorkPipeline.handlerProps(settings, queue)) forward m
@@ -90,7 +99,7 @@ object PushingWorkPipeline {
   private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
       case msg =>
-        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workPipeLineSettings.workRetry, settings.workPipeLineSettings.workTimeout, Some(sender))))
+        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workPipelineSettings.workRetry, settings.workPipelineSettings.workTimeout, Some(sender))))
         context become waitingForQueueConfirmation(sender)
     }
 
@@ -110,8 +119,14 @@ object PushingWorkPipeline {
     Props(new Handler(settings, queue))
   }
 
-  def props(name: String, settings: Settings, backendProps: Props)
-           (resultChecker: ResultChecker) = Props(PushingWorkPipeline(name, settings, backendProps, resultChecker))
+  def props(name: String,
+            settings: Settings,
+            backendProps: Props,
+            metricsConfig: Config = ConfigFactory.empty)
+      (resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
+    Props(PushingWorkPipeline(name, settings, backendProps, metricsCollector, resultChecker))
+  }
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
@@ -120,7 +135,7 @@ object PushingWorkPipeline {
 
 
 
-  case class Settings(workPipeLineSettings: WorkPipeline.Settings, backPressureSettings: BackPressureSettings)
+  case class Settings(workPipelineSettings: WorkPipeline.Settings, backPressureSettings: BackPressureSettings)
 
   val defaultSettings: Settings = Settings(WorkPipeline.defaultWorkPipelineSettings, defaultBackPressureSettings)
 
@@ -131,14 +146,22 @@ case class PullingWorkPipeline( name: String,
                                 iterator: Iterator[_],
                                 pipelineSettings: WorkPipeline.Settings,
                                 backendProps: Props,
+                                metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                 resultChecker: ResultChecker) extends WorkPipeline {
 
-  protected def queueProps = QueueOfIterator.props(iterator, WorkSettings())
+  protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(), metricsCollector)
 
 }
 
 object PullingWorkPipeline {
-  def props(name: String, iterator: Iterator[_], settings: WorkPipeline.Settings, backendProps: Props)
-           (resultChecker: ResultChecker) = Props(PullingWorkPipeline(name, iterator, settings, backendProps, resultChecker))
+  def props(name: String,
+            iterator: Iterator[_],
+            settings: WorkPipeline.Settings,
+            backendProps: Props,
+            metricsConfig: Config = ConfigFactory.empty)
+      (resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
+    Props(PullingWorkPipeline(name, iterator, settings, backendProps, metricsCollector, resultChecker))
+  }
 }
 

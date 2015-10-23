@@ -10,8 +10,9 @@ import Queue._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.collection.FiniteCollection
 import com.iheart.workpipeline.time.Java8TimeExtensions
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 import scala.annotation.tailrec
-import scala.collection.immutable.{ Queue => ScalaQueue }
+import scala.collection.immutable.{Queue => ScalaQueue}
 import scala.concurrent.duration._
 import FiniteCollection._
 import Queue.QueueStatus
@@ -23,17 +24,30 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   def defaultWorkSettings: WorkSettings
   protected def bufferHistoryLength: Int
   protected val historySampleRateInMills: Int = 500 //not sure if we should include this in the back pressure settings, since it's more an internal implementation detail
+  def metricsCollector: MetricsCollector
 
   final def receive = processing(QueueStatus())
+
+  metricsCollector.send(Metric.WorkQueueLength(0))
 
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
     case Enqueue(workMessage, replyTo, setting) =>
-      if(isOverCapacity(status))
+      if(isOverCapacity(status)) {
         replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
-      else {
+        metricsCollector.send(Metric.EnqueueRejected)
+      } else {
         val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
-        val newStatus = dispatchWork(status.copy(workBuffer = status.workBuffer.enqueue(newWork)))
+        val newBuffer: ScalaQueue[Work] = status.workBuffer.enqueue(newWork)
+        val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
+
+        // Send metrics
+        metricsCollector.send(Metric.WorkEnqueued)
+        metricsCollector.send(Metric.WorkQueueLength(newBuffer.length))
+        status.avgDispatchDurationLowerBound.foreach { (d: Duration) =>
+          metricsCollector.send(Metric.DispatchWait(d))
+        }
+
         context become processing(newStatus)
         replyTo.foreach(_ ! WorkEnqueued)
       }
@@ -129,17 +143,19 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
 
 case class QueueWithBackPressure(settings: BackPressureSettings,
-                                 defaultWorkSettings: WorkSettings = WorkSettings()) extends Queue {
+                                 defaultWorkSettings: WorkSettings = WorkSettings(),
+                                 metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Queue {
 
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms" )
 
+  metricsCollector.send(Metric.WorkQueueMaxLength(settings.maxBufferSize))
 
   def isOverCapacity(qs: QueueStatus): Boolean =
     if(qs.currentQueueLength == 0)
       false
     else if(qs.currentQueueLength >= settings.maxBufferSize){
-      log.error("buffer overflowed" + settings.maxBufferSize)
+      log.error("buffer overflowed " + settings.maxBufferSize)
       true
     } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBound.getOrElse(Duration.Zero) * qs.currentQueueLength
@@ -157,9 +173,12 @@ trait QueueWithoutBackPressure extends Queue {
   def isOverCapacity(qs: QueueStatus) = false
 }
 
-case class DefaultQueue(defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure
+case class DefaultQueue(defaultWorkSettings: WorkSettings,
+                        metricsCollector: MetricsCollector = NoOpMetricsCollector) extends QueueWithoutBackPressure
 
-class QueueOfIterator(private val iterator: Iterator[_], val defaultWorkSettings: WorkSettings) extends QueueWithoutBackPressure {
+class QueueOfIterator(private val iterator: Iterator[_],
+                      val defaultWorkSettings: WorkSettings,
+                      val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends QueueWithoutBackPressure {
   private case object EnqueueMore
   private class Enqueuer extends Actor {
     def receive = {
@@ -184,7 +203,10 @@ class QueueOfIterator(private val iterator: Iterator[_], val defaultWorkSettings
 }
 
 object QueueOfIterator {
-  def props(iterator: Iterator[_], defaultWorkSettings: WorkSettings): Props = Props(new QueueOfIterator(iterator, defaultWorkSettings))
+  def props(iterator: Iterator[_],
+            defaultWorkSettings: WorkSettings,
+            metricsCollector: MetricsCollector = NoOpMetricsCollector): Props = 
+    Props(new QueueOfIterator(iterator, defaultWorkSettings, metricsCollector))
 }
 
 object Queue {
@@ -242,13 +264,19 @@ object Queue {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
   }
 
-  def ofIterator(iterator: Iterator[_], defaultWorkSetting: WorkSettings = WorkSettings()): Props = QueueOfIterator.props(iterator, defaultWorkSetting)
-  
-  def default(defaultWorkSetting: WorkSettings = WorkSettings()): Props = Props(new DefaultQueue(defaultWorkSetting))
+  def ofIterator(iterator: Iterator[_],
+                 defaultWorkSetting: WorkSettings = WorkSettings(),
+                 metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    QueueOfIterator.props(iterator, defaultWorkSetting, metricsCollector)
+
+  def default(defaultWorkSetting: WorkSettings = WorkSettings(),
+              metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    Props(new DefaultQueue(defaultWorkSetting, metricsCollector))
 
   def withBackPressure(backPressureSetting: BackPressureSettings,
-                       defaultWorkSettings: WorkSettings = WorkSettings()): Props =
-    Props(QueueWithBackPressure(backPressureSetting, defaultWorkSettings))
+                       defaultWorkSettings: WorkSettings = WorkSettings(),
+                       metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    Props(QueueWithBackPressure(backPressureSetting, defaultWorkSettings, metricsCollector))
 
 }
 

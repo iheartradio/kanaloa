@@ -4,12 +4,14 @@ package com.iheart.workpipeline.akka.patterns.queue
 import akka.actor._
 import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
+import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import Queue._
 import QueueProcessor._
 import com.iheart.workpipeline.akka.patterns.queue.Queue.{QueueStatus, WorkEnqueued}
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown}
 import scala.concurrent.duration._
 import scala.util.Random
+import org.specs2.mock.Mockito
 
 import TestUtils._
 
@@ -87,7 +89,23 @@ class QueueSpec extends SpecWithActorSystem {
   }
 }
 
-class ScalingWhenWorkingSpec extends SpecWithActorSystem {
+class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
+
+  "send PoolSize metric when pool size changes" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queueProcessor = initQueue(
+      iteratorQueue(Iterator("a")),
+      numberOfWorkers = 1)
+    queueProcessor ! ScaleTo(3)
+    queueProcessor ! ScaleTo(5)
+
+    there was after(50.milliseconds).
+      one(mc).send(Metric.PoolSize(1)) andThen
+      one(mc).send(Metric.PoolSize(3)) andThen
+      one(mc).send(Metric.PoolSize(5))
+  }
 
   "retiring a worker when there is no work" in new QueueScope {
     val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
@@ -160,89 +178,132 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 
 
 class DefaultQueueSpec extends SpecWithActorSystem {
+  "dispatch work on demand on parallel" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
 
-    "dispatch work on demand on parallel" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 3)
+    delegatee.expectNoMsg(40.milliseconds)
 
-      delegatee.expectNoMsg(40.milliseconds)
+    queue ! Enqueue("a", replyTo = Some(self))
 
-      queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
 
-      expectMsg(WorkEnqueued)
+    delegatee.expectMsg("a")
 
-      delegatee.expectMsg("a")
+    queue ! Enqueue("b", Some(self))
 
-      queue ! Enqueue("b", Some(self))
+    expectMsg(WorkEnqueued)
 
-      expectMsg(WorkEnqueued)
+    delegatee.expectMsg("b")
 
-      delegatee.expectMsg("b")
+  }
 
-    }
+  "won't over burden" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-    "won't over burden" in new QueueScope {
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
 
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+    queue ! Enqueue("c")
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+    delegatee.expectNoMsg(100.milliseconds)
+  }
 
-      queue ! Enqueue("c")
+  "reuse workers" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-      delegatee.expectNoMsg(100.milliseconds)
-    }
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
 
-    "reuse workers" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
+    delegatee.reply(MessageProcessed("b"))
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+    queue ! Enqueue("c")
+    delegatee.expectMsg("c")
+  }
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageProcessed("b"))
+  "shutdown with all outstanding work done" in new QueueScope {
 
-      queue ! Enqueue("c")
-      delegatee.expectMsg("c")
-    }
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
 
-    "shutdown with all outstanding work done" in new QueueScope {
+    queue ! Enqueue("a")
 
-      val queue = defaultQueue()
-      val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+    delegatee.expectMsg("a")
 
-      queue ! Enqueue("a")
+    queueProcessor ! Shutdown(Some(self))
 
-      delegatee.expectMsg("a")
+    expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      queueProcessor ! Shutdown(Some(self))
+    delegatee.reply(MessageProcessed("a"))
 
-      expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
+    expectMsg(ShutdownSuccessfully)
+  }
+}
 
-      delegatee.reply(MessageProcessed("a"))
+class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
+  "send metric on Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
 
-      expectMsg(ShutdownSuccessfully)
-    }
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
+
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueLength(1)) andThen
+      one(mc).send(Metric.WorkQueueLength(0))
+  }
+
+  "send metric on failed Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    queue ! Enqueue("b", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    queue ! Enqueue("c", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
+      two(mc).send(Metric.EnqueueRejected)
+  }
+
+
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
+  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings) {
+    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
       case MessageProcessed(msg) => Right(msg)
       case MessageFailed => Left("doesn't matter")
     }
 
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : QueueProcessorRef = {
-    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize))
+    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(processorProps)
   }
 
@@ -255,15 +316,19 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
         registered
     }
   }
-  
+
   def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(iteratorQueueProps(iterator, workSetting), "iterator-queue-" + Random.nextInt(100000))
+    system.actorOf(iteratorQueueProps(iterator, workSetting, metricsCollector),
+                   "iterator-queue-" + Random.nextInt(100000))
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(Queue.default(workSetting), "default-queue-" + Random.nextInt(100000))
+    system.actorOf(Queue.default(workSetting, metricsCollector),
+                   "default-queue-" + Random.nextInt(100000))
 
 
   def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
-                        defaultWorkSetting: WorkSettings = WorkSettings()) =
-      system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting), "with-back-pressure-queue" + Random.nextInt(500000))
+                       defaultWorkSetting: WorkSettings = WorkSettings()) =
+    system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
+                   "with-back-pressure-queue" + Random.nextInt(500000))
 }
+

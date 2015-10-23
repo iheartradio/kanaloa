@@ -11,16 +11,33 @@ import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
 import com.iheart.workpipeline.akka.patterns.queue.Worker.{Idle, Working}
+import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import org.specs2.specification.Scope
+import org.specs2.mock.Mockito
 
 import scala.concurrent.duration._
 
-class AutoScalingSpec extends SpecWithActorSystem {
+class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   "when no history" in new AutoScalingScope {
     as ! OptimizeOrExplore
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(None))
     tProcessor.expectNoMsg(40.milliseconds)
+  }
+
+  "send metrics to metricsCollector" in new AutoScalingScope {
+    override val metricsCollector: MetricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    as ! OptimizeOrExplore
+
+    replyStatus(
+      numOfBusyWorkers = 3,
+      numOfIdleWorkers = 1)
+
+    there was after(50.milliseconds).
+      one(mc).send(Metric.PoolSize(4)) andThen
+      one(mc).send(Metric.PoolUtilized(3))
   }
 
   "record perfLog" in new AutoScalingScope {
@@ -166,14 +183,18 @@ class AutoScalingSpec extends SpecWithActorSystem {
   }
 }
 
-class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
+class AutoScalingScope(implicit system: ActorSystem)
+  extends TestKit(system) with ImplicitSender with Scope {
+
+  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
+
   val tQueue = TestProbe()
   val tProcessor = TestProbe()
   import akka.actor.ActorDSL._
 
   def newWorker(busy: Boolean = true) = actor(new Act {
     become {
-      case _ => sender ! (if(busy) Working else Idle)
+      case _ => sender ! (if (busy) Working else Idle)
     }
   })
 
@@ -188,7 +209,7 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
         bufferRatio = 0.8,
         numOfAdjacentSizesToConsiderDuringOptimization = 6,
         upperBound = 300
-      )
+      ), metricsCollector
     ))
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {
@@ -211,7 +232,6 @@ class AutoScalingScope(implicit system: ActorSystem) extends TestKit(system) wit
 
   }
 
-  val as = autoScalingRef()
+  lazy val as = autoScalingRef()
 }
-
 

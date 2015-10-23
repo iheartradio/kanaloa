@@ -4,6 +4,7 @@ import akka.actor._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns
 import com.iheart.workpipeline.collection.FiniteCollection
+import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 import patterns.CommonProtocol.QueryStatus
 import CommonProtocol.{WorkTimedOut, WorkFailed}
 import QueueProcessor.MissionAccomplished
@@ -19,6 +20,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected def delegateeProps: Props //actor who really does the work
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
+  protected val metricsCollector: MetricsCollector
 
   def receive = idle()
 
@@ -102,7 +104,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   }: Receive) orElse resultChecker.andThen[Unit] {
       case Right(result) =>
-        outstanding.done(result)
+        outstanding.success(result)
         if(isRetiring) finish() else {
           appendResultHistory(true)
           askMoreWork()
@@ -122,7 +124,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     } else {
       val message = s"Work failed after ${outstanding.retried} try(s)"
       log.error(s"$message, work $outstanding abandoned")
-      outstanding.done(WorkFailed(message + s" due to $error"))
+      outstanding.fail(WorkFailed(message + s" due to $error"))
       if(isRetiring) finish()
       else
         askMoreWork()
@@ -153,7 +155,22 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected def holdOnGettingMoreWork: Option[FiniteDuration]
 
   protected case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
-    def done(result: Any): Unit = {
+    def success(result: Any): Unit = {
+      metricsCollector.send(Metric.WorkCompleted)
+      done(result)
+    }
+
+    def fail(result: Any): Unit = {
+      metricsCollector.send(Metric.WorkFailed)
+      done(result)
+    }
+
+    def timeout(): Unit = {
+      metricsCollector.send(Metric.WorkTimedOut)
+      done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
+    }
+
+    protected def done(result: Any): Unit = {
       cancel()
       reportResult(result)
     }
@@ -164,8 +181,6 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     override def toString = work.messageToDelegatee.getClass.toString
 
     def reportResult(result: Any): Unit = work.settings.sendResultTo.foreach(_ ! result)
-
-    def timeout(): Unit = done(WorkTimedOut(s"Delegatee didn't response within ${work.settings.timeout}"))
 
   }
 }
@@ -184,7 +199,8 @@ object Worker {
 
   class DefaultWorker(protected val queue: QueueRef,
                       protected val delegateeProps: Props,
-                      protected val resultChecker: ResultChecker) extends Worker {
+                      protected val resultChecker: ResultChecker,
+                      protected val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Worker {
 
     val resultHistoryLength = 0
     protected def holdOnGettingMoreWork: Option[FiniteDuration] = None
@@ -194,8 +210,8 @@ object Worker {
   class WorkerWithCircuitBreaker( protected val queue: QueueRef,
                                   protected val delegateeProps: Props,
                                   protected val resultChecker: ResultChecker,
-                                  circuitBreakerSettings: CircuitBreakerSettings
-                                  ) extends Worker {
+                                  circuitBreakerSettings: CircuitBreakerSettings,
+                                  protected val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Worker {
 
     protected def holdOnGettingMoreWork: Option[FiniteDuration] = {
       if( (resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold  )
@@ -208,14 +224,18 @@ object Worker {
 
 
 
-  def default(queue: QueueRef, delegateeProps: Props)(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, delegateeProps, resultChecker))
+  def default(queue: QueueRef,
+              delegateeProps: Props,
+              metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props = {
+    Props(new DefaultWorker(queue, delegateeProps, resultChecker, metricsCollector))
   }
 
   def withCircuitBreaker(queue: QueueRef,
                          delegateeProps: Props,
-                         circuitBreakerSettings: CircuitBreakerSettings)(resultChecker: ResultChecker): Props = {
-    Props(new WorkerWithCircuitBreaker(queue, delegateeProps, resultChecker, circuitBreakerSettings))
+                         circuitBreakerSettings: CircuitBreakerSettings,
+                         metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props = {
+    Props(new WorkerWithCircuitBreaker(queue, delegateeProps, resultChecker, circuitBreakerSettings, metricsCollector))
   }
 
 }
+
