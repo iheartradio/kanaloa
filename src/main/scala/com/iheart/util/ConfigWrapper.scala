@@ -8,11 +8,19 @@ object ConfigWrapper {
   implicit class ImplicitConfigWrapper(underlying: Config) extends ConfigWrapper(underlying)
 }
 
+/** Wrapper for Typesafe Config that provides a more convenient interface for optional values
+  *
+  * @constructor wrap Typesafe Config
+  * @param underlying the original Config object
+  */
 class ConfigWrapper(underlying: Config) {
+  /** Get value at path, throws exception if path not found or type mismatch */
   def get[T: TypeTag](path: String): T = getWithMode(path, Mode.uncaughtMode)
 
+  /** Get optional value at path, returns None if path not found */
   def getOption[T: TypeTag](path: String): Option[T] = getWithMode(path, Mode.optionMode)
 
+  /** Convenience method for getting a value, with a fallback if path not found */
   def getOrElse[T: TypeTag](path: String, fallback: => T): T = getOption[T](path).getOrElse(fallback)
 
   protected def getWithMode[T: TypeTag](path: String, mode: Mode): mode.Type[T] = typeOf[T] match {

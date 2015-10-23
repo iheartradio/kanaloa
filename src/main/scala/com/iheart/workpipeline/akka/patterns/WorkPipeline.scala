@@ -5,7 +5,9 @@ import ActorDSL._
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.ShutdownGracefully
 import com.iheart.workpipeline.akka.patterns.WorkPipeline.Settings
 import com.iheart.workpipeline.akka.patterns.queue._
+import com.iheart.util.ConfigWrapper.ImplicitConfigWrapper
 import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector}
+import com.typesafe.config.{Config, ConfigFactory}
 import queue.CommonProtocol.WorkRejected
 import queue.Queue.{EnqueueRejected, WorkEnqueued, Enqueue}
 import EnqueueRejected.OverCapacity
@@ -120,8 +122,11 @@ object PushingWorkPipeline {
   def props(name: String,
             settings: Settings,
             backendProps: Props,
-            metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker) =
+            metricsConfig: Config = ConfigFactory.empty)
+      (resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
     Props(PushingWorkPipeline(name, settings, backendProps, metricsCollector, resultChecker))
+  }
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
@@ -153,7 +158,10 @@ object PullingWorkPipeline {
             iterator: Iterator[_],
             settings: WorkPipeline.Settings,
             backendProps: Props,
-            metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker) =
+            metricsConfig: Config = ConfigFactory.empty)
+      (resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
     Props(PullingWorkPipeline(name, iterator, settings, backendProps, metricsCollector, resultChecker))
+  }
 }
 
