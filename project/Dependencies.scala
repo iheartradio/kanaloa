@@ -18,5 +18,8 @@ object Dependencies {
     "org.specs2" %% "specs2-scalacheck" % Versions.specs2 % "test"
   )
 
+  val other = Seq(
+    "org.scala-lang" % "scala-reflect" % Versions.scala)
+
 }
 
