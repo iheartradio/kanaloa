@@ -4,6 +4,7 @@ import java.time.{ZoneOffset, LocalDateTime}
 
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
+import com.iheart.workpipeline.akka.patterns.queue.CommonProtocol.{WorkFailed, WorkTimedOut}
 import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
@@ -50,6 +51,15 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     case MissionAccomplished(worker) =>
       removeWorker(pool, worker, monitoring, "successfully after all work is done")
+
+    case WorkCompleted(worker) =>
+      metricsCollector.send(Metric.WorkCompleted)
+
+    case WorkFailed(_) =>
+      metricsCollector.send(Metric.WorkFailed)
+
+    case WorkTimedOut(_) =>
+      metricsCollector.send(Metric.WorkTimedOut)
 
     case Terminated(worker) if pool.contains(worker) =>
       removeWorker(pool, worker, monitoring, "unexpected termination when all workers retired")
@@ -140,7 +150,7 @@ case class DefaultQueueProcessor(queue: QueueRef,
                                  metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                  resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
-    Worker.default(queue, delegateeProps, metricsCollector)(resultChecker)
+    Worker.default(queue, delegateeProps)(resultChecker)
 }
 
 case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
@@ -150,7 +160,7 @@ case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
                                             metricsCollector: MetricsCollector = NoOpMetricsCollector,
                                             resultChecker: ResultChecker) extends QueueProcessor {
   def workerProp(queue: QueueRef, delegateeProps: Props): Props =
-    Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings, metricsCollector)(resultChecker)
+    Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings)(resultChecker)
 
 }
 
@@ -164,7 +174,10 @@ object QueueProcessor {
   }
 
 
+
   case class MissionAccomplished(worker: WorkerRef)
+  case class WorkCompleted(worker: WorkerRef)
+
   case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
