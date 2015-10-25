@@ -155,11 +155,15 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
   "Circuit Breaker" >> {
 
     "worker cools down after consecutive errors" in new QueueScope {
-
-      system.actorOf(queueProcessorWithCBProps(iteratorQueue(List("a", "b", "c", "d", "e").iterator),
+      val queue = defaultQueue()
+      system.actorOf(queueProcessorWithCBProps(queue,
         CircuitBreakerSettings(historyLength = 3, closeDuration = 200.milliseconds)
       ), "queuewithCB")
 
+      queue ! Enqueue(DelegateeMessage("a"))
+      queue ! Enqueue(DelegateeMessage("b"))
+      queue ! Enqueue(DelegateeMessage("c"))
+      queue ! Enqueue(DelegateeMessage("d"))
       delegatee.expectMsg(DelegateeMessage("a"))
       delegatee.reply(MessageProcessed("a"))
       delegatee.expectMsg(DelegateeMessage("b"))
@@ -168,8 +172,10 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       delegatee.reply(MessageFailed)
       delegatee.expectMsg(DelegateeMessage("d"))
       delegatee.reply(MessageFailed)
+      delegatee.expectNoMsg(10.milliseconds) //give some time for the circuit breaker to kick in
 
-      delegatee.expectNoMsg(190.milliseconds)
+      queue ! Enqueue(DelegateeMessage("e"))
+      delegatee.expectNoMsg(150.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("e"))
 
@@ -294,6 +300,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
 class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
 
   "send WorkCompleted, WorkFailed, and WorkTimedOut metrics" in new QueueScope {
+
     @volatile
     var receivedMetrics: List[Metric] = Nil
     val mc = new MetricsCollector {
@@ -304,24 +311,24 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
       TestProbe().ref,
       Props.empty)(resultChecker)
 
-    val processor: ActorRef = TestActorRef(
-      defaultProcessorProps(iteratorQueue(List("a", "b", "c", "d").iterator,
-        workSetting = WorkSettings(timeout = 23.milliseconds)),
-        metricsCollector = mc))
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 23.milliseconds))
+    val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = mc))
 
     watch(processor)
 
-    delegatee.expectMsg(DelegateeMessage("a"))
+    queue ! Enqueue("a")
+    queue ! Enqueue("b")
+    queue ! Enqueue("c")
+
+
+    delegatee.expectMsg("a")
     delegatee.reply(MessageProcessed("a"))
-    delegatee.expectMsg(DelegateeMessage("b"))
+    delegatee.expectMsg("b")
     delegatee.reply(MessageFailed)
-    delegatee.expectMsg(DelegateeMessage("c")) //timeout this one
+    delegatee.expectMsg("c") //timeout this one
 
-    delegatee.expectMsg(DelegateeMessage("d"))
-    delegatee.reply(MessageProcessed("d"))
-
-
-    expectTerminated(processor, 2000.milliseconds)
+    queue ! Enqueue("d")
+    delegatee.expectMsg(100.milliseconds, "d")
 
     receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
 
