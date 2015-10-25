@@ -172,7 +172,7 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       delegatee.reply(MessageFailed)
       delegatee.expectMsg(DelegateeMessage("d"))
       delegatee.reply(MessageFailed)
-      delegatee.expectNoMsg(10.milliseconds) //give some time for the circuit breaker to kick in
+      delegatee.expectNoMsg(30.milliseconds) //give some time for the circuit breaker to kick in
 
       queue ! Enqueue(DelegateeMessage("e"))
       delegatee.expectNoMsg(150.milliseconds)
