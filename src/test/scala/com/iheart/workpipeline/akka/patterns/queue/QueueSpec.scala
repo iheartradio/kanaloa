@@ -157,7 +157,7 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
     "worker cools down after consecutive errors" in new QueueScope {
       val queue = defaultQueue()
       system.actorOf(queueProcessorWithCBProps(queue,
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 200.milliseconds)
+        CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
       ), "queuewithCB")
 
       queue ! Enqueue(DelegateeMessage("a"))
