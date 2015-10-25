@@ -20,7 +20,7 @@ package queue {
   case class CircuitBreakerSettings(
     closeDuration: FiniteDuration = 3.seconds,
     errorRateThreshold: Double = 1,
-    historyLength: Int = 3
+    historyLength: Int = 10
   )
 
   case class BackPressureSettings(
