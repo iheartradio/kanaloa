@@ -1,8 +1,8 @@
 package com.iheart.workpipeline.akka.patterns.queue
 
-import akka.actor.{ActorSystem, Props, Actor, ActorRef}
-import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector}
+import akka.actor.{ ActorSystem, Props, Actor, ActorRef }
+import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import com.iheart.workpipeline.metrics.{ MetricsCollector, NoOpMetricsCollector }
 
 import org.specs2.specification.Scope
 
@@ -27,9 +27,11 @@ object TestUtils {
     case m => Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
   }
 
-  def iteratorQueueProps(iterator: Iterator[String],
-                         workSetting: WorkSettings = WorkSettings(),
-                         metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+  def iteratorQueueProps(
+    iterator: Iterator[String],
+    workSetting: WorkSettings = WorkSettings(),
+    metricsCollector: MetricsCollector = NoOpMetricsCollector
+  ): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting, metricsCollector)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
@@ -38,9 +40,11 @@ object TestUtils {
 
     val delegateeProps = Wrapper.props(delegatee.ref)
 
-    def defaultProcessorProps(queue: QueueRef,
-                              settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-                              metricsCollector: MetricsCollector = NoOpMetricsCollector) =
+    def defaultProcessorProps(
+      queue: QueueRef,
+      settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
+      metricsCollector: MetricsCollector = NoOpMetricsCollector
+    ) =
       QueueProcessor.default(queue, delegateeProps, settings, metricsCollector)(resultChecker)
   }
 }

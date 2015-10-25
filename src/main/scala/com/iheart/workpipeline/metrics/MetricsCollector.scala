@@ -1,7 +1,7 @@
 package com.iheart.workpipeline.metrics
 
 import akka.actor.ActorSystem
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{ Config, ConfigFactory }
 import com.iheart.util.ConfigWrapper.ImplicitConfigWrapper
 
 trait MetricsCollector {
