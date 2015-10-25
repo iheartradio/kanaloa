@@ -318,7 +318,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
       Props.empty
     )(resultChecker)
 
-    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 23.milliseconds))
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 40.milliseconds))
     val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = mc))
 
     watch(processor)
@@ -334,7 +334,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
     delegatee.expectMsg("c") //timeout this one
 
     queue ! Enqueue("d")
-    delegatee.expectMsg(100.milliseconds, "d")
+    delegatee.expectMsg(150.milliseconds, "d")
 
     receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
 
