@@ -108,9 +108,9 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
   "retiring a worker when there is no work" in new QueueScope {
     val queueProcessor = initQueue(
       iteratorQueue(
-      List("a", "b", "c").iterator,
-      WorkSettings(sendResultTo = Some(self))
-    ),
+        List("a", "b", "c").iterator,
+        WorkSettings(sendResultTo = Some(self))
+      ),
       numberOfWorkers = 2
     )
     queueProcessor ! ScaleTo(1)
@@ -130,9 +130,9 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
   "retiring a worker when it already started working" in new QueueScope {
     val queueProcessor = initQueue(
       iteratorQueue(
-      List("a", "b", "c").iterator,
-      WorkSettings(sendResultTo = Some(self))
-    ),
+        List("a", "b", "c").iterator,
+        WorkSettings(sendResultTo = Some(self))
+      ),
       numberOfWorkers = 2
     )
     delegatee.expectMsgType[DelegateeMessage]
@@ -347,8 +347,8 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
     QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
-      case MessageProcessed(msg) => Right(msg)
-      case MessageFailed => Left("doesn't matter")
+      case MessageProcessed(msg) ⇒ Right(msg)
+      case MessageFailed         ⇒ Left("doesn't matter")
     }
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
@@ -359,7 +359,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
     queue ! QueryStatus()
     fishForMessage(500.millisecond, "wait for workers to register") {
-      case qs: QueueStatus =>
+      case qs: QueueStatus ⇒
         val registered = qs.queuedWorkers.size == numberOfWorkers
         if (!registered) queue ! QueryStatus()
         registered
@@ -380,7 +380,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
   def withBackPressure(
     backPressureSetting: BackPressureSettings = BackPressureSettings(),
-    defaultWorkSetting: WorkSettings = WorkSettings()
+    defaultWorkSetting:  WorkSettings         = WorkSettings()
   ) =
     system.actorOf(
       Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
