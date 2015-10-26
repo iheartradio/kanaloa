@@ -165,19 +165,19 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       system.actorOf(queueProcessorWithCBProps(
         queue,
         CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
-      ), "queuewithCB")
+      ))
 
-      queue ! Enqueue(DelegateeMessage("a"))
-      queue ! Enqueue(DelegateeMessage("b"))
-      queue ! Enqueue(DelegateeMessage("c"))
-      queue ! Enqueue(DelegateeMessage("d"))
-      delegatee.expectMsg(DelegateeMessage("a"))
+      queue ! Enqueue("a")
+      queue ! Enqueue("b")
+      queue ! Enqueue("c")
+      queue ! Enqueue("d")
+      delegatee.expectMsg("a")
       delegatee.reply(MessageProcessed("a"))
-      delegatee.expectMsg(DelegateeMessage("b"))
+      delegatee.expectMsg("b")
       delegatee.reply(MessageFailed)
-      delegatee.expectMsg(DelegateeMessage("c"))
+      delegatee.expectMsg("c")
       delegatee.reply(MessageFailed)
-      delegatee.expectMsg(DelegateeMessage("d"))
+      delegatee.expectMsg("d")
       delegatee.reply(MessageFailed)
 
       delegatee.expectNoMsg(50.milliseconds) //give some time for the circuit breaker to kick in
@@ -186,6 +186,25 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       delegatee.expectNoMsg(150.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("e"))
+
+    }
+
+    "worker report to metrics after consecutive errors" in new MetricCollectorScope() {
+      val queue = defaultQueue()
+      system.actorOf(queueProcessorWithCBProps(queue,
+        CircuitBreakerSettings(historyLength = 2, closeDuration = 300.milliseconds)
+      ))
+
+      queue ! Enqueue("a")
+      queue ! Enqueue("b")
+      delegatee.expectMsg("a")
+      delegatee.reply(MessageFailed)
+      delegatee.expectMsg("b")
+      delegatee.reply(MessageFailed)
+
+      delegatee.expectNoMsg(30.milliseconds) //give some time for the circuit breaker to kick in
+
+      receivedMetrics must contain(Metric.CircuitBreakerOpened)
 
     }
   }
@@ -304,15 +323,9 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
   }
 }
 
-class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
+class QueueWorkMetricsSpec extends SpecWithActorSystem {
 
-  "send WorkCompleted, WorkFailed, and WorkTimedOut metrics" in new QueueScope {
-
-    @volatile
-    var receivedMetrics: List[Metric] = Nil
-    val mc = new MetricsCollector {
-      def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-    }
+  "send WorkCompleted, WorkFailed, and WorkTimedOut metrics" in new MetricCollectorScope() {
 
     val workerProps: Props = Worker.default(
       TestProbe().ref,
@@ -320,7 +333,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
     )(resultChecker)
 
     val queue: QueueRef = defaultQueue(WorkSettings(timeout = 40.milliseconds))
-    val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = mc))
+    val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
 
     watch(processor)
 
@@ -337,7 +350,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
     delegatee.expectMsg("c") //timeout this one
 
     queue ! Enqueue("d")
-    delegatee.expectMsg(150.milliseconds, "d")
+    delegatee.expectMsg("d")
 
     receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
 
@@ -389,5 +402,16 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
       Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
       "with-back-pressure-queue" + Random.nextInt(500000)
     )
+}
+
+
+class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
+  @volatile
+  var receivedMetrics: List[Metric] = Nil
+
+  override val metricsCollector : MetricsCollector = new MetricsCollector {
+    def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
+  }
+
 }
 

@@ -190,8 +190,10 @@ case class QueueProcessorWithCircuitBreaker(
   override val resultHistoryLength: Int = circuitBreakerSettings.historyLength
 
   override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = {
-    if ((resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold)
+    if ((resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
+      metricsCollector.send(Metric.CircuitBreakerOpened)
       pool.foreach(_ ! Hold(circuitBreakerSettings.closeDuration))
+    }
   }
 
 }

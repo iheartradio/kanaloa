@@ -14,6 +14,8 @@ object Metric {
   case object WorkTimedOut extends Event
   case object WorkFailed extends Event
 
+  case object CircuitBreakerOpened extends Event
+
   sealed trait Status extends Metric
 
   case class PoolSize(size: Int) extends Status
