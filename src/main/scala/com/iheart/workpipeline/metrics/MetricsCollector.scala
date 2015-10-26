@@ -22,7 +22,7 @@ object MetricsCollector {
 
   /** If statsD config exists, create StatsD, otherwise NoOp */
   def fromConfig(pipelineName: String, config: Config)(implicit system: ActorSystem): MetricsCollector = {
-    config.getOption[Config]("statsD").fold[MetricsCollector](NoOpMetricsCollector) { statsDConf =>
+    config.getOption[Config]("statsD").fold[MetricsCollector](NoOpMetricsCollector) { statsDConf ⇒
       StatsDMetricsCollector.fromConfig(pipelineName, statsDConf)
     }
   }

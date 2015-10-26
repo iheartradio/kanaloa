@@ -46,13 +46,13 @@ import akka.actor._
  * @param defaultSampleRate Default sample rate to use for metrics, if unspecified
  */
 class StatsDClient(
-    context: ActorRefFactory,
-    host: String,
-    port: Int,
-    prefix: String = "",
-    multiMetrics: Boolean = true,
-    packetBufferSize: Int = 1024,
-    defaultSampleRate: Double = 1.0
+  context:           ActorRefFactory,
+  host:              String,
+  port:              Int,
+  prefix:            String          = "",
+  multiMetrics:      Boolean         = true,
+  packetBufferSize:  Int             = 1024,
+  defaultSampleRate: Double          = 1.0
 ) {
 
   private val rand = new Random()
@@ -151,10 +151,10 @@ private case class SendStat(stat: String)
  * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
  */
 private class StatsDActor(
-  host: String,
-    port: Int,
-    multiMetrics: Boolean,
-    packetBufferSize: Int
+  host:             String,
+  port:             Int,
+  multiMetrics:     Boolean,
+  packetBufferSize: Int
 ) extends Actor {
 
   private val log = LoggerFactory.getLogger(getClass())
@@ -165,8 +165,8 @@ private class StatsDActor(
   private val channel = DatagramChannel.open()
 
   def receive = {
-    case msg: SendStat => doSend(msg.stat)
-    case _ => log.error("Unknown message")
+    case msg: SendStat ⇒ doSend(msg.stat)
+    case _             ⇒ log.error("Unknown message")
   }
 
   override def postStop() = {
@@ -204,7 +204,7 @@ private class StatsDActor(
       }
 
     } catch {
-      case e: IOException => {
+      case e: IOException ⇒ {
         log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
       }
     }
@@ -231,7 +231,7 @@ private class StatsDActor(
       }
 
     } catch {
-      case e: IOException => {
+      case e: IOException ⇒ {
         log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
       }
     }

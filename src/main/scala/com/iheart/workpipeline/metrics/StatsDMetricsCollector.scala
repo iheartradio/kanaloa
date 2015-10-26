@@ -13,11 +13,11 @@ import com.iheart.util.ConfigWrapper.ImplicitConfigWrapper
  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
  */
 class StatsDMetricsCollector(
-  statsd: StatsDClient,
-  eventSampleRate: Double,
+  statsd:           StatsDClient,
+  eventSampleRate:  Double,
   statusSampleRate: Double
 )(implicit system: ActorSystem)
-    extends MetricsCollector {
+  extends MetricsCollector {
 
   /**
    * Auxilliary constructor that creates a StatsDClient from params
@@ -29,10 +29,10 @@ class StatsDMetricsCollector(
    * @param statusSampleRate sample rate for gauged events
    */
   def this(
-    prefix: String,
-    host: String,
-    port: Int = 8125,
-    eventSampleRate: Double = 1.0,
+    prefix:           String,
+    host:             String,
+    port:             Int    = 8125,
+    eventSampleRate:  Double = 1.0,
     statusSampleRate: Double = 1.0
   )(implicit system: ActorSystem) =
     this(new StatsDClient(system, host, port, prefix = prefix), eventSampleRate, statusSampleRate)
@@ -51,26 +51,26 @@ class StatsDMetricsCollector(
   val failureSampleRate: Double = 1.0
 
   def send(metric: Metric): Unit = metric match {
-    case WorkEnqueued => increment("queue.enqueued")
-    case EnqueueRejected => increment("queue.enqueueRejected")
-    case WorkCompleted => increment("work.completed")
-    case WorkFailed => increment("work.failed", failureSampleRate)
-    case WorkTimedOut => increment("work.timedOut")
-    case CircuitBreakerOpened => increment("queue.circuitBreakerOpened")
+    case WorkEnqueued         ⇒ increment("queue.enqueued")
+    case EnqueueRejected      ⇒ increment("queue.enqueueRejected")
+    case WorkCompleted        ⇒ increment("work.completed")
+    case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
+    case WorkTimedOut         ⇒ increment("work.timedOut")
+    case CircuitBreakerOpened ⇒ increment("queue.circuitBreakerOpened")
 
-    case PoolSize(size) =>
+    case PoolSize(size) ⇒
       gauge("pool.size", size)
 
-    case PoolUtilized(numWorkers) =>
+    case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
-    case DispatchWait(duration) =>
+    case DispatchWait(duration) ⇒
       statsd.timing("queue.waitTime", duration.toMillis.toInt, eventSampleRate)
 
-    case WorkQueueLength(length) =>
+    case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
 
-    case WorkQueueMaxLength(length) =>
+    case WorkQueueMaxLength(length) ⇒
       gauge("queue.maxLength", length)
   }
 }

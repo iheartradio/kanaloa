@@ -6,7 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 
 trait MessageScheduler {
 
-  this: Actor with ActorLogging =>
+  this: Actor with ActorLogging ⇒
 
   def delayedMsg(delay: FiniteDuration, msg: Any, receiver: ActorRef = self): Cancellable = {
     import context.dispatcher
