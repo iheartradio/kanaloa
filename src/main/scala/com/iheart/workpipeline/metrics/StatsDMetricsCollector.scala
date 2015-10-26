@@ -56,6 +56,7 @@ class StatsDMetricsCollector(
     case WorkCompleted => increment("work.completed")
     case WorkFailed => increment("work.failed", failureSampleRate)
     case WorkTimedOut => increment("work.timedOut")
+    case CircuitBreakerOpened => increment("queue.circuitBreakerOpened")
 
     case PoolSize(size) =>
       gauge("pool.size", size)
