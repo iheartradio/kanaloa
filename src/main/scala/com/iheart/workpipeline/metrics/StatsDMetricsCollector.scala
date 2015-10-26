@@ -1,36 +1,40 @@
 package com.iheart.workpipeline.metrics
 
 import akka.actor._
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{ Config, ConfigFactory }
 import com.iheart.util.ConfigWrapper.ImplicitConfigWrapper
 
-/** Collector that sends metrics to StatsD
-  *
-  * @constructor create new collector with an existing StatsDClient
-  * @param statsd StatsDClient
-  * @param eventSampleRate sample rate for countable events (WorkEnqueued, WorkCompleted, etc)
-  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
-  */
+/**
+ * Collector that sends metrics to StatsD
+ *
+ * @constructor create new collector with an existing StatsDClient
+ * @param statsd StatsDClient
+ * @param eventSampleRate sample rate for countable events (WorkEnqueued, WorkCompleted, etc)
+ * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
+ */
 class StatsDMetricsCollector(
   statsd: StatsDClient,
   eventSampleRate: Double,
-  statusSampleRate: Double)(implicit system: ActorSystem)
-  extends MetricsCollector {
+  statusSampleRate: Double
+)(implicit system: ActorSystem)
+    extends MetricsCollector {
 
-  /** Auxilliary constructor that creates a StatsDClient from params
-    *
-    * @param prefix all StatsD metrics will be prefixed with this value
-    * @param host StatsD host
-    * @param port StatsD port, default 8125
-    * @param eventSampleRate sample rate for countable events
-    * @param statusSampleRate sample rate for gauged events
-    */
+  /**
+   * Auxilliary constructor that creates a StatsDClient from params
+   *
+   * @param prefix all StatsD metrics will be prefixed with this value
+   * @param host StatsD host
+   * @param port StatsD port, default 8125
+   * @param eventSampleRate sample rate for countable events
+   * @param statusSampleRate sample rate for gauged events
+   */
   def this(
     prefix: String,
     host: String,
     port: Int = 8125,
     eventSampleRate: Double = 1.0,
-    statusSampleRate: Double = 1.0)(implicit system: ActorSystem) =
+    statusSampleRate: Double = 1.0
+  )(implicit system: ActorSystem) =
     this(new StatsDClient(system, host, port, prefix = prefix), eventSampleRate, statusSampleRate)
 
   import Metric._
@@ -40,8 +44,10 @@ class StatsDMetricsCollector(
   private def increment(key: String, rate: Double = eventSampleRate) =
     statsd.increment(key, 1, rate)
 
-  /** Always increment error counter regardless of sample rate.
-    * If desired, this can be overridden with `override val` */
+  /**
+   * Always increment error counter regardless of sample rate.
+   * If desired, this can be overridden with `override val`
+   */
   val failureSampleRate: Double = 1.0
 
   def send(metric: Metric): Unit = metric match {
@@ -69,11 +75,12 @@ class StatsDMetricsCollector(
 }
 
 object StatsDMetricsCollector {
-  /** Create a StatsDMetricsCollector from typesafe Config object
-    *
-    * @param pipelineName used to determine the metrics prefix (`namespace.pipelineName`)
-    * @param conf Config object with keys: namespace, host, port, eventSampleRate, statusSampleRate
-    */
+  /**
+   * Create a StatsDMetricsCollector from typesafe Config object
+   *
+   * @param pipelineName used to determine the metrics prefix (`namespace.pipelineName`)
+   * @param conf Config object with keys: namespace, host, port, eventSampleRate, statusSampleRate
+   */
   def fromConfig(pipelineName: String, conf: Config)(implicit system: ActorSystem): StatsDMetricsCollector = {
     val namespace: String = conf.getOrElse[String]("namespace", "workPipeline")
     val prefix: String = List(namespace, pipelineName).filter(_.nonEmpty).mkString(".")

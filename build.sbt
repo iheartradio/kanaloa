@@ -14,3 +14,4 @@ libraryDependencies ++= Dependencies.akka ++
 
 scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
+Formatting.formatSettings

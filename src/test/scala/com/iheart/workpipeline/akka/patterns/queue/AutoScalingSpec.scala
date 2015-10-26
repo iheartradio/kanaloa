@@ -2,16 +2,16 @@ package com.iheart.workpipeline.akka.patterns.queue
 
 import java.time.LocalDateTime
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit._
-import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
-import AutoScaling.{UnderUtilizationStreak, PoolSize, OptimizeOrExplore}
+import com.iheart.workpipeline.akka.{ SpecWithActorSystem, patterns }
+import AutoScaling.{ UnderUtilizationStreak, PoolSize, OptimizeOrExplore }
 import QueueProcessor.RunningStatus
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.QueryStatus
 import com.iheart.workpipeline.akka.patterns.queue.Queue.QueueDispatchInfo
 import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.ScaleTo
-import com.iheart.workpipeline.akka.patterns.queue.Worker.{Idle, Working}
-import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import com.iheart.workpipeline.akka.patterns.queue.Worker.{ Idle, Working }
+import com.iheart.workpipeline.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import org.specs2.specification.Scope
 import org.specs2.mock.Mockito
 
@@ -33,7 +33,8 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
     replyStatus(
       numOfBusyWorkers = 3,
-      numOfIdleWorkers = 1)
+      numOfIdleWorkers = 1
+    )
 
     there was after(50.milliseconds).
       one(mc).send(Metric.PoolSize(4)) andThen
@@ -53,14 +54,14 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   "start an underutilizationStreak" in new AutoScalingScope {
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(5.millisecond)
+    tProcessor.expectNoMsg(15.millisecond)
     as.underlyingActor.underUtilizationStreak.get.highestUtilization === 3
   }
 
   "stop an underutilizationStreak" in new AutoScalingScope {
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(5.millisecond)
+    tProcessor.expectNoMsg(15.millisecond)
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
     expectNoMsg(5.millisecond) //wait
@@ -90,7 +91,6 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     scaleCmd.reason must beSome("exploring")
   }
 
-
   "does not optimize when not currently maxed" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 1)
     subject ! OptimizeOrExplore
@@ -103,12 +103,14 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
   "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 0)
-    mockBusyHistory(subject,
-                            (30, 32.milliseconds),
-                            (30, 30.milliseconds),
-                            (40, 20.milliseconds),
-                            (40, 23.milliseconds),
-                            (35, 25.milliseconds))
+    mockBusyHistory(
+      subject,
+      (30, 32.milliseconds),
+      (30, 30.milliseconds),
+      (40, 20.milliseconds),
+      (40, 23.milliseconds),
+      (35, 25.milliseconds)
+    )
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 32, numOfIdleWorkers = 0, dispatchDuration = 43.milliseconds)
     val scaleCmd = tProcessor.expectMsgType[ScaleTo]
@@ -120,17 +122,19 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
   "ignore further away sample data when optmizing" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 0)
-    mockBusyHistory(subject,
-                            (10, 1.milliseconds), //should be ignored
-                            (29, 32.milliseconds),
-                            (31, 32.milliseconds),
-                            (32, 32.milliseconds),
-                            (35, 32.milliseconds),
-                            (36, 32.milliseconds),
-                            (31, 30.milliseconds),
-                            (43, 20.milliseconds),
-                            (41, 23.milliseconds),
-                            (37, 25.milliseconds))
+    mockBusyHistory(
+      subject,
+      (10, 1.milliseconds), //should be ignored
+      (29, 32.milliseconds),
+      (31, 32.milliseconds),
+      (32, 32.milliseconds),
+      (35, 32.milliseconds),
+      (36, 32.milliseconds),
+      (31, 30.milliseconds),
+      (43, 20.milliseconds),
+      (41, 23.milliseconds),
+      (37, 25.milliseconds)
+    )
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 37, numOfIdleWorkers = 0, dispatchDuration = 28.milliseconds)
     val scaleCmd = tProcessor.expectMsgType[ScaleTo]
@@ -153,7 +157,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   }
 
   "downsize if hasn't maxed out for more than relevant period of hours" in new AutoScalingScope {
-    val moreThan72HoursAgo =  LocalDateTime.now.minusHours(73)
+    val moreThan72HoursAgo = LocalDateTime.now.minusHours(73)
     as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(moreThan72HoursAgo, 40))
 
     as ! OptimizeOrExplore
@@ -163,7 +167,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   }
 
   "do not thing if hasn't maxed out for shorter than relevant period of hours" in new AutoScalingScope {
-    val lessThan72HoursAgo =  LocalDateTime.now.minusHours(71)
+    val lessThan72HoursAgo = LocalDateTime.now.minusHours(71)
     as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(lessThan72HoursAgo, 40))
 
     as ! OptimizeOrExplore
@@ -173,7 +177,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
   "do not go beyond upperBound when optimizing" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 0)
-    subject.underlyingActor.perfLog = Map(350 -> 2.nanosecond, 400 -> 1.nanosecond)
+    subject.underlyingActor.perfLog = Map(350 → 2.nanosecond, 400 → 1.nanosecond)
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 295, dispatchDuration = 10.milliseconds)
 
@@ -194,7 +198,7 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   def newWorker(busy: Boolean = true) = actor(new Act {
     become {
-      case _ => sender ! (if (busy) Working else Idle)
+      case _ ⇒ sender ! (if (busy) Working else Idle)
     }
   })
 
@@ -209,22 +213,20 @@ class AutoScalingScope(implicit system: ActorSystem)
         bufferRatio = 0.8,
         numOfAdjacentSizesToConsiderDuringOptimization = 6,
         upperBound = 300
-      ), metricsCollector
-    ))
+      ), metricsCollector))
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(Some(dispatchDuration)))
     tProcessor.expectMsgType[QueryStatus]
-    val workers = (1 to numOfBusyWorkers).map(_ => newWorker(true)) ++
-      (1 to numOfIdleWorkers).map(_ => newWorker(false))
+    val workers = (1 to numOfBusyWorkers).map(_ ⇒ newWorker(true)) ++
+      (1 to numOfIdleWorkers).map(_ ⇒ newWorker(false))
     tProcessor.reply(RunningStatus(workers.toSet))
   }
 
-
   def mockBusyHistory(subject: ActorRef, ps: (PoolSize, Duration)*) = {
     ps.foreach {
-      case (size, duration) =>
+      case (size, duration) ⇒
         subject ! OptimizeOrExplore
         replyStatus(numOfBusyWorkers = size, dispatchDuration = duration)
         tProcessor.expectMsgType[ScaleTo]

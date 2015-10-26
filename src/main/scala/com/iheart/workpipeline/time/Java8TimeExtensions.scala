@@ -1,10 +1,9 @@
 package com.iheart.workpipeline.time
 
 import java.time.LocalDateTime
-import java.time.temporal.{ChronoUnit, Temporal}
+import java.time.temporal.{ ChronoUnit, Temporal }
 
 import scala.concurrent.duration._
-
 
 object Java8TimeExtensions {
 

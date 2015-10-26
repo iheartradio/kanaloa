@@ -46,13 +46,14 @@ import akka.actor._
  * @param defaultSampleRate Default sample rate to use for metrics, if unspecified
  */
 class StatsDClient(
-  context: ActorRefFactory,
-  host: String,
-  port: Int,
-  prefix: String = "",
-  multiMetrics: Boolean = true,
-  packetBufferSize: Int = 1024,
-  defaultSampleRate: Double = 1.0) {
+    context: ActorRefFactory,
+    host: String,
+    port: Int,
+    prefix: String = "",
+    multiMetrics: Boolean = true,
+    packetBufferSize: Int = 1024,
+    defaultSampleRate: Double = 1.0
+) {
 
   private val rand = new Random()
 
@@ -149,10 +150,12 @@ private case class SendStat(stat: String)
  * @param multiMetrics If true, multiple stats will be sent in a single UDP packet
  * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
  */
-private class StatsDActor(host: String,
-                          port: Int,
-                          multiMetrics: Boolean,
-                          packetBufferSize: Int) extends Actor {
+private class StatsDActor(
+  host: String,
+    port: Int,
+    multiMetrics: Boolean,
+    packetBufferSize: Int
+) extends Actor {
 
   private val log = LoggerFactory.getLogger(getClass())
 
@@ -163,7 +166,7 @@ private class StatsDActor(host: String,
 
   def receive = {
     case msg: SendStat => doSend(msg.stat)
-    case _             => log.error("Unknown message")
+    case _ => log.error("Unknown message")
   }
 
   override def postStop() = {
@@ -194,14 +197,13 @@ private class StatsDActor(host: String,
       }
 
       // append the data
-      sendBuffer.put(data) 
+      sendBuffer.put(data)
 
       if (!multiMetrics) {
         flush
       }
 
-    }
-    catch {
+    } catch {
       case e: IOException => {
         log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
       }
@@ -228,8 +230,7 @@ private class StatsDActor(host: String,
           address.getHostName(), address.getPort().toString, nbSentBytes.toString, sizeOfBuffer.toString)
       }
 
-    }
-    catch {
+    } catch {
       case e: IOException => {
         log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
       }

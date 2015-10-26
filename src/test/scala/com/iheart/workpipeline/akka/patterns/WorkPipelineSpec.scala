@@ -1,12 +1,12 @@
 package com.iheart.workpipeline.akka.patterns
 
 import akka.actor.ActorSystem
-import akka.testkit.{TestProbe, ImplicitSender, TestKit}
+import akka.testkit.{ TestProbe, ImplicitSender, TestKit }
 import com.iheart.workpipeline.akka.patterns.queue.ProcessingWorkerPoolSettings
 import com.iheart.workpipeline.akka.patterns.queue.TestUtils.Wrapper
 import org.specs2.mutable.Specification
 
-import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
+import com.iheart.workpipeline.akka.{ SpecWithActorSystem, patterns }
 import org.specs2.specification.Scope
 
 class WorkPipelineSpec extends SpecWithActorSystem {
