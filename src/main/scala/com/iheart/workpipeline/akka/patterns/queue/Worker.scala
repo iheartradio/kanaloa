@@ -35,31 +35,31 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     case Hold(period) ⇒ context become idle(Some(period))
 
-    case work: Work => sendWorkToDelegatee(work, 0, delayBeforeNextWork)
+    case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
 
-    case NoWorkLeft =>
+    case NoWorkLeft ⇒
       monitor ! MissionAccomplished(self) //todo: maybe a simple stop is good enough?
       finish()
 
-    case Worker.Retire =>
+    case Worker.Retire ⇒
       queue ! Unregister(self)
       context become retiring(None)
 
-    case qs: QueryStatus => qs reply Idle
+    case qs: QueryStatus     ⇒ qs reply Idle
 
-    case Terminated(`queue`) => finish()
+    case Terminated(`queue`) ⇒ finish()
   }
 
   def finish(): Unit = context stop self
 
   def working(outstanding: Outstanding, delayBeforeNextWork: Option[FiniteDuration] = None): Receive = ({
-    case Hold(period) ⇒ context become working(outstanding, Some(period))
+    case Hold(period)        ⇒ context become working(outstanding, Some(period))
 
-    case Terminated(`queue`) => context become retiring(Some(outstanding))
+    case Terminated(`queue`) ⇒ context become retiring(Some(outstanding))
 
-    case qs: QueryStatus => qs reply Working
+    case qs: QueryStatus     ⇒ qs reply Working
 
-    case Worker.Retire => context become retiring(Some(outstanding))
+    case Worker.Retire       ⇒ context become retiring(Some(outstanding))
 
   }: Receive).orElse(
 
@@ -67,55 +67,55 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   )
 
     .orElse {
-      case msg => log.error(s"unrecognized interrupting msg during working $msg")
+      case msg ⇒ log.error(s"unrecognized interrupting msg during working $msg")
     }
 
   def retiring(outstanding: Option[Outstanding]): Receive = ({
-    case Terminated(`queue`) => //ignore when retiring
-    case qs: QueryStatus => qs reply Retiring
-    case Unregistered => finish()
-    case Retire => //already retiring
+    case Terminated(`queue`) ⇒ //ignore when retiring
+    case qs: QueryStatus     ⇒ qs reply Retiring
+    case Unregistered        ⇒ finish()
+    case Retire              ⇒ //already retiring
   }: Receive) orElse (
     if (outstanding.isDefined)
       waitingResult(outstanding.get, true, None)
     else {
-      case w: Work =>
+      case w: Work ⇒
         sender ! Rejected(w, "Retiring")
         finish()
     }
   )
 
   def waitingResult(
-    outstanding: Outstanding,
-    isRetiring: Boolean,
+    outstanding:         Outstanding,
+    isRetiring:          Boolean,
     delayBeforeNextWork: Option[FiniteDuration]
   ): Receive = ({
 
-    case DelegateeTimeout =>
+    case DelegateeTimeout ⇒
       log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
 
       if (isRetiring) finish() else {
         askMoreWork(delayBeforeNextWork)
       }
-    case w: Work => sender ! Rejected(w, "busy") //just in case
+    case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
 
   }: Receive) orElse resultChecker.andThen[Unit] {
-    case Right(result) =>
+    case Right(result) ⇒
       outstanding.success(result)
       if (isRetiring) finish() else {
         askMoreWork(delayBeforeNextWork)
       }
-    case Left(e) =>
+    case Left(e) ⇒
       log.error(s"error $e returned by delegatee in regards to running work $outstanding")
       retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
 
   }
 
   private def retryOrAbandon(
-    outstanding: Outstanding,
-    isRetiring: Boolean,
-    error: Any,
+    outstanding:         Outstanding,
+    isRetiring:          Boolean,
+    error:               Any,
     delayBeforeNextWork: Option[FiniteDuration]
   ): Unit = {
     outstanding.cancel()
@@ -188,9 +188,9 @@ object Worker {
   case class Hold(period: FiniteDuration)
 
   class DefaultWorker(
-    protected val queue: QueueRef,
-      protected val delegateeProps: Props,
-      protected val resultChecker: ResultChecker
+    protected val queue:          QueueRef,
+    protected val delegateeProps: Props,
+    protected val resultChecker:  ResultChecker
   ) extends Worker {
 
     val resultHistoryLength = 0
@@ -198,7 +198,7 @@ object Worker {
   }
 
   def default(
-    queue: QueueRef,
+    queue:          QueueRef,
     delegateeProps: Props
   )(resultChecker: ResultChecker): Props = {
     Props(new DefaultWorker(queue, delegateeProps, resultChecker))

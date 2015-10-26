@@ -30,7 +30,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
-      case _: Exception => Restart
+      case _: Exception ⇒ Restart
     }
 
   def workerProp(queueRef: QueueRef, delegateeProps: Props): Props =
@@ -52,7 +52,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     }
 
     {
-      case ScaleTo(newPoolSize, reason) =>
+      case ScaleTo(newPoolSize, reason) ⇒
         log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
         metricsCollector.send(Metric.PoolSize(newPoolSize))
 
@@ -62,35 +62,35 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         else if (diff < 0 && newPoolSize >= settings.minPoolSize)
           pool.take(-diff).foreach(_ ! Worker.Retire)
 
-      case MissionAccomplished(worker) =>
+      case MissionAccomplished(worker) ⇒
         removeWorker(pool, worker, monitoring(resultHistory), "successfully after all work is done")
 
-      case WorkCompleted(worker) =>
+      case WorkCompleted(worker) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
         metricsCollector.send(Metric.WorkCompleted)
 
-      case WorkFailed(_) =>
+      case WorkFailed(_) ⇒
         workError()
         metricsCollector.send(Metric.WorkFailed)
 
-      case WorkTimedOut(_) =>
+      case WorkTimedOut(_) ⇒
         workError()
         metricsCollector.send(Metric.WorkTimedOut)
 
-      case Terminated(worker) if pool.contains(worker) =>
+      case Terminated(worker) if pool.contains(worker) ⇒
         removeWorker(pool, worker, monitoring(resultHistory), "unexpected termination when all workers retired")
 
-      case Terminated(`queue`) =>
+      case Terminated(`queue`) ⇒
         log.info(s"Queue ${queue.path} is terminated")
         self ! Shutdown(retireQueue = false)
 
-      case QueueMaxProcessTimeReached(queue) =>
+      case QueueMaxProcessTimeReached(queue) ⇒
         log.warning(s"Queue ${queue.path} is still processing after max process time. Shutting Down")
         self ! Shutdown(retireQueue = true)
 
-      case qs: QueryStatus => qs reply RunningStatus(pool)
+      case qs: QueryStatus ⇒ qs reply RunningStatus(pool)
 
-      case Shutdown(reportTo, timeout, retireQueue) =>
+      case Shutdown(reportTo, timeout, retireQueue) ⇒
         log.info("Commanded to shutdown. Shutting down")
         if (retireQueue)
           queue ! Retire(timeout)
@@ -103,22 +103,22 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 
   def shuttingDown(pool: WorkerPool, reportTo: Option[ActorRef]): Receive = {
-    case MissionAccomplished(worker) =>
+    case MissionAccomplished(worker) ⇒
       removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
-    case Terminated(worker) if pool.contains(worker) =>
+    case Terminated(worker) if pool.contains(worker) ⇒
       removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
-    case Terminated(_) => //ignore other termination
+    case Terminated(_)   ⇒ //ignore other termination
 
-    case qs: QueryStatus => qs reply ShuttingDown
+    case qs: QueryStatus ⇒ qs reply ShuttingDown
 
-    case ShutdownTimeout =>
+    case ShutdownTimeout ⇒
       log.error("Shutdown timed out, forcefully shutting down")
       pool.foreach(_ ! PoisonPill)
       context stop self
 
-    case _ => sender ! ShuttingDown
+    case _ ⇒ sender ! ShuttingDown
   }
 
   private def createWorker(index: Int): WorkerRef = {
@@ -132,11 +132,11 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def removeWorker(
-    pool: WorkerPool,
-    worker: WorkerRef,
-    nextContext: WorkerPool => Receive,
-    finishWithMessage: String = "",
-    reportToOnFinish: Option[ActorRef] = None
+    pool:              WorkerPool,
+    worker:            WorkerRef,
+    nextContext:       WorkerPool ⇒ Receive,
+    finishWithMessage: String               = "",
+    reportToOnFinish:  Option[ActorRef]     = None
   ): Unit = {
     context unwatch worker
     val newPool = pool - worker
@@ -146,9 +146,9 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def finishIfPoolIsEmpty(
-    pool: WorkerPool,
+    pool:        WorkerPool,
     withMessage: String,
-    reportTo: Option[ActorRef] = None
+    reportTo:    Option[ActorRef] = None
   ): Boolean = {
     val finishes = pool.isEmpty
     if (finishes) {
@@ -166,11 +166,11 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
  * @param resultChecker
  */
 case class DefaultQueueProcessor(
-  queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector,
-    resultChecker: ResultChecker
+  queue:            QueueRef,
+  delegateeProps:   Props,
+  settings:         ProcessingWorkerPoolSettings,
+  metricsCollector: MetricsCollector             = NoOpMetricsCollector,
+  resultChecker:    ResultChecker
 ) extends QueueProcessor {
 
   override val resultHistoryLength: Int = 0
@@ -179,18 +179,18 @@ case class DefaultQueueProcessor(
 }
 
 case class QueueProcessorWithCircuitBreaker(
-  queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
-    circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector,
-    resultChecker: ResultChecker
+  queue:                  QueueRef,
+  delegateeProps:         Props,
+  settings:               ProcessingWorkerPoolSettings,
+  circuitBreakerSettings: CircuitBreakerSettings,
+  metricsCollector:       MetricsCollector             = NoOpMetricsCollector,
+  resultChecker:          ResultChecker
 ) extends QueueProcessor {
 
   override val resultHistoryLength: Int = circuitBreakerSettings.historyLength
 
   override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = {
-    if ((resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
+    if ((resultHistory.count(r ⇒ !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
       metricsCollector.send(Metric.CircuitBreakerOpened)
       pool.foreach(_ ! Hold(circuitBreakerSettings.closeDuration))
     }
@@ -215,10 +215,10 @@ object QueueProcessor {
   private case object ShutdownTimeout
 
   def default(
-    queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector
+    queue:            QueueRef,
+    delegateeProps:   Props,
+    settings:         ProcessingWorkerPoolSettings,
+    metricsCollector: MetricsCollector             = NoOpMetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new DefaultQueueProcessor(
       queue,
@@ -229,11 +229,11 @@ object QueueProcessor {
     ))
 
   def withCircuitBreaker(
-    queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
+    queue:                  QueueRef,
+    delegateeProps:         Props,
+    settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector
+    metricsCollector:       MetricsCollector             = NoOpMetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,
