@@ -325,13 +325,15 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
     watch(processor)
 
     queue ! Enqueue("a")
-    queue ! Enqueue("b")
-    queue ! Enqueue("c")
 
     delegatee.expectMsg("a")
     delegatee.reply(MessageProcessed("a"))
+
+    queue ! Enqueue("b")
     delegatee.expectMsg("b")
     delegatee.reply(MessageFailed)
+
+    queue ! Enqueue("c")
     delegatee.expectMsg("c") //timeout this one
 
     queue ! Enqueue("d")

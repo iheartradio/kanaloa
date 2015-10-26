@@ -54,14 +54,14 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
   "start an underutilizationStreak" in new AutoScalingScope {
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(5.millisecond)
+    tProcessor.expectNoMsg(15.millisecond)
     as.underlyingActor.underUtilizationStreak.get.highestUtilization === 3
   }
 
   "stop an underutilizationStreak" in new AutoScalingScope {
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(5.millisecond)
+    tProcessor.expectNoMsg(15.millisecond)
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
     expectNoMsg(5.millisecond) //wait
@@ -177,7 +177,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 
   "do not go beyond upperBound when optimizing" in new AutoScalingScope {
     val subject = autoScalingRef(explorationRatio = 0)
-    subject.underlyingActor.perfLog = Map(350 -> 2.nanosecond, 400 -> 1.nanosecond)
+    subject.underlyingActor.perfLog = Map(350 → 2.nanosecond, 400 → 1.nanosecond)
     subject ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 295, dispatchDuration = 10.milliseconds)
 
@@ -188,7 +188,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
 }
 
 class AutoScalingScope(implicit system: ActorSystem)
-    extends TestKit(system) with ImplicitSender with Scope {
+  extends TestKit(system) with ImplicitSender with Scope {
 
   val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
@@ -198,7 +198,7 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   def newWorker(busy: Boolean = true) = actor(new Act {
     become {
-      case _ => sender ! (if (busy) Working else Idle)
+      case _ ⇒ sender ! (if (busy) Working else Idle)
     }
   })
 
@@ -219,14 +219,14 @@ class AutoScalingScope(implicit system: ActorSystem)
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(Some(dispatchDuration)))
     tProcessor.expectMsgType[QueryStatus]
-    val workers = (1 to numOfBusyWorkers).map(_ => newWorker(true)) ++
-      (1 to numOfIdleWorkers).map(_ => newWorker(false))
+    val workers = (1 to numOfBusyWorkers).map(_ ⇒ newWorker(true)) ++
+      (1 to numOfIdleWorkers).map(_ ⇒ newWorker(false))
     tProcessor.reply(RunningStatus(workers.toSet))
   }
 
   def mockBusyHistory(subject: ActorRef, ps: (PoolSize, Duration)*) = {
     ps.foreach {
-      case (size, duration) =>
+      case (size, duration) ⇒
         subject ! OptimizeOrExplore
         replyStatus(numOfBusyWorkers = size, dispatchDuration = duration)
         tProcessor.expectMsgType[ScaleTo]

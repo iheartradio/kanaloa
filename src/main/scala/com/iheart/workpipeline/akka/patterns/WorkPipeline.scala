@@ -35,13 +35,13 @@ trait WorkPipeline extends Actor {
 
   context watch processor
 
-  private val autoScaler = pipelineSettings.autoScalingSettings.foreach { s =>
+  private val autoScaler = pipelineSettings.autoScalingSettings.foreach { s ⇒
     context.actorOf(AutoScaling.default(queue, processor, s, metricsCollector), name + "-auto-scaler")
   }
 
   def receive: Receive = ({
     case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout, true)
-    case Terminated(`processor`) ⇒ context stop self
+    case Terminated(`processor`)                 ⇒ context stop self
   }: Receive) orElse extraReceive
 
   def extraReceive: Receive = PartialFunction.empty
@@ -49,10 +49,10 @@ trait WorkPipeline extends Actor {
 
 object WorkPipeline {
   case class Settings(
-    workTimeout: FiniteDuration = 1.minute,
-    workRetry: Int = 0,
-    workerPool: ProcessingWorkerPoolSettings,
-    circuitBreaker: CircuitBreakerSettings,
+    workTimeout:         FiniteDuration               = 1.minute,
+    workRetry:           Int                          = 0,
+    workerPool:          ProcessingWorkerPoolSettings,
+    circuitBreaker:      CircuitBreakerSettings,
     autoScalingSettings: Option[AutoScalingSettings]
   )
 
@@ -82,13 +82,13 @@ object WorkPipeline {
 }
 
 case class PushingWorkPipeline(
-  name: String,
-  settings: PushingWorkPipeline.Settings,
-  backendProps: Props,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector,
-  resultChecker: ResultChecker
+  name:             String,
+  settings:         PushingWorkPipeline.Settings,
+  backendProps:     Props,
+  metricsCollector: MetricsCollector             = NoOpMetricsCollector,
+  resultChecker:    ResultChecker
 )
-    extends WorkPipeline {
+  extends WorkPipeline {
 
   protected lazy val pipelineSettings = settings.workPipelineSettings
 
@@ -104,18 +104,18 @@ case class PushingWorkPipeline(
 object PushingWorkPipeline {
   private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
     def receive: Receive = {
-      case msg =>
+      case msg ⇒
         queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workPipelineSettings.workRetry, settings.workPipelineSettings.workTimeout, Some(sender))))
         context become waitingForQueueConfirmation(sender)
     }
 
     def waitingForQueueConfirmation(replyTo: ActorRef): Receive = {
-      case WorkEnqueued =>
+      case WorkEnqueued ⇒
         context stop self //mission accomplished
-      case EnqueueRejected(_, OverCapacity) =>
+      case EnqueueRejected(_, OverCapacity) ⇒
         replyTo ! WorkRejected("Server out of capacity")
         context stop self
-      case m =>
+      case m ⇒
         replyTo ! WorkRejected(s"unexpected response $m")
         context stop self
     }
@@ -126,10 +126,10 @@ object PushingWorkPipeline {
   }
 
   def props(
-    name: String,
-    settings: Settings,
-    backendProps: Props,
-    metricsConfig: Config = ConfigFactory.empty
+    name:          String,
+    settings:      Settings,
+    backendProps:  Props,
+    metricsConfig: Config   = ConfigFactory.empty
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
     Props(PushingWorkPipeline(name, settings, backendProps, metricsCollector, resultChecker))
@@ -148,12 +148,12 @@ object PushingWorkPipeline {
 }
 
 case class PullingWorkPipeline(
-  name: String,
-    iterator: Iterator[_],
-    pipelineSettings: WorkPipeline.Settings,
-    backendProps: Props,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector,
-    resultChecker: ResultChecker
+  name:             String,
+  iterator:         Iterator[_],
+  pipelineSettings: WorkPipeline.Settings,
+  backendProps:     Props,
+  metricsCollector: MetricsCollector      = NoOpMetricsCollector,
+  resultChecker:    ResultChecker
 ) extends WorkPipeline {
 
   protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(), metricsCollector)
@@ -162,11 +162,11 @@ case class PullingWorkPipeline(
 
 object PullingWorkPipeline {
   def props(
-    name: String,
-    iterator: Iterator[_],
-    settings: WorkPipeline.Settings,
-    backendProps: Props,
-    metricsConfig: Config = ConfigFactory.empty
+    name:          String,
+    iterator:      Iterator[_],
+    settings:      WorkPipeline.Settings,
+    backendProps:  Props,
+    metricsConfig: Config                = ConfigFactory.empty
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val metricsCollector = MetricsCollector.fromConfig(name, metricsConfig)
     Props(PullingWorkPipeline(name, iterator, settings, backendProps, metricsCollector, resultChecker))
