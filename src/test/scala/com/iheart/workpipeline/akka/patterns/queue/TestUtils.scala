@@ -14,7 +14,7 @@ object TestUtils {
 
   class Wrapper(prob: ActorRef) extends Actor {
     def receive = {
-      case m => prob forward m
+      case m ⇒ prob forward m
     }
   }
 
@@ -23,13 +23,13 @@ object TestUtils {
   }
 
   val resultChecker: ResultChecker = {
-    case MessageProcessed(msg) => Right(msg)
-    case m => Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
+    case MessageProcessed(msg) ⇒ Right(msg)
+    case m                     ⇒ Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
   }
 
   def iteratorQueueProps(
-    iterator: Iterator[String],
-    workSetting: WorkSettings = WorkSettings(),
+    iterator:         Iterator[String],
+    workSetting:      WorkSettings     = WorkSettings(),
     metricsCollector: MetricsCollector = NoOpMetricsCollector
   ): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting, metricsCollector)
@@ -41,9 +41,9 @@ object TestUtils {
     val delegateeProps = Wrapper.props(delegatee.ref)
 
     def defaultProcessorProps(
-      queue: QueueRef,
-      settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: MetricsCollector = NoOpMetricsCollector
+      queue:            QueueRef,
+      settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
+      metricsCollector: MetricsCollector             = NoOpMetricsCollector
     ) =
       QueueProcessor.default(queue, delegateeProps, settings, metricsCollector)(resultChecker)
   }

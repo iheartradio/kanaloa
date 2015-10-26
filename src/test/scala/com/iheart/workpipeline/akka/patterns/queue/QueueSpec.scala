@@ -191,7 +191,8 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 
     "worker report to metrics after consecutive errors" in new MetricCollectorScope() {
       val queue = defaultQueue()
-      system.actorOf(queueProcessorWithCBProps(queue,
+      system.actorOf(queueProcessorWithCBProps(
+        queue,
         CircuitBreakerSettings(historyLength = 2, closeDuration = 300.milliseconds)
       ))
 
@@ -404,12 +405,11 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     )
 }
 
-
 class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector : MetricsCollector = new MetricsCollector {
+  override val metricsCollector: MetricsCollector = new MetricsCollector {
     def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
   }
 

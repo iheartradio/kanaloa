@@ -69,7 +69,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       thresholdForExpectedWaitTime = 5.minutes
     ))).underlyingActor
 
-    def status(ps: (Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory = ps.map { case (dispatched, size, time) => BufferHistoryEntry(dispatched, size, time) }.toVector)
+    def status(ps: (Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory = ps.map { case (dispatched, size, time) ⇒ BufferHistoryEntry(dispatched, size, time) }.toVector)
 
     "return false if there is no entries" >> {
       q.isOverCapacity(status()) must beFalse
@@ -156,7 +156,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       )
       val start = System.nanoTime()
       val sampleSize = 10000
-      (1 to sampleSize).foreach(_ =>
+      (1 to sampleSize).foreach(_ ⇒
         q.isOverCapacity(hist))
 
       val duration = (System.nanoTime() - start) / 1000
