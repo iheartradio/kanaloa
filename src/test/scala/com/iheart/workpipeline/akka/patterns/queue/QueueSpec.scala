@@ -2,6 +2,7 @@ package com.iheart.workpipeline.akka.patterns.queue
 
 
 import akka.actor._
+import akka.testkit.{TestActorRef, TestProbe}
 import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
 import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
 import com.iheart.workpipeline.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
@@ -126,9 +127,9 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
   }
 
   "retiring a worker when it already started working" in new QueueScope {
-    val queueProcessor = initQueue( iteratorQueue(List("a", "b", "c").iterator,
-                                    WorkSettings(sendResultTo = Some(self))),
-                                    numberOfWorkers = 2)
+    val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
+      WorkSettings(sendResultTo = Some(self))),
+      numberOfWorkers = 2)
     delegatee.expectMsgType[DelegateeMessage]
 
     expectNoMsg(20.millisecond) //wait for both workers get occupied
@@ -154,11 +155,15 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
   "Circuit Breaker" >> {
 
     "worker cools down after consecutive errors" in new QueueScope {
-
-      system.actorOf(queueProcessorWithCBProps(iteratorQueue(List("a", "b", "c", "d", "e").iterator),
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 200.milliseconds)
+      val queue = defaultQueue()
+      system.actorOf(queueProcessorWithCBProps(queue,
+        CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
       ), "queuewithCB")
 
+      queue ! Enqueue(DelegateeMessage("a"))
+      queue ! Enqueue(DelegateeMessage("b"))
+      queue ! Enqueue(DelegateeMessage("c"))
+      queue ! Enqueue(DelegateeMessage("d"))
       delegatee.expectMsg(DelegateeMessage("a"))
       delegatee.reply(MessageProcessed("a"))
       delegatee.expectMsg(DelegateeMessage("b"))
@@ -167,8 +172,10 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       delegatee.reply(MessageFailed)
       delegatee.expectMsg(DelegateeMessage("d"))
       delegatee.reply(MessageFailed)
+      delegatee.expectNoMsg(30.milliseconds) //give some time for the circuit breaker to kick in
 
-      delegatee.expectNoMsg(190.milliseconds)
+      queue ! Enqueue(DelegateeMessage("e"))
+      delegatee.expectNoMsg(150.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("e"))
 
@@ -288,7 +295,44 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
       one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
       two(mc).send(Metric.EnqueueRejected)
   }
+}
 
+class QueueWorkMetricsSpec extends SpecWithActorSystem with Mockito {
+
+  "send WorkCompleted, WorkFailed, and WorkTimedOut metrics" in new QueueScope {
+
+    @volatile
+    var receivedMetrics: List[Metric] = Nil
+    val mc = new MetricsCollector {
+      def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
+    }
+
+    val workerProps: Props = Worker.default(
+      TestProbe().ref,
+      Props.empty)(resultChecker)
+
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 23.milliseconds))
+    val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = mc))
+
+    watch(processor)
+
+    queue ! Enqueue("a")
+    queue ! Enqueue("b")
+    queue ! Enqueue("c")
+
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
+    delegatee.expectMsg("b")
+    delegatee.reply(MessageFailed)
+    delegatee.expectMsg("c") //timeout this one
+
+    queue ! Enqueue("d")
+    delegatee.expectMsg(100.milliseconds, "d")
+
+    receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
+
+  }
 
 }
 
@@ -302,33 +346,33 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
 
 
-  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : QueueProcessorRef = {
+  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(processorProps)
   }
 
   def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
     queue ! QueryStatus()
-    fishForMessage(500.millisecond, "wait for workers to register"){
-      case qs : QueueStatus =>
+    fishForMessage(500.millisecond, "wait for workers to register") {
+      case qs: QueueStatus =>
         val registered = qs.queuedWorkers.size == numberOfWorkers
-        if(!registered) queue ! QueryStatus()
+        if (!registered) queue ! QueryStatus()
         registered
     }
   }
 
   def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(iteratorQueueProps(iterator, workSetting, metricsCollector),
-                   "iterator-queue-" + Random.nextInt(100000))
+      "iterator-queue-" + Random.nextInt(100000))
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(Queue.default(workSetting, metricsCollector),
-                   "default-queue-" + Random.nextInt(100000))
+      "default-queue-" + Random.nextInt(100000))
 
 
   def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
                        defaultWorkSetting: WorkSettings = WorkSettings()) =
     system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
-                   "with-back-pressure-queue" + Random.nextInt(500000))
+      "with-back-pressure-queue" + Random.nextInt(500000))
 }
 

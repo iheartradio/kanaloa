@@ -3,36 +3,26 @@ package com.iheart.workpipeline.akka.patterns.queue
 import akka.actor._
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
 import com.iheart.workpipeline.akka.patterns
-import com.iheart.workpipeline.collection.FiniteCollection
-import com.iheart.workpipeline.metrics.{MetricsCollector, NoOpMetricsCollector, Metric}
 import patterns.CommonProtocol.QueryStatus
 import CommonProtocol.{WorkTimedOut, WorkFailed}
-import QueueProcessor.MissionAccomplished
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{WorkCompleted, MissionAccomplished}
 import Queue.{Unregistered, Unregister, NoWorkLeft, RequestWork}
 import Worker._
 
 import scala.concurrent.duration._
-import FiniteCollection._
 
 trait Worker extends Actor with ActorLogging with MessageScheduler {
-  type ResultHistory = Vector[Boolean]
 
   protected def delegateeProps: Props //actor who really does the work
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
-  protected val metricsCollector: MetricsCollector
 
   def receive = idle()
-
-  def resultHistoryLength: Int
-
-  //hate to have a var here, but this field avoid having to pass this history all over the places.
-  protected var resultHistory: ResultHistory = Vector.empty
 
   context watch queue
 
   override def preStart(): Unit = {
-    askMoreWork()
+    askMoreWork(None)
   }
 
   lazy val delegatee = {
@@ -41,8 +31,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     ref
   }
 
-  def idle(): Receive = {
-    case work : Work => sendWorkToDelegatee(work, 0)
+  def idle(delayBeforeNextWork: Option[FiniteDuration] = None): Receive = {
+
+    case Hold(period) ⇒ context become idle(Some(period))
+
+    case work : Work => sendWorkToDelegatee(work, 0, delayBeforeNextWork)
 
     case NoWorkLeft =>
       monitor ! MissionAccomplished(self) //todo: maybe a simple stop is good enough?
@@ -59,16 +52,18 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   def finish(): Unit = context stop self
 
-  def working(outstanding: Outstanding): Receive = ({
-      case Terminated(`queue`) => context become retiring(Some(outstanding))
+  def working(outstanding: Outstanding, delayBeforeNextWork: Option[FiniteDuration] = None): Receive = ({
+    case Hold(period) ⇒ context become working(outstanding, Some(period))
 
-      case qs: QueryStatus => qs reply Working
+    case Terminated(`queue`) => context become retiring(Some(outstanding))
 
-      case Worker.Retire => context become retiring(Some(outstanding))
+    case qs: QueryStatus => qs reply Working
+
+    case Worker.Retire => context become retiring(Some(outstanding))
 
   }: Receive).orElse(
 
-    waitingResult(outstanding, false))
+    waitingResult(outstanding, false, delayBeforeNextWork))
 
   .orElse {
       case msg => log.error(s"unrecognized interrupting msg during working $msg" )
@@ -81,7 +76,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case Retire => //already retiring
   }: Receive) orElse (
     if(outstanding.isDefined)
-      waitingResult(outstanding.get, true)
+      waitingResult(outstanding.get, true, None)
     else {
       case w: Work =>
         sender ! Rejected(w, "Retiring")
@@ -89,16 +84,16 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     }
   )
 
-
-  def waitingResult(outstanding: Outstanding, isRetiring: Boolean): Receive = ({
+  def waitingResult(outstanding: Outstanding,
+                    isRetiring: Boolean,
+                    delayBeforeNextWork: Option[FiniteDuration]): Receive = ({
 
     case DelegateeTimeout =>
       log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
 
       if(isRetiring) finish() else {
-        appendResultHistory(false)
-        askMoreWork()
+        askMoreWork(delayBeforeNextWork)
       }
     case w: Work => sender ! Rejected(w, "busy") //just in case
 
@@ -106,67 +101,58 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       case Right(result) =>
         outstanding.success(result)
         if(isRetiring) finish() else {
-          appendResultHistory(true)
-          askMoreWork()
+          askMoreWork(delayBeforeNextWork)
         }
       case Left(e) =>
         log.error(s"error $e returned by delegatee in regards to running work $outstanding")
-        appendResultHistory(false)
-        retryOrAbandon(outstanding, isRetiring, e)
+        retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
 
     }
 
-  private def retryOrAbandon(outstanding: Outstanding, isRetiring: Boolean, error: Any): Unit = {
+  private def retryOrAbandon(outstanding: Outstanding,
+                             isRetiring: Boolean,
+                             error: Any,
+                             delayBeforeNextWork: Option[FiniteDuration]): Unit = {
     outstanding.cancel()
-    if (outstanding.retried < outstanding.work.settings.retry ) {
+    if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
       log.info(s"Retry work $outstanding")
-      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1)
+      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1, None)
     } else {
       val message = s"Work failed after ${outstanding.retried} try(s)"
       log.error(s"$message, work $outstanding abandoned")
       outstanding.fail(WorkFailed(message + s" due to $error"))
       if(isRetiring) finish()
       else
-        askMoreWork()
+        askMoreWork(delayBeforeNextWork)
     }
   }
 
-  private def sendWorkToDelegatee(work: Work, retried: Int): Unit = {
-    val timeoutHandle: Cancellable = delayedMsg(work.settings.timeout, DelegateeTimeout)
-    delegatee ! work.messageToDelegatee
+  private def sendWorkToDelegatee(work: Work, retried: Int, delay: Option[FiniteDuration]): Unit = {
+    val timeoutHandle: Cancellable = delayedMsg(delay.fold(work.settings.timeout)(_ + work.settings.timeout) , DelegateeTimeout)
+    maybeDelayedMsg(delay, work.messageToDelegatee, delegatee)
     context become working(Outstanding(work, timeoutHandle, retried))
   }
 
-  private def askMoreWork(): Unit = {
-    val delay = holdOnGettingMoreWork
-    if(delay.isDefined)
-      delayedMsg(delay.get, RequestWork(self), queue)
-    else
-      queue ! RequestWork(self)
-    context become idle
+  private def askMoreWork(delay: Option[FiniteDuration]): Unit = {
+    maybeDelayedMsg(delay, RequestWork(self), queue)
+    context become idle()
   }
-
-  private def appendResultHistory(result: Boolean): Unit =
-    resultHistory = resultHistory.enqueueFinite(result, resultHistoryLength)
-
 
   protected def resultChecker: ResultChecker
 
-  protected def holdOnGettingMoreWork: Option[FiniteDuration]
-
   protected case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
     def success(result: Any): Unit = {
-      metricsCollector.send(Metric.WorkCompleted)
+      monitor ! WorkCompleted(self)
       done(result)
     }
 
     def fail(result: Any): Unit = {
-      metricsCollector.send(Metric.WorkFailed)
+      monitor ! WorkFailed(result.toString)
       done(result)
     }
 
     def timeout(): Unit = {
-      metricsCollector.send(Metric.WorkTimedOut)
+      monitor ! WorkTimedOut("unknown")
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
     }
 
@@ -196,46 +182,22 @@ object Worker {
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
 
+  case class Hold(period: FiniteDuration)
+
 
   class DefaultWorker(protected val queue: QueueRef,
                       protected val delegateeProps: Props,
-                      protected val resultChecker: ResultChecker,
-                      protected val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Worker {
+                      protected val resultChecker: ResultChecker) extends Worker {
 
     val resultHistoryLength = 0
-    protected def holdOnGettingMoreWork: Option[FiniteDuration] = None
 
   }
-
-  class WorkerWithCircuitBreaker( protected val queue: QueueRef,
-                                  protected val delegateeProps: Props,
-                                  protected val resultChecker: ResultChecker,
-                                  circuitBreakerSettings: CircuitBreakerSettings,
-                                  protected val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Worker {
-
-    protected def holdOnGettingMoreWork: Option[FiniteDuration] = {
-      if( (resultHistory.count(r => !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold  )
-        Some(circuitBreakerSettings.closeDuration)
-      else
-        None
-    }
-    val resultHistoryLength = circuitBreakerSettings.historyLength
-  }
-
-
 
   def default(queue: QueueRef,
-              delegateeProps: Props,
-              metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, delegateeProps, resultChecker, metricsCollector))
+              delegateeProps: Props)(resultChecker: ResultChecker): Props = {
+    Props(new DefaultWorker(queue, delegateeProps, resultChecker))
   }
 
-  def withCircuitBreaker(queue: QueueRef,
-                         delegateeProps: Props,
-                         circuitBreakerSettings: CircuitBreakerSettings,
-                         metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props = {
-    Props(new WorkerWithCircuitBreaker(queue, delegateeProps, resultChecker, circuitBreakerSettings, metricsCollector))
-  }
 
 }
 
