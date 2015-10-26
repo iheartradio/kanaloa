@@ -1,7 +1,8 @@
 package com.iheart.workpipeline.akka.patterns.queue
 
-import akka.actor.{ActorSystem, Props, Actor, ActorRef}
-import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import akka.actor.{ ActorSystem, Props, Actor, ActorRef }
+import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import com.iheart.workpipeline.metrics.{ MetricsCollector, NoOpMetricsCollector }
 
 import org.specs2.specification.Scope
 
@@ -13,7 +14,7 @@ object TestUtils {
 
   class Wrapper(prob: ActorRef) extends Actor {
     def receive = {
-      case m => prob forward m
+      case m ⇒ prob forward m
     }
   }
 
@@ -22,12 +23,16 @@ object TestUtils {
   }
 
   val resultChecker: ResultChecker = {
-    case MessageProcessed(msg) => Right(msg)
-    case m => Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
+    case MessageProcessed(msg) ⇒ Right(msg)
+    case m                     ⇒ Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
   }
 
-  def iteratorQueueProps(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): Props =
-    Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting)
+  def iteratorQueueProps(
+    iterator:         Iterator[String],
+    workSetting:      WorkSettings     = WorkSettings(),
+    metricsCollector: MetricsCollector = NoOpMetricsCollector
+  ): Props =
+    Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting, metricsCollector)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
 
@@ -35,6 +40,11 @@ object TestUtils {
 
     val delegateeProps = Wrapper.props(delegatee.ref)
 
-    def defaultProcessorProps(queue: QueueRef, settings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1)) = QueueProcessor.default(queue, delegateeProps, settings)(resultChecker)
+    def defaultProcessorProps(
+      queue:            QueueRef,
+      settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
+      metricsCollector: MetricsCollector             = NoOpMetricsCollector
+    ) =
+      QueueProcessor.default(queue, delegateeProps, settings, metricsCollector)(resultChecker)
   }
 }

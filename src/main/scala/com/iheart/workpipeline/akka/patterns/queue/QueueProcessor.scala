@@ -1,13 +1,18 @@
 package com.iheart.workpipeline.akka.patterns.queue
 
-import java.time.{ZoneOffset, LocalDateTime}
+import java.time.{ ZoneOffset, LocalDateTime }
 
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
+import com.iheart.workpipeline.akka.patterns.queue.CommonProtocol.{ WorkFailed, WorkTimedOut }
+import com.iheart.workpipeline.akka.patterns.queue.Worker.Hold
+import com.iheart.workpipeline.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import com.iheart.workpipeline.akka.helpers.MessageScheduler
-import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ ShutdownSuccessfully, QueryStatus }
+import com.iheart.workpipeline.collection.FiniteCollection._
+
 import QueueProcessor._
-import Queue.{Retire}
+import Queue.{ Retire }
 import scala.concurrent.duration._
 
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
@@ -15,103 +20,135 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   def delegateeProps: Props
   def settings: ProcessingWorkerPoolSettings
+  def resultChecker: ResultChecker
+  val metricsCollector: MetricsCollector
+  type ResultHistory = Vector[Boolean]
+  val resultHistoryLength: Int
+  protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool)
+
+  metricsCollector.send(Metric.PoolSize(settings.startingPoolSize))
 
   override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
-      case _: Exception                => Restart
+    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
+      case _: Exception ⇒ Restart
     }
 
-  def workerProp(queueRef: QueueRef, delegateeProps: Props): Props
+  def workerProp(queueRef: QueueRef, delegateeProps: Props): Props =
+    Worker.default(queue, delegateeProps)(resultChecker)
 
   def receive: Receive = {
     val workers = (1 to settings.startingPoolSize).map(createWorker).toSet
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
 
-    monitoring(workers)
+    monitoring()(workers)
   }
 
+  def monitoring(resultHistory: ResultHistory = Vector.empty)(pool: WorkerPool): Receive = {
+    def workError(): Unit = {
+      val newHistory = resultHistory.enqueueFinite(false, resultHistoryLength)
+      context become monitoring(newHistory)(pool)
+      onWorkError(newHistory, pool)
+    }
 
-  def monitoring(pool: WorkerPool): Receive = {
+    {
+      case ScaleTo(newPoolSize, reason) ⇒
+        log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
+        metricsCollector.send(Metric.PoolSize(newPoolSize))
 
-    case ScaleTo(newPoolSize, reason) =>
-      log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
-      val diff = newPoolSize - pool.size
-      if (diff > 0)
-        context become monitoring(pool ++ (1 to diff).map(createWorker))
-      else if (diff < 0 && newPoolSize >= settings.minPoolSize)
-        pool.take(-diff).foreach(_ ! Worker.Retire)
+        val diff = newPoolSize - pool.size
+        if (diff > 0)
+          context become monitoring(resultHistory)(pool ++ (1 to diff).map(createWorker))
+        else if (diff < 0 && newPoolSize >= settings.minPoolSize)
+          pool.take(-diff).foreach(_ ! Worker.Retire)
 
-    case MissionAccomplished(worker) => removeWorker(pool, worker, monitoring, "successfully after all work is done")
+      case MissionAccomplished(worker) ⇒
+        removeWorker(pool, worker, monitoring(resultHistory), "successfully after all work is done")
 
-    case Terminated(worker) if pool.contains(worker) => removeWorker(pool, worker, monitoring, "unexpected termination when all workers retired")
+      case WorkCompleted(worker) ⇒
+        context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
+        metricsCollector.send(Metric.WorkCompleted)
 
-    case Terminated(`queue`) =>
-      log.info(s"Queue ${queue.path} is terminated")
-      self ! Shutdown(retireQueue = false)
+      case WorkFailed(_) ⇒
+        workError()
+        metricsCollector.send(Metric.WorkFailed)
 
-    case QueueMaxProcessTimeReached(queue) =>
-      log.warning(s"Queue ${queue.path} is still processing after max process time. Shutting Down")
-      self ! Shutdown(retireQueue = true)
+      case WorkTimedOut(_) ⇒
+        workError()
+        metricsCollector.send(Metric.WorkTimedOut)
 
-    case qs: QueryStatus => qs reply RunningStatus(pool)
+      case Terminated(worker) if pool.contains(worker) ⇒
+        removeWorker(pool, worker, monitoring(resultHistory), "unexpected termination when all workers retired")
 
-    case Shutdown(reportTo, timeout, retireQueue) =>
-      log.info("Commanded to shutdown. Shutting down")
-      if(retireQueue)
-        queue ! Retire(timeout)
-      else //retire from the workers' side
-        pool.foreach(_ ! Worker.Retire)
+      case Terminated(`queue`) ⇒
+        log.info(s"Queue ${queue.path} is terminated")
+        self ! Shutdown(retireQueue = false)
 
-      delayedMsg(timeout, ShutdownTimeout)
-      context become shuttingDown(pool, reportTo)
+      case QueueMaxProcessTimeReached(queue) ⇒
+        log.warning(s"Queue ${queue.path} is still processing after max process time. Shutting Down")
+        self ! Shutdown(retireQueue = true)
 
+      case qs: QueryStatus ⇒ qs reply RunningStatus(pool)
+
+      case Shutdown(reportTo, timeout, retireQueue) ⇒
+        log.info("Commanded to shutdown. Shutting down")
+        if (retireQueue)
+          queue ! Retire(timeout)
+        else //retire from the workers' side
+          pool.foreach(_ ! Worker.Retire)
+
+        delayedMsg(timeout, ShutdownTimeout)
+        context become shuttingDown(pool, reportTo)
+    }: Receive
   }
 
   def shuttingDown(pool: WorkerPool, reportTo: Option[ActorRef]): Receive = {
-    case MissionAccomplished(worker) =>
-      removeWorker(pool, worker, shuttingDown(_, reportTo),"successfully after command", reportTo)
-
-    case Terminated(worker) if pool.contains(worker) =>
+    case MissionAccomplished(worker) ⇒
       removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
+    case Terminated(worker) if pool.contains(worker) ⇒
+      removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
-    case Terminated(_) => //ignore other termination
+    case Terminated(_)   ⇒ //ignore other termination
 
-    case qs: QueryStatus => qs reply ShuttingDown
+    case qs: QueryStatus ⇒ qs reply ShuttingDown
 
-    case ShutdownTimeout =>
+    case ShutdownTimeout ⇒
       log.error("Shutdown timed out, forcefully shutting down")
       pool.foreach(_ ! PoisonPill)
       context stop self
 
-    case _ => sender ! ShuttingDown
+    case _ ⇒ sender ! ShuttingDown
   }
 
   private def createWorker(index: Int): WorkerRef = {
     val timestamp = LocalDateTime.now.toInstant(ZoneOffset.UTC).toEpochMilli
-    val worker = context.actorOf(workerProp(queue, delegateeProps), s"worker-${queue.path.name}-$index-${timestamp}")
+    val worker = context.actorOf(
+      workerProp(queue, delegateeProps),
+      s"worker-${queue.path.name}-$index-${timestamp}")
     context watch worker
     worker
   }
 
-  private def removeWorker(pool: WorkerPool,
-                           worker: WorkerRef,
-                           nextContext: WorkerPool => Receive,
-                           finishWithMessage: String = "",
-                           reportToOnFinish: Option[ActorRef] = None): Unit = {
+  private def removeWorker(
+    pool: WorkerPool,
+    worker: WorkerRef,
+    nextContext: WorkerPool ⇒ Receive,
+    finishWithMessage: String = "",
+    reportToOnFinish: Option[ActorRef] = None): Unit = {
     context unwatch worker
     val newPool = pool - worker
-    if(!finishIfPoolIsEmpty(newPool,finishWithMessage, reportToOnFinish))
+    if (!finishIfPoolIsEmpty(newPool, finishWithMessage, reportToOnFinish))
       context become nextContext(newPool)
 
   }
 
-  private def finishIfPoolIsEmpty(pool: WorkerPool,
-                                  withMessage: String,
-                                  reportTo: Option[ActorRef] = None): Boolean = {
+  private def finishIfPoolIsEmpty(
+    pool: WorkerPool,
+    withMessage: String,
+    reportTo: Option[ActorRef] = None): Boolean = {
     val finishes = pool.isEmpty
-    if(finishes) {
+    if (finishes) {
       log.info(s"Queue Processor is shutdown $withMessage")
       reportTo.foreach(_ ! ShutdownSuccessfully)
       context stop self
@@ -125,47 +162,77 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
  * The default queue processor uses the same [[ ResultChecker ]] for all queues
  * @param resultChecker
  */
-case class DefaultQueueProcessor(queue: QueueRef,
-                                 delegateeProps: Props,
-                                 settings: ProcessingWorkerPoolSettings,
-                                 resultChecker: ResultChecker) extends QueueProcessor {
-  def workerProp(queue: QueueRef, delegateeProps: Props): Props = Worker.default(queue, delegateeProps)(resultChecker)
+case class DefaultQueueProcessor(
+  queue: QueueRef,
+  delegateeProps: Props,
+  settings: ProcessingWorkerPoolSettings,
+  metricsCollector: MetricsCollector = NoOpMetricsCollector,
+  resultChecker: ResultChecker) extends QueueProcessor {
+
+  override val resultHistoryLength: Int = 0
+
+  override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = () //do nothing
 }
 
-case class QueueProcessorWithCircuitBreaker(queue: QueueRef,
-                                            delegateeProps: Props,
-                                            settings: ProcessingWorkerPoolSettings,
-                                            circuitBreakerSettings: CircuitBreakerSettings,
-                                            resultChecker: ResultChecker) extends QueueProcessor {
-  def workerProp(queue: QueueRef, delegateeProps: Props): Props =
-    Worker.withCircuitBreaker(queue, delegateeProps, circuitBreakerSettings)(resultChecker)
+case class QueueProcessorWithCircuitBreaker(
+  queue: QueueRef,
+  delegateeProps: Props,
+  settings: ProcessingWorkerPoolSettings,
+  circuitBreakerSettings: CircuitBreakerSettings,
+  metricsCollector: MetricsCollector = NoOpMetricsCollector,
+  resultChecker: ResultChecker) extends QueueProcessor {
+
+  override val resultHistoryLength: Int = circuitBreakerSettings.historyLength
+
+  override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = {
+    if ((resultHistory.count(r ⇒ !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
+      metricsCollector.send(Metric.CircuitBreakerOpened)
+      pool.foreach(_ ! Hold(circuitBreakerSettings.closeDuration))
+    }
+  }
 
 }
-
 
 object QueueProcessor {
-  private[queue] type WorkerPool = Set[WorkerRef]
-
+  private[queue]type WorkerPool = Set[WorkerRef]
 
   case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) {
     assert(numOfWorkers > 0)
   }
 
-
   case class MissionAccomplished(worker: WorkerRef)
+  case class WorkCompleted(worker: WorkerRef)
+
   case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes, retireQueue: Boolean = true)
   private case object ShutdownTimeout
 
-  def default(queue: QueueRef,
-              delegateeProps: Props,
-              settings: ProcessingWorkerPoolSettings)(resultChecker: ResultChecker): Props = Props(new DefaultQueueProcessor(queue, delegateeProps, settings, resultChecker))
+  def default(
+    queue: QueueRef,
+    delegateeProps: Props,
+    settings: ProcessingWorkerPoolSettings,
+    metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    Props(new DefaultQueueProcessor(
+      queue,
+      delegateeProps,
+      settings,
+      metricsCollector,
+      resultChecker))
 
-  def withCircuitBreaker(queue: QueueRef,
-                         delegateeProps: Props,
-                         settings: ProcessingWorkerPoolSettings,
-                         circuitBreakerSettings: CircuitBreakerSettings)(resultChecker: ResultChecker): Props =
-    Props(new QueueProcessorWithCircuitBreaker(queue, delegateeProps, settings, circuitBreakerSettings, resultChecker))
+  def withCircuitBreaker(
+    queue: QueueRef,
+    delegateeProps: Props,
+    settings: ProcessingWorkerPoolSettings,
+    circuitBreakerSettings: CircuitBreakerSettings,
+    metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    Props(new QueueProcessorWithCircuitBreaker(
+      queue,
+      delegateeProps,
+      settings,
+      circuitBreakerSettings,
+      metricsCollector,
+      resultChecker))
 }
+

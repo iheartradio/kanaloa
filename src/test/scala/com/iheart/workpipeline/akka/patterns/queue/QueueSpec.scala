@@ -1,15 +1,17 @@
 package com.iheart.workpipeline.akka.patterns.queue
 
-
 import akka.actor._
-import com.iheart.workpipeline.akka.{SpecWithActorSystem, patterns}
-import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ShutdownSuccessfully, QueryStatus}
+import akka.testkit.{ TestActorRef, TestProbe }
+import com.iheart.workpipeline.akka.{ SpecWithActorSystem, patterns }
+import com.iheart.workpipeline.akka.patterns.CommonProtocol.{ ShutdownSuccessfully, QueryStatus }
+import com.iheart.workpipeline.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import Queue._
 import QueueProcessor._
-import com.iheart.workpipeline.akka.patterns.queue.Queue.{QueueStatus, WorkEnqueued}
-import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{Shutdown}
+import com.iheart.workpipeline.akka.patterns.queue.Queue.{ QueueStatus, WorkEnqueued }
+import com.iheart.workpipeline.akka.patterns.queue.QueueProcessor.{ Shutdown }
 import scala.concurrent.duration._
 import scala.util.Random
+import org.specs2.mock.Mockito
 
 import TestUtils._
 
@@ -65,7 +67,6 @@ class QueueSpec extends SpecWithActorSystem {
 
     }
 
-
   }
 
   "Sad path" >> {
@@ -79,20 +80,39 @@ class QueueSpec extends SpecWithActorSystem {
 
       delegatee.expectMsg(DelegateeMessage("b"))
 
-
       queueProcessor ! Shutdown
     }
-
 
   }
 }
 
-class ScalingWhenWorkingSpec extends SpecWithActorSystem {
+class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
+
+  "send PoolSize metric when pool size changes" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queueProcessor = initQueue(
+      iteratorQueue(Iterator("a")),
+      numberOfWorkers = 1
+    )
+    queueProcessor ! ScaleTo(3)
+    queueProcessor ! ScaleTo(5)
+
+    there was after(50.milliseconds).
+      one(mc).send(Metric.PoolSize(1)) andThen
+      one(mc).send(Metric.PoolSize(3)) andThen
+      one(mc).send(Metric.PoolSize(5))
+  }
 
   "retiring a worker when there is no work" in new QueueScope {
-    val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator,
-      WorkSettings(sendResultTo = Some(self))),
-      numberOfWorkers = 2)
+    val queueProcessor = initQueue(
+      iteratorQueue(
+        List("a", "b", "c").iterator,
+        WorkSettings(sendResultTo = Some(self))
+      ),
+      numberOfWorkers = 2
+    )
     queueProcessor ! ScaleTo(1)
     expectNoMsg(20.millisecond) //wait for retire to take effect
     delegatee.expectMsgType[DelegateeMessage]
@@ -108,9 +128,13 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
   }
 
   "retiring a worker when it already started working" in new QueueScope {
-    val queueProcessor = initQueue( iteratorQueue(List("a", "b", "c").iterator,
-                                    WorkSettings(sendResultTo = Some(self))),
-                                    numberOfWorkers = 2)
+    val queueProcessor = initQueue(
+      iteratorQueue(
+        List("a", "b", "c").iterator,
+        WorkSettings(sendResultTo = Some(self))
+      ),
+      numberOfWorkers = 2
+    )
     delegatee.expectMsgType[DelegateeMessage]
 
     expectNoMsg(20.millisecond) //wait for both workers get occupied
@@ -136,134 +160,258 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
   "Circuit Breaker" >> {
 
     "worker cools down after consecutive errors" in new QueueScope {
+      val queue = defaultQueue()
 
-      system.actorOf(queueProcessorWithCBProps(iteratorQueue(List("a", "b", "c", "d", "e").iterator),
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 200.milliseconds)
-      ), "queuewithCB")
+      system.actorOf(queueProcessorWithCBProps(
+        queue,
+        CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
+      ))
 
-      delegatee.expectMsg(DelegateeMessage("a"))
+      queue ! Enqueue("a")
+      queue ! Enqueue("b")
+      queue ! Enqueue("c")
+      queue ! Enqueue("d")
+      delegatee.expectMsg("a")
       delegatee.reply(MessageProcessed("a"))
-      delegatee.expectMsg(DelegateeMessage("b"))
+      delegatee.expectMsg("b")
       delegatee.reply(MessageFailed)
-      delegatee.expectMsg(DelegateeMessage("c"))
+      delegatee.expectMsg("c")
       delegatee.reply(MessageFailed)
-      delegatee.expectMsg(DelegateeMessage("d"))
+      delegatee.expectMsg("d")
       delegatee.reply(MessageFailed)
 
-      delegatee.expectNoMsg(190.milliseconds)
+      delegatee.expectNoMsg(50.milliseconds) //give some time for the circuit breaker to kick in
+
+      queue ! Enqueue(DelegateeMessage("e"))
+      delegatee.expectNoMsg(150.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("e"))
+
+    }
+
+    "worker report to metrics after consecutive errors" in new MetricCollectorScope() {
+      val queue = defaultQueue()
+      system.actorOf(queueProcessorWithCBProps(
+        queue,
+        CircuitBreakerSettings(historyLength = 2, closeDuration = 300.milliseconds)
+      ))
+
+      queue ! Enqueue("a")
+      queue ! Enqueue("b")
+      delegatee.expectMsg("a")
+      delegatee.reply(MessageFailed)
+      delegatee.expectMsg("b")
+      delegatee.reply(MessageFailed)
+
+      delegatee.expectNoMsg(30.milliseconds) //give some time for the circuit breaker to kick in
+
+      receivedMetrics must contain(Metric.CircuitBreakerOpened)
 
     }
   }
 }
 
-
 class DefaultQueueSpec extends SpecWithActorSystem {
+  "dispatch work on demand on parallel" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
 
-    "dispatch work on demand on parallel" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 3)
+    delegatee.expectNoMsg(40.milliseconds)
 
-      delegatee.expectNoMsg(40.milliseconds)
+    queue ! Enqueue("a", replyTo = Some(self))
 
-      queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
 
-      expectMsg(WorkEnqueued)
+    delegatee.expectMsg("a")
 
-      delegatee.expectMsg("a")
+    queue ! Enqueue("b", Some(self))
 
-      queue ! Enqueue("b", Some(self))
+    expectMsg(WorkEnqueued)
 
-      expectMsg(WorkEnqueued)
+    delegatee.expectMsg("b")
 
-      delegatee.expectMsg("b")
+  }
 
-    }
+  "won't over burden" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-    "won't over burden" in new QueueScope {
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
 
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+    queue ! Enqueue("c")
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+    delegatee.expectNoMsg(100.milliseconds)
+  }
 
-      queue ! Enqueue("c")
+  "reuse workers" in new QueueScope {
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 2)
 
-      delegatee.expectNoMsg(100.milliseconds)
-    }
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
 
-    "reuse workers" in new QueueScope {
-      val queue = defaultQueue()
-      initQueue(queue, numberOfWorkers = 2)
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
+    delegatee.reply(MessageProcessed("b"))
 
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+    queue ! Enqueue("c")
+    delegatee.expectMsg("c")
+  }
 
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageProcessed("b"))
+  "shutdown with all outstanding work done" in new QueueScope {
 
-      queue ! Enqueue("c")
-      delegatee.expectMsg("c")
-    }
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
 
-    "shutdown with all outstanding work done" in new QueueScope {
+    queue ! Enqueue("a")
 
-      val queue = defaultQueue()
-      val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+    delegatee.expectMsg("a")
 
-      queue ! Enqueue("a")
+    queueProcessor ! Shutdown(Some(self))
 
-      delegatee.expectMsg("a")
+    expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      queueProcessor ! Shutdown(Some(self))
+    delegatee.reply(MessageProcessed("a"))
 
-      expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
+    expectMsg(ShutdownSuccessfully)
+  }
+}
 
-      delegatee.reply(MessageProcessed("a"))
+class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
+  "send metric on Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
 
-      expectMsg(ShutdownSuccessfully)
-    }
+    val queue = defaultQueue()
+    initQueue(queue, numberOfWorkers = 3)
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
+
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueLength(1)) andThen
+      one(mc).send(Metric.WorkQueueLength(0))
+  }
+
+  "send metric on failed Enqueue" in new QueueScope {
+    override val metricsCollector = mock[MetricsCollector]
+    val mc = metricsCollector
+
+    val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
+
+    queue ! Enqueue("a", replyTo = Some(self))
+    expectMsg(WorkEnqueued)
+
+    queue ! Enqueue("b", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    queue ! Enqueue("c", replyTo = Some(self))
+    expectMsgType[EnqueueRejected]
+
+    there was after(100.milliseconds).
+      one(mc).send(Metric.WorkQueueLength(0)) andThen
+      one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
+      two(mc).send(Metric.EnqueueRejected)
+  }
+}
+
+class QueueWorkMetricsSpec extends SpecWithActorSystem {
+
+  "send WorkCompleted, WorkFailed, and WorkTimedOut metrics" in new MetricCollectorScope() {
+
+    val workerProps: Props = Worker.default(
+      TestProbe().ref,
+      Props.empty
+    )(resultChecker)
+
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 40.milliseconds))
+    val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
+
+    watch(processor)
+
+    queue ! Enqueue("a")
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("a"))
+
+    queue ! Enqueue("b")
+    delegatee.expectMsg("b")
+    delegatee.reply(MessageFailed)
+
+    queue ! Enqueue("c")
+    delegatee.expectMsg("c") //timeout this one
+
+    queue ! Enqueue("d")
+    delegatee.expectMsg("d")
+
+    receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
+
+  }
+
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
+  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings) {
-      case MessageProcessed(msg) => Right(msg)
-      case MessageFailed => Left("doesn't matter")
+    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
+      case MessageProcessed(msg) ⇒ Right(msg)
+      case MessageFailed         ⇒ Left("doesn't matter")
     }
 
-
-  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1) : QueueProcessorRef = {
-    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize))
+  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
+    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(processorProps)
   }
 
   def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
     queue ! QueryStatus()
-    fishForMessage(500.millisecond, "wait for workers to register"){
-      case qs : QueueStatus =>
+    fishForMessage(500.millisecond, "wait for workers to register") {
+      case qs: QueueStatus ⇒
         val registered = qs.queuedWorkers.size == numberOfWorkers
-        if(!registered) queue ! QueryStatus()
+        if (!registered) queue ! QueryStatus()
         registered
     }
   }
-  
+
   def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(iteratorQueueProps(iterator, workSetting), "iterator-queue-" + Random.nextInt(100000))
+    system.actorOf(
+      iteratorQueueProps(iterator, workSetting, metricsCollector),
+      "iterator-queue-" + Random.nextInt(100000)
+    )
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
-    system.actorOf(Queue.default(workSetting), "default-queue-" + Random.nextInt(100000))
+    system.actorOf(
+      Queue.default(workSetting, metricsCollector),
+      "default-queue-" + Random.nextInt(100000)
+    )
 
-
-  def withBackPressure(backPressureSetting: BackPressureSettings = BackPressureSettings(),
-                        defaultWorkSetting: WorkSettings = WorkSettings()) =
-      system.actorOf(Queue.withBackPressure(backPressureSetting, defaultWorkSetting), "with-back-pressure-queue" + Random.nextInt(500000))
+  def withBackPressure(
+    backPressureSetting: BackPressureSettings = BackPressureSettings(),
+    defaultWorkSetting:  WorkSettings         = WorkSettings()
+  ) =
+    system.actorOf(
+      Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
+      "with-back-pressure-queue" + Random.nextInt(500000)
+    )
 }
+
+class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
+  @volatile
+  var receivedMetrics: List[Metric] = Nil
+
+  override val metricsCollector: MetricsCollector = new MetricsCollector {
+    def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
+  }
+
+}
+
