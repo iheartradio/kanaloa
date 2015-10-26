@@ -20,9 +20,9 @@ object MetricsCollector {
     fromConfig(pipelineName, metricsConfig)
   }
 
-  /** If statsD config exists, create StatsD, otherwise NoOp */
+  /** If statsd config exists, create StatsD, otherwise NoOp */
   def fromConfig(pipelineName: String, config: Config)(implicit system: ActorSystem): MetricsCollector = {
-    config.getOption[Config]("statsD").fold[MetricsCollector](NoOpMetricsCollector) { statsDConf ⇒
+    config.getOption[Config]("statsd").fold[MetricsCollector](NoOpMetricsCollector) { statsDConf ⇒
       StatsDMetricsCollector.fromConfig(pipelineName, statsDConf)
     }
   }
