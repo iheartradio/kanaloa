@@ -101,7 +101,7 @@
             "threshold2Color": "rgba(234, 112, 112, 0.22)"
           },
           "id": 6,
-          "leftYAxisLabel": "count",
+          "leftYAxisLabel": "per second",
           "legend": {
             "avg": false,
             "current": true,
@@ -127,11 +127,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.failed.count, '.*$namespace.(.*).work.failed.count', 'failure (\\1)')",
-              "textEditor": false
+              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.failed.rate, '.*$namespace.(.*).work.failed.*', 'failure (\\1)')",
+              "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.timedOut.count, '.*$namespace.(.*).work.timedOut.count', 'timeout (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', 'timeout (\\1)')",
               "textEditor": true
             }
           ],
@@ -353,8 +353,8 @@
           "targets": [
             {
               "hide": false,
-              "target": "aliasSub(stats.timers.$namespace.$pipelineName.queue.waitTime, '.*$namespace.(.*).queue.*','wait time (\\1)')",
-              "textEditor": true
+              "target": "aliasSub(stats.timers.$namespace.$pipelineName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', 'wait time (\\1)')",
+              "textEditor": false
             }
           ],
           "timeFrom": null,
@@ -614,7 +614,7 @@
     }
   ],
   "time": {
-    "from": "now-15m",
+    "from": "now-1h",
     "to": "now"
   },
   "templating": {
@@ -632,56 +632,6 @@
         "multiFormat": "glob",
         "name": "namespace",
         "options": [
-          {
-            "selected": false,
-            "text": "poweramp-abtest",
-            "value": "poweramp-abtest"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-catalog",
-            "value": "poweramp-catalog"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-email",
-            "value": "poweramp-email"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-google-now",
-            "value": "poweramp-google-now"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-live-meta",
-            "value": "poweramp-live-meta"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-muse",
-            "value": "poweramp-muse"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-session",
-            "value": "poweramp-session"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-station",
-            "value": "poweramp-station"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-subscription",
-            "value": "poweramp-subscription"
-          },
-          {
-            "selected": false,
-            "text": "poweramp-sweeper",
-            "value": "poweramp-sweeper"
-          },
           {
             "selected": true,
             "text": "workPipeline",
@@ -710,16 +660,6 @@
             "text": "All",
             "value": "*",
             "selected": true
-          },
-          {
-            "text": "example",
-            "value": "example",
-            "selected": false
-          },
-          {
-            "text": "googleNowAgent",
-            "value": "googleNowAgent",
-            "selected": false
           }
         ],
         "query": "stats.timers.$namespace.*",
@@ -736,6 +676,6 @@
   },
   "refresh": "5s",
   "schemaVersion": 6,
-  "version": 13,
+  "version": 15,
   "links": []
 }
