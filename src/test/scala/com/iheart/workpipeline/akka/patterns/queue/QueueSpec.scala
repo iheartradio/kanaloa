@@ -320,7 +320,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
     queue ! Enqueue("c", replyTo = Some(self))
     expectMsgType[EnqueueRejected]
 
-    there was after(100.milliseconds).
+    there was after(200.milliseconds).
       one(mc).send(Metric.WorkQueueLength(0)) andThen
       two(mc).send(Metric.EnqueueRejected)
   }
