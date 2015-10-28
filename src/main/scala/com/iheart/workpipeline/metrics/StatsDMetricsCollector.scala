@@ -65,13 +65,14 @@ class StatsDMetricsCollector(
       gauge("pool.utilized", numWorkers)
 
     case DispatchWait(duration) ⇒
+      statsd.timing("queue.avgProcessTime", duration.toMillis.toInt, eventSampleRate)
+
+    case WorkQueueExpectedWaitTime(duration) ⇒
       statsd.timing("queue.waitTime", duration.toMillis.toInt, eventSampleRate)
 
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
 
-    case WorkQueueMaxLength(length) ⇒
-      gauge("queue.maxLength", length)
   }
 }
 

@@ -164,28 +164,31 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 
       system.actorOf(queueProcessorWithCBProps(
         queue,
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
+        CircuitBreakerSettings(historyLength = 3, closeDuration = 500.milliseconds)
       ))
 
       queue ! Enqueue("a")
-      queue ! Enqueue("b")
-      queue ! Enqueue("c")
-      queue ! Enqueue("d")
       delegatee.expectMsg("a")
       delegatee.reply(MessageProcessed("a"))
+
+      queue ! Enqueue("b")
       delegatee.expectMsg("b")
       delegatee.reply(MessageFailed)
+
+      queue ! Enqueue("c")
       delegatee.expectMsg("c")
       delegatee.reply(MessageFailed)
+
+      queue ! Enqueue("d")
       delegatee.expectMsg("d")
       delegatee.reply(MessageFailed)
 
-      delegatee.expectNoMsg(50.milliseconds) //give some time for the circuit breaker to kick in
+      delegatee.expectNoMsg(70.milliseconds) //give some time for the circuit breaker to kick in
 
-      queue ! Enqueue(DelegateeMessage("e"))
+      queue ! Enqueue("e")
       delegatee.expectNoMsg(150.milliseconds)
 
-      delegatee.expectMsg(DelegateeMessage("e"))
+      delegatee.expectMsg("e")
 
     }
 
@@ -282,29 +285,24 @@ class DefaultQueueSpec extends SpecWithActorSystem {
   }
 }
 
-class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
-  "send metric on Enqueue" in new QueueScope {
-    override val metricsCollector = mock[MetricsCollector]
-    val mc = metricsCollector
+class QueueMetricsSpec extends SpecWithActorSystem {
+
+  "send metric on Enqueue" in new MetricCollectorScope {
 
     val queue = defaultQueue()
-    initQueue(queue, numberOfWorkers = 3)
+    initQueue(queue, numberOfWorkers = 1)
 
-    queue ! Enqueue("a", replyTo = Some(self))
-    expectMsg(WorkEnqueued)
+    queue ! Enqueue("a")
 
-    delegatee.expectMsg("a")
-    delegatee.reply(MessageProcessed("a"))
+    queue ! Enqueue("b")
 
-    there was after(100.milliseconds).
-      one(mc).send(Metric.WorkQueueLength(0)) andThen
-      one(mc).send(Metric.WorkQueueLength(1)) andThen
-      one(mc).send(Metric.WorkQueueLength(0))
+    expectNoMsg(100.milliseconds) //wait
+
+    receivedMetrics must contain(allOf[Metric](Metric.WorkQueueLength(0), Metric.WorkQueueLength(1)))
+
   }
 
-  "send metric on failed Enqueue" in new QueueScope {
-    override val metricsCollector = mock[MetricsCollector]
-    val mc = metricsCollector
+  "send metric on failed Enqueue" in new MetricCollectorScope {
 
     val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
 
@@ -317,10 +315,9 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
     queue ! Enqueue("c", replyTo = Some(self))
     expectMsgType[EnqueueRejected]
 
-    there was after(100.milliseconds).
-      one(mc).send(Metric.WorkQueueLength(0)) andThen
-      one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
-      two(mc).send(Metric.EnqueueRejected)
+    receivedMetrics must contain(Metric.WorkQueueLength(0))
+    receivedMetrics must contain(be_==(Metric.EnqueueRejected)).exactly(2)
+
   }
 }
 
@@ -333,7 +330,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem {
       Props.empty
     )(resultChecker)
 
-    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 40.milliseconds))
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
     val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
 
     watch(processor)

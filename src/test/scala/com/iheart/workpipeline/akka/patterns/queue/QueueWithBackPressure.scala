@@ -132,36 +132,5 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       )) must beFalse
     }
 
-    "performance test" >> {
-      val hist = status(
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 7, LocalDateTime.now.minusMinutes(2)),
-        (3, 10, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 12, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 5, LocalDateTime.now.minusMinutes(2)),
-        (3, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 4, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (0, 7, LocalDateTime.now.minusMinutes(2)),
-        (0, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (2, 10, LocalDateTime.now.minusMinutes(2)),
-        (1, 8, LocalDateTime.now.minusMinutes(2)),
-        (4, 6, LocalDateTime.now.minusMinutes(2)),
-        (1, 7, LocalDateTime.now.minusMinutes(1)),
-        (1, 6, LocalDateTime.now)
-      )
-      val start = System.nanoTime()
-      val sampleSize = 10000
-      (1 to sampleSize).foreach(_ ⇒
-        q.isOverCapacity(hist))
-
-      val duration = (System.nanoTime() - start) / 1000
-      val speed = duration / sampleSize
-      speed.toInt must be_<(20) //per test taking less than 20 microseconds (on a macbook pro it's taking 5-6 microseconds)
-    }
   }
 }
