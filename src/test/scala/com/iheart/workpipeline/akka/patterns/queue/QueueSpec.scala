@@ -168,15 +168,18 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
       ))
 
       queue ! Enqueue("a")
-      queue ! Enqueue("b")
-      queue ! Enqueue("c")
-      queue ! Enqueue("d")
       delegatee.expectMsg("a")
       delegatee.reply(MessageProcessed("a"))
+
+      queue ! Enqueue("b")
       delegatee.expectMsg("b")
       delegatee.reply(MessageFailed)
+
+      queue ! Enqueue("c")
       delegatee.expectMsg("c")
       delegatee.reply(MessageFailed)
+
+      queue ! Enqueue("d")
       delegatee.expectMsg("d")
       delegatee.reply(MessageFailed)
 
