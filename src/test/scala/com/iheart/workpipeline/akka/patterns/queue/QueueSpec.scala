@@ -164,7 +164,7 @@ class CircuitBreakerSpec extends SpecWithActorSystem {
 
       system.actorOf(queueProcessorWithCBProps(
         queue,
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 300.milliseconds)
+        CircuitBreakerSettings(historyLength = 3, closeDuration = 500.milliseconds)
       ))
 
       queue ! Enqueue("a")
@@ -285,29 +285,24 @@ class DefaultQueueSpec extends SpecWithActorSystem {
   }
 }
 
-class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
-  "send metric on Enqueue" in new QueueScope {
-    override val metricsCollector = mock[MetricsCollector]
-    val mc = metricsCollector
+class QueueMetricsSpec extends SpecWithActorSystem {
+
+  "send metric on Enqueue" in new MetricCollectorScope {
 
     val queue = defaultQueue()
-    initQueue(queue, numberOfWorkers = 3)
+    initQueue(queue, numberOfWorkers = 1)
 
-    queue ! Enqueue("a", replyTo = Some(self))
-    expectMsg(WorkEnqueued)
+    queue ! Enqueue("a")
 
-    delegatee.expectMsg("a")
-    delegatee.reply(MessageProcessed("a"))
+    queue ! Enqueue("b")
 
-    there was after(100.milliseconds).
-      one(mc).send(Metric.WorkQueueLength(0)) andThen
-      one(mc).send(Metric.WorkQueueLength(1)) andThen
-      one(mc).send(Metric.WorkQueueLength(0))
+    expectNoMsg(100.milliseconds) //wait
+
+    receivedMetrics must contain(allOf[Metric](Metric.WorkQueueLength(0), Metric.WorkQueueLength(1)))
+
   }
 
-  "send metric on failed Enqueue" in new QueueScope {
-    override val metricsCollector = mock[MetricsCollector]
-    val mc = metricsCollector
+  "send metric on failed Enqueue" in new MetricCollectorScope {
 
     val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
 
@@ -320,9 +315,9 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
     queue ! Enqueue("c", replyTo = Some(self))
     expectMsgType[EnqueueRejected]
 
-    there was after(200.milliseconds).
-      one(mc).send(Metric.WorkQueueLength(0)) andThen
-      two(mc).send(Metric.EnqueueRejected)
+    receivedMetrics must contain(Metric.WorkQueueLength(0))
+    receivedMetrics must contain(be_==(Metric.EnqueueRejected)).exactly(2)
+
   }
 }
 

@@ -15,3 +15,5 @@ libraryDependencies ++= Dependencies.akka ++
 scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
 Formatting.formatSettings
+
+testOptions in Test += Tests.Argument(TestFrameworks.Specs2, "-xonly")
