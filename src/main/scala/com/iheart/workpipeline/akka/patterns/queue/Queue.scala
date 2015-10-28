@@ -41,7 +41,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
           val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
 
           metricsCollector.send(Metric.WorkEnqueued)
-          metricsCollector.send(Metric.WorkQueueLength(newBuffer.length))
           status.avgDispatchDurationLowerBound.foreach { (d: Duration) ⇒
             metricsCollector.send(Metric.DispatchWait(d))
           }
@@ -129,6 +128,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
+        metricsCollector.send(Metric.WorkQueueLength(status.workBuffer.length))
         if (bufferHistoryLength > 0)
           status.copy(bufferHistory = updatedHistory)
         else status
@@ -146,8 +146,6 @@ case class QueueWithBackPressure(
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms")
 
-  metricsCollector.send(Metric.WorkQueueMaxLength(settings.maxBufferSize))
-
   def isOverCapacity(qs: QueueStatus): Boolean =
     if (qs.currentQueueLength == 0)
       false
@@ -156,6 +154,7 @@ case class QueueWithBackPressure(
       true
     } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBound.getOrElse(Duration.Zero) * qs.currentQueueLength
+      metricsCollector.send(Metric.WorkQueueExpectedWaitTime(expectedWaitTime))
 
       val ret = expectedWaitTime > settings.thresholdForExpectedWaitTime
       if (ret) log.error(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${settings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
