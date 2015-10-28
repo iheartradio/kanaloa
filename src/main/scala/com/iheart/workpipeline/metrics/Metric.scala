@@ -23,5 +23,6 @@ object Metric {
   case class DispatchWait(duration: Duration) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueMaxLength(length: Int) extends Status
+  case class WorkQueueExpectedWaitTime(duration: Duration) extends Status
 }
 

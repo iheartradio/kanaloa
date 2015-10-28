@@ -157,6 +157,7 @@ case class QueueWithBackPressure(
       true
     } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBound.getOrElse(Duration.Zero) * qs.currentQueueLength
+      metricsCollector.send(Metric.WorkQueueExpectedWaitTime(expectedWaitTime))
 
       val ret = expectedWaitTime > settings.thresholdForExpectedWaitTime
       if (ret) log.error(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${settings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
