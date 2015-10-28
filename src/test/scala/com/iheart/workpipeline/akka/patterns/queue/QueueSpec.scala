@@ -335,7 +335,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem {
       Props.empty
     )(resultChecker)
 
-    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 40.milliseconds))
+    val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
     val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
 
     watch(processor)

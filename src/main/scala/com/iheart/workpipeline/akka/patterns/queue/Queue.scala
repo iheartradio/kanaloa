@@ -41,7 +41,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
           val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
 
           metricsCollector.send(Metric.WorkEnqueued)
-          metricsCollector.send(Metric.WorkQueueLength(newBuffer.length))
           status.avgDispatchDurationLowerBound.foreach { (d: Duration) ⇒
             metricsCollector.send(Metric.DispatchWait(d))
           }
@@ -129,6 +128,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
+        metricsCollector.send(Metric.WorkQueueLength(status.workBuffer.length))
         if (bufferHistoryLength > 0)
           status.copy(bufferHistory = updatedHistory)
         else status
