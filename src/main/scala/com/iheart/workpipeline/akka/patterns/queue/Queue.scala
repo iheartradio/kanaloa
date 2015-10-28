@@ -147,8 +147,6 @@ case class QueueWithBackPressure(
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms")
 
-  metricsCollector.send(Metric.WorkQueueMaxLength(settings.maxBufferSize))
-
   def isOverCapacity(qs: QueueStatus): Boolean =
     if (qs.currentQueueLength == 0)
       false

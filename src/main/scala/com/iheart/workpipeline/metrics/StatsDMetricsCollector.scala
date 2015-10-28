@@ -73,8 +73,6 @@ class StatsDMetricsCollector(
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
 
-    case WorkQueueMaxLength(length) ⇒
-      gauge("queue.maxLength", length)
   }
 }
 

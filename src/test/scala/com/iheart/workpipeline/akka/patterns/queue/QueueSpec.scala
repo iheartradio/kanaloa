@@ -319,7 +319,6 @@ class QueueMetricsSpec extends SpecWithActorSystem with Mockito {
 
     there was after(100.milliseconds).
       one(mc).send(Metric.WorkQueueLength(0)) andThen
-      one(mc).send(Metric.WorkQueueMaxLength(1)) andThen
       two(mc).send(Metric.EnqueueRejected)
   }
 }

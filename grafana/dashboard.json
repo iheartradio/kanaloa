@@ -283,11 +283,6 @@
               "hide": false,
               "target": "aliasSub(stats.gauges.$namespace.$pipelineName.queue.length, '.*$namespace.(.*).queue.length', 'queue length (\\1)')",
               "textEditor": true
-            },
-            {
-              "hide": true,
-              "target": "aliasSub(stats.gauges.$namespace.$pipelineName.queue.maxLength, '.*$namespace.(.*).queue.maxLength', 'max length (\\1)')",
-              "textEditor": true
             }
           ],
           "timeFrom": null,
@@ -741,6 +736,6 @@
   },
   "refresh": "5s",
   "schemaVersion": 6,
-  "version": 12,
+  "version": 13,
   "links": []
 }
