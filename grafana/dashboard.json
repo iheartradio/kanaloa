@@ -636,6 +636,11 @@
             "selected": true,
             "text": "workPipeline",
             "value": "workPipeline"
+          },
+          {
+            "selected": false,
+            "text": "All",
+            "value": "*"
           }
         ],
         "query": "stats.timers.*",
