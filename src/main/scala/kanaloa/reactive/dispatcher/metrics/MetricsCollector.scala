@@ -14,17 +14,12 @@ object NoOpMetricsCollector extends MetricsCollector {
 }
 
 object MetricsCollector {
-  /** Create a MetricsCollector from a root typesafe Config */
-  def fromRootConfig(dispatcherName: String, config: Config = ConfigFactory.load())(implicit system: ActorSystem) = {
-    val path = "reactiveDispatcher.metrics"
-    val metricsConfig: Config = config.getOrElse[Config](path, ConfigFactory.empty)
-    fromConfig(dispatcherName, metricsConfig)
-  }
-
   /** If statsd config exists, create StatsD, otherwise NoOp */
   def fromConfig(dispatcherName: String, config: Config)(implicit system: ActorSystem): MetricsCollector = {
-    config.getOption[Config]("statsd").fold[MetricsCollector](NoOpMetricsCollector) { statsDConf ⇒
-      StatsDMetricsCollector.fromConfig(dispatcherName, statsDConf)
+    import net.ceedubs.ficus.Ficus._
+    import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+    config.as[Option[StatsDMetricsCollectorSettings]]("metrics.statsd").fold[MetricsCollector](NoOpMetricsCollector) { settings ⇒
+      StatsDMetricsCollector.apply(dispatcherName, settings)
     }
   }
 }

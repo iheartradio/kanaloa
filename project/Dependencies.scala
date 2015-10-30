@@ -4,7 +4,9 @@ object Dependencies {
 
   val resolvers = Seq(
     Resolver.typesafeRepo("releases"),
-    Resolver.bintrayRepo("scalaz", "releases"))
+    Resolver.bintrayRepo("scalaz", "releases"),
+    "Sonatype OSS Releases"  at "http://oss.sonatype.org/content/repositories/releases/"
+  )
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
@@ -20,6 +22,10 @@ object Dependencies {
 
   val other = Seq(
     "org.scala-lang" % "scala-reflect" % Versions.scala)
+
+  val config = Seq(
+    "net.ceedubs" %% "ficus" % "1.1.2"
+  )
 
 }
 
