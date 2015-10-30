@@ -1,5 +1,9 @@
 language: scala
-sudo: true #use legacy travis infra which works better
+sudo: required
+
+services:
+   - docker
+   
 scala:
    - 2.11.7
 jdk:
