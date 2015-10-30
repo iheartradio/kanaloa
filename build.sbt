@@ -4,7 +4,7 @@ version in ThisBuild := "1.0.0-" + Versions.releaseType
 
 scalaVersion in ThisBuild := Versions.scala
 
-lazy val workPipeline = project in file(".")
+lazy val reactiveDispatcher = project in file(".")
 
 resolvers ++= Dependencies.resolvers
 
