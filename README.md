@@ -1,4 +1,4 @@
-# work-pipeline
+# work-dispatcher
 
 [![Build Status](https://travis-ci.org/iheartradio/work-pipeline.svg)](https://travis-ci.org/iheartradio/work-pipeline)
 
