@@ -90,7 +90,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
   "send PoolSize metric when pool size changes" in new MetricCollectorScope {
 
     val queueProcessor = initQueue(
-      iteratorQueue(Iterator("a", "b")),
+      iteratorQueue(Iterator("a", "b")), //make sure queue remains alive during test
       numberOfWorkers = 1
     )
     queueProcessor ! ScaleTo(3)

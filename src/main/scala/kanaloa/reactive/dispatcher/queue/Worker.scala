@@ -1,11 +1,9 @@
 package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
-import kanaloa.reactive.dispatcher
-import kanaloa.reactive.dispatcher.ApiProtocol
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, WorkFailed, WorkTimedOut }
 import kanaloa.reactive.dispatcher.queue.Queue.{ NoWorkLeft, RequestWork, Unregister, Unregistered }
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ MissionAccomplished, WorkCompleted }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
 import kanaloa.util.MessageScheduler
 
@@ -38,7 +36,6 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
 
     case NoWorkLeft ⇒
-      monitor ! MissionAccomplished(self) //todo: maybe a simple stop is good enough?
       finish()
 
     case Worker.Retire ⇒
