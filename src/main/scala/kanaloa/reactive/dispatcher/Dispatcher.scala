@@ -2,12 +2,11 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor._
 import com.typesafe.config.{ Config, ConfigFactory }
-import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, ShutdownGracefully }
+import kanaloa.reactive.dispatcher.ApiProtocol.{ ShutdownGracefully, WorkRejected }
 import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.OverCapacity
 import kanaloa.reactive.dispatcher.queue.Queue.{ Enqueue, EnqueueRejected, WorkEnqueued }
 import kanaloa.reactive.dispatcher.queue._
-import kanaloa.reactive.dispatcher.queue.queue.{ QueueRef, ResultChecker }
 
 import scala.concurrent.duration._
 

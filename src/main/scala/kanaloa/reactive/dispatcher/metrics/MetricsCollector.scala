@@ -3,7 +3,7 @@ package kanaloa.reactive.dispatcher.metrics
 import akka.actor.ActorSystem
 import com.typesafe.config.{ Config, ConfigFactory }
 import kanaloa.util.ConfigWrapper
-import ConfigWrapper.ImplicitConfigWrapper
+import kanaloa.util.ConfigWrapper.ImplicitConfigWrapper
 
 trait MetricsCollector {
   def send(metric: Metric): Unit

@@ -1,21 +1,20 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.{ Props, Terminated, ActorLogging, Actor }
+import java.time.{ Duration ⇒ JDuration, LocalDateTime }
+
+import akka.actor.{ Actor, ActorLogging, Props, Terminated }
 import kanaloa.reactive.dispatcher.ApiProtocol
-import kanaloa.reactive.dispatcher.queue.queue.{ QueueProcessorRef, QueueRef }
-import kanaloa.reactive.dispatcher.metrics.{ NoOpMetricsCollector, Metric, MetricsCollector }
-import ApiProtocol.QueryStatus
-import AutoScaling._
-import QueueProcessor._
-import java.time.{ LocalDateTime, Duration ⇒ JDuration }
-import Queue.QueueDispatchInfo
-import QueueProcessor.ScaleTo
-import Worker.{ Working, WorkerStatus }
+import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
+import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
+import kanaloa.reactive.dispatcher.queue.AutoScaling._
+import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ ScaleTo, _ }
+import kanaloa.reactive.dispatcher.queue.Worker.{ WorkerStatus, Working }
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
-import scala.util.Random
 import scala.language.implicitConversions
+import scala.util.Random
 
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef

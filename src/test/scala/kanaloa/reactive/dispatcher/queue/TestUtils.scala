@@ -1,10 +1,8 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.{ ActorSystem, Props, Actor, ActorRef }
+import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
-import kanaloa.reactive.dispatcher.queue.queue.{ ResultChecker, QueueRef }
-import kanaloa.reactive.dispatcher.metrics.{ NoOpMetricsCollector, MetricsCollector }
-
+import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
 import org.specs2.specification.Scope
 
 object TestUtils {

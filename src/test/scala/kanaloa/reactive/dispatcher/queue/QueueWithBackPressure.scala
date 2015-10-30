@@ -5,12 +5,12 @@ import java.time.temporal.ChronoUnit
 
 import akka.actor._
 import akka.testkit.TestActorRef
-import kanaloa.reactive.dispatcher.{ SpecWithActorSystem, ApiProtocol }
-import ApiProtocol._
-import Queue._
-import scala.concurrent.duration._
+import kanaloa.reactive.dispatcher.ApiProtocol._
+import kanaloa.reactive.dispatcher.queue.Queue._
+import kanaloa.reactive.dispatcher.queue.TestUtils._
+import kanaloa.reactive.dispatcher.{ ApiProtocol, SpecWithActorSystem }
 
-import TestUtils._
+import scala.concurrent.duration._
 
 class QueueWithBackPressureSpec extends SpecWithActorSystem {
 

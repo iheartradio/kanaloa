@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher.util
 
 import kanaloa.util.FiniteCollection
-import FiniteCollection._
+import kanaloa.util.FiniteCollection._
 import org.specs2.mutable.Specification
 
 class FiniteCollectionSpec extends Specification {

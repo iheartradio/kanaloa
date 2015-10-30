@@ -2,7 +2,7 @@ package kanaloa.util
 
 import scala.language.higherKinds
 import scala.reflect.ClassTag
-import scala.util.{ Try, Success, Failure }
+import scala.util.Try
 
 // based on http://blog.scalac.io/2015/05/28/scala-modes.html
 trait Mode {

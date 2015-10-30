@@ -3,21 +3,16 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import akka.testkit.{ TestActorRef, TestProbe }
 import kanaloa.reactive.dispatcher
-import kanaloa.reactive.dispatcher.{ SpecWithActorSystem, ApiProtocol }
-import kanaloa.reactive.dispatcher.queue.queue.{ QueueProcessorRef, QueueRef }
-import ApiProtocol.ShutdownSuccessfully
-import kanaloa.reactive.dispatcher.metrics.{ Metric, NoOpMetricsCollector, MetricsCollector }
-import dispatcher.ApiProtocol.{ ShutdownSuccessfully, QueryStatus }
-import Queue._
-import QueueProcessor._
-import Queue.{ QueueStatus, WorkEnqueued }
-import QueueProcessor.{ Shutdown }
-import dispatcher.ApiProtocol.ShutdownSuccessfully
-import scala.concurrent.duration._
-import scala.util.Random
+import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully }
+import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
+import kanaloa.reactive.dispatcher.queue.Queue.{ QueueStatus, WorkEnqueued, _ }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ Shutdown, _ }
+import kanaloa.reactive.dispatcher.queue.TestUtils._
 import org.specs2.mock.Mockito
 
-import TestUtils._
+import scala.concurrent.duration._
+import scala.util.Random
 
 class QueueSpec extends SpecWithActorSystem {
 
@@ -101,7 +96,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Mockito {
     queueProcessor ! ScaleTo(3)
     queueProcessor ! ScaleTo(5)
 
-    expectNoMsg(100.milliseconds)
+    expectNoMsg(50.milliseconds) //wait
 
     receivedMetrics must contain(allOf[Metric](Metric.PoolSize(1), Metric.PoolSize(3), Metric.PoolSize(5)))
   }

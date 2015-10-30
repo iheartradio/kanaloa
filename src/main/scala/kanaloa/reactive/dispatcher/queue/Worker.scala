@@ -3,13 +3,11 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import kanaloa.reactive.dispatcher
 import kanaloa.reactive.dispatcher.ApiProtocol
-import kanaloa.reactive.dispatcher.queue.queue.{ ResultChecker, QueueRef }
+import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, WorkFailed, WorkTimedOut }
+import kanaloa.reactive.dispatcher.queue.Queue.{ NoWorkLeft, RequestWork, Unregister, Unregistered }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ MissionAccomplished, WorkCompleted }
+import kanaloa.reactive.dispatcher.queue.Worker._
 import kanaloa.util.MessageScheduler
-import dispatcher.ApiProtocol.QueryStatus
-import ApiProtocol.{ WorkTimedOut, WorkFailed }
-import QueueProcessor.{ WorkCompleted, MissionAccomplished }
-import Queue.{ Unregistered, Unregister, NoWorkLeft, RequestWork }
-import Worker._
 
 import scala.concurrent.duration._
 

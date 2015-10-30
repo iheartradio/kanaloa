@@ -2,6 +2,7 @@ package kanaloa.util
 
 import scala.reflect.runtime.universe.{ typeOf, TypeTag }
 import com.typesafe.config._
+
 import scala.collection.JavaConverters._
 
 object ConfigWrapper {
