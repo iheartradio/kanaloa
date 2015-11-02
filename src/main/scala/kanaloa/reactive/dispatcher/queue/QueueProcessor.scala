@@ -61,9 +61,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         else if (diff < 0 && newPoolSize >= settings.minPoolSize)
           pool.take(-diff).foreach(_ ! Worker.Retire)
 
-      case MissionAccomplished(worker) ⇒
-        removeWorker(pool, worker, monitoring(resultHistory), "successfully after all work is done")
-
       case WorkCompleted(worker) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
         metricsCollector.send(Metric.WorkCompleted)
@@ -77,7 +74,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         metricsCollector.send(Metric.WorkTimedOut)
 
       case Terminated(worker) if pool.contains(worker) ⇒
-        removeWorker(pool, worker, monitoring(resultHistory), "unexpected termination when all workers retired")
+        removeWorker(pool, worker, monitoring(resultHistory), "Worker removed")
 
       case Terminated(`queue`) ⇒
         log.info(s"Queue ${queue.path} is terminated")
@@ -102,8 +99,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 
   def shuttingDown(pool: WorkerPool, reportTo: Option[ActorRef]): Receive = {
-    case MissionAccomplished(worker) ⇒
-      removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
 
     case Terminated(worker) if pool.contains(worker) ⇒
       removeWorker(pool, worker, shuttingDown(_, reportTo), "successfully after command", reportTo)
@@ -204,7 +199,6 @@ object QueueProcessor {
     assert(numOfWorkers > 0)
   }
 
-  case class MissionAccomplished(worker: WorkerRef)
   case class WorkCompleted(worker: WorkerRef)
 
   case class QueueMaxProcessTimeReached(queue: QueueRef)

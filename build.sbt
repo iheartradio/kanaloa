@@ -10,7 +10,9 @@ resolvers ++= Dependencies.resolvers
 
 libraryDependencies ++= Dependencies.akka ++
                         Dependencies.test ++
-                        Dependencies.other
+                        Dependencies.other ++
+                        Dependencies.config
+
 
 scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
