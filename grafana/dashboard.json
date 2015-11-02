@@ -1,6 +1,6 @@
 {
-  "title": "Work Pipeline",
-  "originalTitle": "Work Pipeline",
+  "title": "Reactive Dispatcher",
+  "originalTitle": "Reactive Dispatcher",
   "tags": [],
   "style": "dark",
   "timezone": "browser",
@@ -60,7 +60,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', 'success (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', 'success (\\1)')",
               "textEditor": false
             }
           ],
@@ -127,11 +127,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.failed.rate, '.*$namespace.(.*).work.failed.*', 'failure (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.failed.rate, '.*$namespace.(.*).work.failed.*', 'failure (\\1)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', 'timeout (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', 'timeout (\\1)')",
               "textEditor": true
             }
           ],
@@ -212,11 +212,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.queue.enqueued.rate, '.*$namespace.(.*).queue.enqueued.rate', 'accepted (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueued.rate, '.*$namespace.(.*).queue.enqueued.rate', 'accepted (\\1)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.queue.enqueueRejected.rate, '.*$namespace.(.*).queue.enqueueRejected.rate', 'rejected (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueueRejected.rate, '.*$namespace.(.*).queue.enqueueRejected.rate', 'rejected (\\1)')",
               "textEditor": true
             }
           ],
@@ -281,7 +281,7 @@
           "targets": [
             {
               "hide": false,
-              "target": "aliasSub(stats.gauges.$namespace.$pipelineName.queue.length, '.*$namespace.(.*).queue.length', 'queue length (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.length, '.*$namespace.(.*).queue.length', 'queue length (\\1)')",
               "textEditor": true
             }
           ],
@@ -353,7 +353,7 @@
           "targets": [
             {
               "hide": false,
-              "target": "aliasSub(stats.timers.$namespace.$pipelineName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', 'wait time (\\1)')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', 'wait time (\\1)')",
               "textEditor": false
             }
           ],
@@ -415,7 +415,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.timers.$namespace.$pipelineName.queue.avgProcessTime.mean, '.*$namespace.(.*).queue.*','process time (\\1)')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.avgProcessTime.mean, '.*$namespace.(.*).queue.*','process time (\\1)')",
               "textEditor": true
             }
           ],
@@ -485,7 +485,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$pipelineName.queue.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', 'circuit breaker open (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', 'circuit breaker open (\\1)')",
               "textEditor": true
             }
           ],
@@ -553,11 +553,11 @@
           "steppedLine": true,
           "targets": [
             {
-              "target": "aliasSub(stats.gauges.$namespace.$pipelineName.pool.size, '.*$namespace.(.*).pool.size', 'max size (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.size, '.*$namespace.(.*).pool.size', 'max size (\\1)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.gauges.$namespace.$pipelineName.pool.utilized, '.*$namespace.(.*).pool.utilized', 'utilized (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.utilized, '.*$namespace.(.*).pool.utilized', 'utilized (\\1)')",
               "textEditor": true
             }
           ],
@@ -622,8 +622,8 @@
       {
         "allFormat": "glob",
         "current": {
-          "text": "workPipeline",
-          "value": "workPipeline"
+          "text": "reactiveDispatcher",
+          "value": "reactiveDispatcher"
         },
         "datasource": null,
         "includeAll": false,
@@ -634,8 +634,8 @@
         "options": [
           {
             "selected": true,
-            "text": "workPipeline",
-            "value": "workPipeline"
+            "text": "reactiveDispatcher",
+            "value": "reactiveDispatcher"
           },
           {
             "selected": false,
@@ -656,10 +656,10 @@
         },
         "datasource": null,
         "includeAll": true,
-        "label": "Pipeline",
+        "label": "Dispatcher",
         "multi": false,
         "multiFormat": "glob",
-        "name": "pipelineName",
+        "name": "dispatcherName",
         "options": [
           {
             "text": "All",
