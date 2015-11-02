@@ -119,17 +119,19 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     val timestamp = LocalDateTime.now.toInstant(ZoneOffset.UTC).toEpochMilli
     val worker = context.actorOf(
       workerProp(queue, delegateeProps),
-      s"worker-${queue.path.name}-$index-${timestamp}")
+      s"worker-${queue.path.name}-$index-${timestamp}"
+    )
     context watch worker
     worker
   }
 
   private def removeWorker(
-    pool: WorkerPool,
-    worker: WorkerRef,
-    nextContext: WorkerPool ⇒ Receive,
-    finishWithMessage: String = "",
-    reportToOnFinish: Option[ActorRef] = None): Unit = {
+    pool:              WorkerPool,
+    worker:            WorkerRef,
+    nextContext:       WorkerPool ⇒ Receive,
+    finishWithMessage: String               = "",
+    reportToOnFinish:  Option[ActorRef]     = None
+  ): Unit = {
     context unwatch worker
     val newPool = pool - worker
     if (!finishIfPoolIsEmpty(newPool, finishWithMessage, reportToOnFinish))
@@ -138,9 +140,10 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def finishIfPoolIsEmpty(
-    pool: WorkerPool,
+    pool:        WorkerPool,
     withMessage: String,
-    reportTo: Option[ActorRef] = None): Boolean = {
+    reportTo:    Option[ActorRef] = None
+  ): Boolean = {
     val finishes = pool.isEmpty
     if (finishes) {
       log.info(s"Queue Processor is shutdown $withMessage")
@@ -157,11 +160,12 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
  * @param resultChecker
  */
 case class DefaultQueueProcessor(
-  queue: QueueRef,
-  delegateeProps: Props,
-  settings: ProcessingWorkerPoolSettings,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector,
-  resultChecker: ResultChecker) extends QueueProcessor {
+  queue:            QueueRef,
+  delegateeProps:   Props,
+  settings:         ProcessingWorkerPoolSettings,
+  metricsCollector: MetricsCollector             = NoOpMetricsCollector,
+  resultChecker:    ResultChecker
+) extends QueueProcessor {
 
   override val resultHistoryLength: Int = 0
 
@@ -169,12 +173,13 @@ case class DefaultQueueProcessor(
 }
 
 case class QueueProcessorWithCircuitBreaker(
-  queue: QueueRef,
-  delegateeProps: Props,
-  settings: ProcessingWorkerPoolSettings,
+  queue:                  QueueRef,
+  delegateeProps:         Props,
+  settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: CircuitBreakerSettings,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector,
-  resultChecker: ResultChecker) extends QueueProcessor {
+  metricsCollector:       MetricsCollector             = NoOpMetricsCollector,
+  resultChecker:          ResultChecker
+) extends QueueProcessor {
 
   override val resultHistoryLength: Int = circuitBreakerSettings.historyLength
 
@@ -203,29 +208,33 @@ object QueueProcessor {
   private case object ShutdownTimeout
 
   def default(
-    queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    queue:            QueueRef,
+    delegateeProps:   Props,
+    settings:         ProcessingWorkerPoolSettings,
+    metricsCollector: MetricsCollector             = NoOpMetricsCollector
+  )(resultChecker: ResultChecker): Props =
     Props(new DefaultQueueProcessor(
       queue,
       delegateeProps,
       settings,
       metricsCollector,
-      resultChecker))
+      resultChecker
+    ))
 
   def withCircuitBreaker(
-    queue: QueueRef,
-    delegateeProps: Props,
-    settings: ProcessingWorkerPoolSettings,
+    queue:                  QueueRef,
+    delegateeProps:         Props,
+    settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector)(resultChecker: ResultChecker): Props =
+    metricsCollector:       MetricsCollector             = NoOpMetricsCollector
+  )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,
       delegateeProps,
       settings,
       circuitBreakerSettings,
       metricsCollector,
-      resultChecker))
+      resultChecker
+    ))
 }
 

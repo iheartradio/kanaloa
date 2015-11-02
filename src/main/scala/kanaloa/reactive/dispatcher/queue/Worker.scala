@@ -60,7 +60,8 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   }: Receive).orElse(
 
-    waitingResult(outstanding, false, delayBeforeNextWork))
+    waitingResult(outstanding, false, delayBeforeNextWork)
+  )
 
     .orElse {
       case msg ⇒ log.error(s"unrecognized interrupting msg during working $msg")
@@ -78,12 +79,14 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       case w: Work ⇒
         sender ! Rejected(w, "Retiring")
         finish()
-    })
+    }
+  )
 
   def waitingResult(
-    outstanding: Outstanding,
-    isRetiring: Boolean,
-    delayBeforeNextWork: Option[FiniteDuration]): Receive = ({
+    outstanding:         Outstanding,
+    isRetiring:          Boolean,
+    delayBeforeNextWork: Option[FiniteDuration]
+  ): Receive = ({
 
     case DelegateeTimeout ⇒
       log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
@@ -107,10 +110,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def retryOrAbandon(
-    outstanding: Outstanding,
-    isRetiring: Boolean,
-    error: Any,
-    delayBeforeNextWork: Option[FiniteDuration]): Unit = {
+    outstanding:         Outstanding,
+    isRetiring:          Boolean,
+    error:               Any,
+    delayBeforeNextWork: Option[FiniteDuration]
+  ): Unit = {
     outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
       log.info(s"Retry work $outstanding")
@@ -181,17 +185,19 @@ object Worker {
   case class Hold(period: FiniteDuration)
 
   class DefaultWorker(
-    protected val queue: QueueRef,
+    protected val queue:          QueueRef,
     protected val delegateeProps: Props,
-    protected val resultChecker: ResultChecker) extends Worker {
+    protected val resultChecker:  ResultChecker
+  ) extends Worker {
 
     val resultHistoryLength = 0
 
   }
 
   def default(
-    queue: QueueRef,
-    delegateeProps: Props)(resultChecker: ResultChecker): Props = {
+    queue:          QueueRef,
+    delegateeProps: Props
+  )(resultChecker: ResultChecker): Props = {
     Props(new DefaultWorker(queue, delegateeProps, resultChecker))
   }
 

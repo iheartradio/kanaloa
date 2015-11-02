@@ -47,13 +47,14 @@ import org.slf4j.LoggerFactory
  * @param defaultSampleRate Default sample rate to use for metrics, if unspecified
  */
 class StatsDClient(
-  context: ActorRefFactory,
-  host: String,
-  port: Int,
-  prefix: String = "",
-  multiMetrics: Boolean = true,
-  packetBufferSize: Int = 1024,
-  defaultSampleRate: Double = 1.0) {
+  context:           ActorRefFactory,
+  host:              String,
+  port:              Int,
+  prefix:            String          = "",
+  multiMetrics:      Boolean         = true,
+  packetBufferSize:  Int             = 1024,
+  defaultSampleRate: Double          = 1.0
+) {
 
   private val rand = new Random()
 
@@ -151,10 +152,11 @@ private case class SendStat(stat: String)
  * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
  */
 private class StatsDActor(
-  host: String,
-  port: Int,
-  multiMetrics: Boolean,
-  packetBufferSize: Int) extends Actor {
+  host:             String,
+  port:             Int,
+  multiMetrics:     Boolean,
+  packetBufferSize: Int
+) extends Actor {
 
   private val log = LoggerFactory.getLogger(getClass())
 

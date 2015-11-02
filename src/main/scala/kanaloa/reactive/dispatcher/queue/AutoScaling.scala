@@ -115,7 +115,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
         if (newEntry.fullyUtilized && Random.nextDouble() < explorationRatio)
           explore(currentSize)
         else
-          optimize(currentSize))
+          optimize(currentSize)
+      )
     } else downsize
 
   }
@@ -161,9 +162,10 @@ object AutoScaling {
   case object StatusCollectionTimedOut
 
   private case class SystemStatus(
-    dispatchWait: Option[Duration] = None,
-    workerPool: Option[WorkerPool] = None,
-    workersStatus: List[WorkerStatus] = Nil) {
+    dispatchWait:  Option[Duration]   = None,
+    workerPool:    Option[WorkerPool] = None,
+    workersStatus: List[WorkerStatus] = Nil
+  ) {
     def collected: Boolean = (for {
       _ ← dispatchWait
       pool ← workerPool
@@ -180,16 +182,18 @@ object AutoScaling {
   private[queue]type PerformanceLog = Map[PoolSize, Duration]
 
   case class Default(
-    queue: QueueRef,
-    processor: QueueProcessorRef,
-    settings: AutoScalingSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector) extends AutoScaling
+    queue:            QueueRef,
+    processor:        QueueProcessorRef,
+    settings:         AutoScalingSettings,
+    metricsCollector: MetricsCollector    = NoOpMetricsCollector
+  ) extends AutoScaling
 
   def default(
-    queue: QueueRef,
-    processor: QueueProcessorRef,
-    settings: AutoScalingSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector) =
+    queue:            QueueRef,
+    processor:        QueueProcessorRef,
+    settings:         AutoScalingSettings,
+    metricsCollector: MetricsCollector    = NoOpMetricsCollector
+  ) =
     Props(Default(queue, processor, settings, metricsCollector))
 }
 

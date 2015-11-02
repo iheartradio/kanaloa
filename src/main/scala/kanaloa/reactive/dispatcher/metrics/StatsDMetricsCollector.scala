@@ -14,9 +14,10 @@ import kanaloa.util.ConfigWrapper.ImplicitConfigWrapper
  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
  */
 class StatsDMetricsCollector(
-  statsd: StatsDClient,
-  val eventSampleRate: Double,
-  val statusSampleRate: Double)(implicit system: ActorSystem)
+  statsd:               StatsDClient,
+  val eventSampleRate:  Double,
+  val statusSampleRate: Double
+)(implicit system: ActorSystem)
   extends MetricsCollector {
 
   /**
@@ -26,8 +27,9 @@ class StatsDMetricsCollector(
    * @param settings
    */
   def this(
-    prefix: String,
-    settings: StatsDMetricsCollectorSettings)(implicit system: ActorSystem) =
+    prefix:   String,
+    settings: StatsDMetricsCollectorSettings
+  )(implicit system: ActorSystem) =
     this(new StatsDClient(system, settings.host, settings.port, prefix = prefix), settings.eventSampleRate, settings.statusSampleRate)
 
   import Metric._

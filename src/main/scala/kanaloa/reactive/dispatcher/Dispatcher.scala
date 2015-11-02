@@ -30,7 +30,8 @@ trait Dispatcher extends Actor {
     backendProps,
     settings.workerPool,
     settings.circuitBreaker,
-    metricsCollector)(resultChecker), name + "-queue-processor")
+    metricsCollector
+  )(resultChecker), name + "-queue-processor")
 
   context watch processor
 
@@ -48,30 +49,35 @@ trait Dispatcher extends Actor {
 
 object Dispatcher {
   case class Settings(
-    workTimeout: FiniteDuration = 1.minute,
-    workRetry: Int = 0,
-    workerPool: ProcessingWorkerPoolSettings,
+    workTimeout:    FiniteDuration               = 1.minute,
+    workRetry:      Int                          = 0,
+    workerPool:     ProcessingWorkerPoolSettings,
     circuitBreaker: CircuitBreakerSettings,
-    backPressure: Option[BackPressureSettings],
-    autoScaling: Option[AutoScalingSettings])
+    backPressure:   Option[BackPressureSettings],
+    autoScaling:    Option[AutoScalingSettings]
+  )
 
   val defaultCircuitBreakerSettings = CircuitBreakerSettings(
     closeDuration = 3.seconds,
     errorRateThreshold = 1,
-    historyLength = 3)
+    historyLength = 3
+  )
 
   val defaultWorkerPoolSettings = ProcessingWorkerPoolSettings(
     startingPoolSize = 20,
     maxProcessingTime = None,
-    minPoolSize = 5)
+    minPoolSize = 5
+  )
 
   val defaultAutoScalingSettings = AutoScalingSettings(
-    bufferRatio = 0.8)
+    bufferRatio = 0.8
+  )
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
     thresholdForExpectedWaitTime = 1.minute,
-    maxHistoryLength = 10.seconds)
+    maxHistoryLength = 10.seconds
+  )
 
   val defaultDispatcherSettings = Dispatcher.Settings(
     workTimeout = 1.minute,
@@ -79,26 +85,30 @@ object Dispatcher {
     workerPool = defaultWorkerPoolSettings,
     circuitBreaker = defaultCircuitBreakerSettings,
     backPressure = None,
-    autoScaling = Some(defaultAutoScalingSettings))
+    autoScaling = Some(defaultAutoScalingSettings)
+  )
 
   def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
     val config = rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty())
     (
       config.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings),
-      MetricsCollector.fromConfig(dispatcherName, config))
+      MetricsCollector.fromConfig(dispatcherName, config)
+    )
   }
 }
 
 case class PushingDispatcher(
-  name: String,
-  settings: Settings,
-  backendProps: Props,
+  name:             String,
+  settings:         Settings,
+  backendProps:     Props,
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
-  resultChecker: ResultChecker)
+  resultChecker:    ResultChecker
+)
   extends Dispatcher {
 
   protected lazy val queueProps = Queue.withBackPressure(
-    settings.backPressure.getOrElse(Dispatcher.defaultBackPressureSettings), WorkSettings(), metricsCollector)
+    settings.backPressure.getOrElse(Dispatcher.defaultBackPressureSettings), WorkSettings(), metricsCollector
+  )
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingDispatcher.handlerProps(settings, queue)) forward m
@@ -130,9 +140,10 @@ object PushingDispatcher {
   }
 
   def props(
-    name: String,
+    name:         String,
     backendProps: Props,
-    rootConfig: Config = ConfigFactory.load())(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    rootConfig:   Config = ConfigFactory.load()
+  )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
     Props(PushingDispatcher(name, settings, backendProps, metricsCollector, resultChecker))
   }
@@ -140,21 +151,23 @@ object PushingDispatcher {
 }
 
 case class PullingDispatcher(
-  name: String,
-  iterator: Iterator[_],
-  settings: Settings,
-  backendProps: Props,
+  name:             String,
+  iterator:         Iterator[_],
+  settings:         Settings,
+  backendProps:     Props,
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
-  resultChecker: ResultChecker) extends Dispatcher {
+  resultChecker:    ResultChecker
+) extends Dispatcher {
   protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
 }
 
 object PullingDispatcher {
   def props(
-    name: String,
-    iterator: Iterator[_],
+    name:         String,
+    iterator:     Iterator[_],
     backendProps: Props,
-    rootConfig: Config = ConfigFactory.load())(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
+    rootConfig:   Config      = ConfigFactory.load()
+  )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
     Props(PullingDispatcher(name, iterator, settings, backendProps, metricsCollector, resultChecker))
   }

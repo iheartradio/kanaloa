@@ -22,14 +22,16 @@ package kanaloa.reactive.dispatcher.queue {
   case class WorkSettings(retry: Int = 0, timeout: FiniteDuration = 30.seconds, sendResultTo: Option[ActorRef] = None)
 
   case class CircuitBreakerSettings(
-    closeDuration: FiniteDuration = 3.seconds,
-    errorRateThreshold: Double = 1,
-    historyLength: Int = 10)
+    closeDuration:      FiniteDuration = 3.seconds,
+    errorRateThreshold: Double         = 1,
+    historyLength:      Int            = 10
+  )
 
   case class BackPressureSettings(
-    maxBufferSize: Int = 1000,
+    maxBufferSize:                Int            = 1000,
     thresholdForExpectedWaitTime: FiniteDuration = 1.minute,
-    maxHistoryLength: FiniteDuration = 10.seconds)
+    maxHistoryLength:             FiniteDuration = 10.seconds
+  )
 
   /**
    *
@@ -38,9 +40,10 @@ package kanaloa.reactive.dispatcher.queue {
    * @param minPoolSize
    */
   case class ProcessingWorkerPoolSettings(
-    startingPoolSize: Int = 5,
+    startingPoolSize:  Int                    = 5,
     maxProcessingTime: Option[FiniteDuration] = None,
-    minPoolSize: Int = 3)
+    minPoolSize:       Int                    = 3
+  )
 
   /**
    *
@@ -54,15 +57,16 @@ package kanaloa.reactive.dispatcher.queue {
    * @param statusCollectionTimeout maximum time allowed when autoscaler collects status from queue, queueProcessor and all workers
    */
   case class AutoScalingSettings(
-    chanceOfScalingDownWhenFull: Double = 0.1,
-    actionFrequency: FiniteDuration = 5.seconds,
-    downsizeAfterUnderUtilization: FiniteDuration = 72.hours,
-    numOfAdjacentSizesToConsiderDuringOptimization: Int = 12,
-    exploreStepSize: Double = 0.1,
-    bufferRatio: Double = 0.8,
-    upperBound: Int = 300,
-    explorationRatio: Double = 0.4,
-    weightOfLatestMetric: Double = 0.5,
-    statusCollectionTimeout: FiniteDuration = 30.seconds)
+    chanceOfScalingDownWhenFull:                    Double         = 0.1,
+    actionFrequency:                                FiniteDuration = 5.seconds,
+    downsizeAfterUnderUtilization:                  FiniteDuration = 72.hours,
+    numOfAdjacentSizesToConsiderDuringOptimization: Int            = 12,
+    exploreStepSize:                                Double         = 0.1,
+    bufferRatio:                                    Double         = 0.8,
+    upperBound:                                     Int            = 300,
+    explorationRatio:                               Double         = 0.4,
+    weightOfLatestMetric:                           Double         = 0.5,
+    statusCollectionTimeout:                        FiniteDuration = 30.seconds
+  )
 
 }

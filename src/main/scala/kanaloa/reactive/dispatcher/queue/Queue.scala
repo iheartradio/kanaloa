@@ -138,9 +138,10 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 }
 
 case class QueueWithBackPressure(
-  settings: BackPressureSettings,
-  defaultWorkSettings: WorkSettings = WorkSettings(),
-  metricsCollector: MetricsCollector = NoOpMetricsCollector) extends Queue {
+  settings:            BackPressureSettings,
+  defaultWorkSettings: WorkSettings         = WorkSettings(),
+  metricsCollector:    MetricsCollector     = NoOpMetricsCollector
+) extends Queue {
 
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms")
@@ -169,12 +170,14 @@ trait QueueWithoutBackPressure extends Queue {
 
 case class DefaultQueue(
   defaultWorkSettings: WorkSettings,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector) extends QueueWithoutBackPressure
+  metricsCollector:    MetricsCollector = NoOpMetricsCollector
+) extends QueueWithoutBackPressure
 
 class QueueOfIterator(
-  private val iterator: Iterator[_],
+  private val iterator:    Iterator[_],
   val defaultWorkSettings: WorkSettings,
-  val metricsCollector: MetricsCollector = NoOpMetricsCollector) extends QueueWithoutBackPressure {
+  val metricsCollector:    MetricsCollector = NoOpMetricsCollector
+) extends QueueWithoutBackPressure {
   private case object EnqueueMore
   private class Enqueuer extends Actor {
     def receive = {
@@ -200,9 +203,10 @@ class QueueOfIterator(
 
 object QueueOfIterator {
   def props(
-    iterator: Iterator[_],
+    iterator:            Iterator[_],
     defaultWorkSettings: WorkSettings,
-    metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    metricsCollector:    MetricsCollector = NoOpMetricsCollector
+  ): Props =
     Props(new QueueOfIterator(iterator, defaultWorkSettings, metricsCollector))
 }
 
@@ -236,10 +240,11 @@ object Queue {
     def avgDispatchDurationLowerBound: Option[Duration]
   }
   protected[queue] case class QueueStatus(
-    workBuffer: ScalaQueue[Work] = ScalaQueue.empty,
-    queuedWorkers: ScalaQueue[ActorRef] = ScalaQueue.empty,
-    countOfWorkSent: Int = 0,
-    bufferHistory: Vector[BufferHistoryEntry] = Vector.empty) extends QueueDispatchInfo {
+    workBuffer:      ScalaQueue[Work]           = ScalaQueue.empty,
+    queuedWorkers:   ScalaQueue[ActorRef]       = ScalaQueue.empty,
+    countOfWorkSent: Int                        = 0,
+    bufferHistory:   Vector[BufferHistoryEntry] = Vector.empty
+  ) extends QueueDispatchInfo {
 
     lazy val relevantHistory: Vector[BufferHistoryEntry] = bufferHistory.takeRightWhile(_.queueLength > 0) //only take into account latest busy queue history
 
@@ -262,20 +267,23 @@ object Queue {
   }
 
   def ofIterator(
-    iterator: Iterator[_],
-    defaultWorkSetting: WorkSettings = WorkSettings(),
-    metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    iterator:           Iterator[_],
+    defaultWorkSetting: WorkSettings     = WorkSettings(),
+    metricsCollector:   MetricsCollector = NoOpMetricsCollector
+  ): Props =
     QueueOfIterator.props(iterator, defaultWorkSetting, metricsCollector)
 
   def default(
-    defaultWorkSetting: WorkSettings = WorkSettings(),
-    metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    defaultWorkSetting: WorkSettings     = WorkSettings(),
+    metricsCollector:   MetricsCollector = NoOpMetricsCollector
+  ): Props =
     Props(new DefaultQueue(defaultWorkSetting, metricsCollector))
 
   def withBackPressure(
     backPressureSetting: BackPressureSettings,
-    defaultWorkSettings: WorkSettings = WorkSettings(),
-    metricsCollector: MetricsCollector = NoOpMetricsCollector): Props =
+    defaultWorkSettings: WorkSettings         = WorkSettings(),
+    metricsCollector:    MetricsCollector     = NoOpMetricsCollector
+  ): Props =
     Props(QueueWithBackPressure(backPressureSetting, defaultWorkSettings, metricsCollector))
 
 }
