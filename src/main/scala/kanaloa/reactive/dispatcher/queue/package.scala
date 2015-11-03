@@ -8,7 +8,6 @@ package kanaloa.reactive.dispatcher {
     type QueueRef = ActorRef
     type QueueProcessorRef = ActorRef
     type WorkerRef = ActorRef
-    type ResultChecker = PartialFunction[Any, Either[String, Any]]
   }
 
 }

@@ -4,7 +4,7 @@ import akka.actor._
 import akka.testkit.{ TestActorRef, TestProbe }
 import kanaloa.reactive.dispatcher
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully }
-import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.{ Backend, SpecWithActorSystem }
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.{ QueueStatus, WorkEnqueued, _ }
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ Shutdown, _ }
@@ -323,7 +323,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem {
 
     val workerProps: Props = Worker.default(
       TestProbe().ref,
-      Props.empty
+      Backend(Props.empty)
     )(resultChecker)
 
     val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
@@ -356,7 +356,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, delegateeProps, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
+    QueueProcessor.withCircuitBreaker(queue, backend, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
       case MessageProcessed(msg) ⇒ Right(msg)
       case MessageFailed         ⇒ Left("doesn't matter")
     }

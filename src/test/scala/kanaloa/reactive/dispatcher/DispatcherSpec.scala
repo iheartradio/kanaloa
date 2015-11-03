@@ -5,7 +5,6 @@ import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
 import com.typesafe.config.{ ConfigException, ConfigFactory }
 import kanaloa.reactive.dispatcher.metrics.{ StatsDMetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
-import kanaloa.reactive.dispatcher.queue.TestUtils.Wrapper
 import org.specs2.specification.Scope
 
 class DispatcherSpec extends SpecWithActorSystem {
@@ -17,7 +16,7 @@ class DispatcherSpec extends SpecWithActorSystem {
         "test",
         iterator,
         Dispatcher.defaultDispatcherSettings.copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
-        delegateeProps,
+        backend,
         metricsCollector = NoOpMetricsCollector,
         ({ case Success ⇒ Right(()) })
       )))
@@ -98,5 +97,5 @@ class ScopeWithActor(implicit system: ActorSystem) extends TestKit(system) with 
 
   val delegatee = TestProbe()
 
-  val delegateeProps = Wrapper.props(delegatee.ref)
+  val backend = Backend(delegatee.ref)
 }

@@ -2,6 +2,7 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, WorkFailed, WorkTimedOut }
+import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.reactive.dispatcher.queue.Queue.{ NoWorkLeft, RequestWork, Unregister, Unregistered }
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
@@ -11,7 +12,7 @@ import scala.concurrent.duration._
 
 trait Worker extends Actor with ActorLogging with MessageScheduler {
 
-  protected def delegateeProps: Props //actor who really does the work
+  protected def backend: Backend //actor who really does the work
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
 
@@ -23,8 +24,8 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     askMoreWork(None)
   }
 
-  lazy val delegatee = {
-    val ref = context.actorOf(delegateeProps, "delegatee")
+  private lazy val delegatee: ActorRef = {
+    val ref = backend(context)
     context watch ref
     ref
   }
@@ -185,9 +186,9 @@ object Worker {
   case class Hold(period: FiniteDuration)
 
   class DefaultWorker(
-    protected val queue:          QueueRef,
-    protected val delegateeProps: Props,
-    protected val resultChecker:  ResultChecker
+    protected val queue:         QueueRef,
+    protected val backend:       Backend,
+    protected val resultChecker: ResultChecker
   ) extends Worker {
 
     val resultHistoryLength = 0
@@ -195,10 +196,10 @@ object Worker {
   }
 
   def default(
-    queue:          QueueRef,
-    delegateeProps: Props
+    queue:   QueueRef,
+    backend: Backend
   )(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, delegateeProps, resultChecker))
+    Props(new DefaultWorker(queue, backend, resultChecker))
   }
 
 }
