@@ -1,10 +1,19 @@
 organization in ThisBuild := "com.iheart"
 
-version in ThisBuild := "1.0.0-" + Versions.releaseType
+name := "kanaloa"
+
+version in ThisBuild := "0.1.0" + Versions.releaseType
 
 scalaVersion in ThisBuild := Versions.scala
 
+
+licenses += ("Apache-2.0", url("http://www.apache.org/licenses/"))
+
 lazy val reactiveDispatcher = project in file(".")
+
+bintrayOrganization := Some("iheartradio")
+
+bintrayPackageLabels := Seq("akka", "reactive")
 
 resolvers ++= Dependencies.resolvers
 

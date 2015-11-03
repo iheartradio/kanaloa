@@ -1,6 +1,6 @@
 object Versions {
 
-  val releaseType = "SNAPSHOT"
+  val releaseType = ""
 
   val scala       = "2.11.7"
   val akka        = "2.4.0"
