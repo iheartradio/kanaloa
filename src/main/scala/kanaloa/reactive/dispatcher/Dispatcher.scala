@@ -62,42 +62,24 @@ object Dispatcher {
     autoScaling:    Option[AutoScalingSettings]
   )
 
-  val defaultCircuitBreakerSettings = CircuitBreakerSettings(
-    closeDuration = 3.seconds,
-    errorRateThreshold = 1,
-    historyLength = 3
-  )
-
-  val defaultWorkerPoolSettings = ProcessingWorkerPoolSettings(
-    startingPoolSize = 20,
-    maxProcessingTime = None,
-    minPoolSize = 5
-  )
-
-  val defaultAutoScalingSettings = AutoScalingSettings(
-    bufferRatio = 0.8
-  )
-
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
-    thresholdForExpectedWaitTime = 1.minute,
+    thresholdForExpectedWaitTime = 5.minute,
     maxHistoryLength = 10.seconds
   )
 
-  val defaultDispatcherSettings = Dispatcher.Settings(
-    workTimeout = 1.minute,
-    workRetry = 0,
-    workerPool = defaultWorkerPoolSettings,
-    circuitBreaker = defaultCircuitBreakerSettings,
-    backPressure = None,
-    autoScaling = Some(defaultAutoScalingSettings)
-  )
+  private def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) =
+    rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty()).withFallback(ConfigFactory.defaultReference(getClass.getClassLoader))
+
+  def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings = {
+    config.as[Dispatcher.Settings]("default-dispatcher")
+  }
 
   def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
-    val config = rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty())
+    val cfg = kanaloaConfig(rootConfig)
     (
-      config.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings),
-      MetricsCollector.fromConfig(dispatcherName, config)
+      cfg.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings(cfg)),
+      MetricsCollector.fromConfig(dispatcherName, cfg)
     )
   }
 }
@@ -112,7 +94,7 @@ case class PushingDispatcher(
   extends Dispatcher {
 
   protected lazy val queueProps = Queue.withBackPressure(
-    settings.backPressure.getOrElse(Dispatcher.defaultBackPressureSettings), WorkSettings(), metricsCollector
+    settings.backPressure.orElse(Dispatcher.defaultDispatcherSettings().backPressure).get, WorkSettings(), metricsCollector
   )
 
   override def extraReceive: Receive = {

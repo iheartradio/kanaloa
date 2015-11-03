@@ -15,7 +15,7 @@ class DispatcherSpec extends SpecWithActorSystem {
       val pwp = system.actorOf(Props(PullingDispatcher(
         "test",
         iterator,
-        Dispatcher.defaultDispatcherSettings.copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
+        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         backend,
         metricsCollector = NoOpMetricsCollector,
         ({ case Success ⇒ Right(()) })
@@ -33,10 +33,27 @@ class DispatcherSpec extends SpecWithActorSystem {
   }
 
   "readConfig" should {
-    "use default settings when missing" in {
+    "use default settings when nothing is in config" in {
       val (settings, mc) = Dispatcher.readConfig("example", ConfigFactory.empty)
-      settings === Dispatcher.defaultDispatcherSettings
+      settings.workRetry === 0
       mc === NoOpMetricsCollector
+    }
+    "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
+      val cfgStr =
+        """
+          |kanaloa {
+          |  default-dispatcher {
+          |     workRetry = 27
+          |  }
+          |  dispatchers {
+          |
+          |  }
+          |
+          |}
+        """.stripMargin
+
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      settings.workRetry === 27
     }
 
     "parse settings that match the name" in {
