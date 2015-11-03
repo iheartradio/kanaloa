@@ -4,11 +4,10 @@ import akka.actor._
 import com.typesafe.config.{ Config, ConfigFactory }
 import kanaloa.reactive.dispatcher.ApiProtocol.{ ShutdownGracefully, WorkRejected }
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
-import kanaloa.reactive.dispatcher.metrics.{ StatsDMetricsCollectorSettings, MetricsCollectorSettings, MetricsCollector, NoOpMetricsCollector }
+import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.OverCapacity
 import kanaloa.reactive.dispatcher.queue.Queue.{ Enqueue, EnqueueRejected, WorkEnqueued }
 import kanaloa.reactive.dispatcher.queue._
-
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 
@@ -17,7 +16,7 @@ import scala.concurrent.duration._
 trait Dispatcher extends Actor {
   def name: String
   def settings: Dispatcher.Settings
-  def backendProps: Props
+  def backend: Backend
   def resultChecker: ResultChecker
   def metricsCollector: MetricsCollector
 
@@ -27,7 +26,7 @@ trait Dispatcher extends Actor {
 
   private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(
     queue,
-    backendProps,
+    backend,
     settings.workerPool,
     settings.circuitBreaker,
     metricsCollector
@@ -47,7 +46,13 @@ trait Dispatcher extends Actor {
   def extraReceive: Receive = PartialFunction.empty
 }
 
+object Backend {
+  def apply(actorRef: ActorRef): Backend = (_) ⇒ actorRef
+  def apply(props: Props): Backend = f ⇒ f.actorOf(props, "backend")
+}
+
 object Dispatcher {
+
   case class Settings(
     workTimeout:    FiniteDuration               = 1.minute,
     workRetry:      Int                          = 0,
@@ -57,42 +62,24 @@ object Dispatcher {
     autoScaling:    Option[AutoScalingSettings]
   )
 
-  val defaultCircuitBreakerSettings = CircuitBreakerSettings(
-    closeDuration = 3.seconds,
-    errorRateThreshold = 1,
-    historyLength = 3
-  )
-
-  val defaultWorkerPoolSettings = ProcessingWorkerPoolSettings(
-    startingPoolSize = 20,
-    maxProcessingTime = None,
-    minPoolSize = 5
-  )
-
-  val defaultAutoScalingSettings = AutoScalingSettings(
-    bufferRatio = 0.8
-  )
-
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
-    thresholdForExpectedWaitTime = 1.minute,
+    thresholdForExpectedWaitTime = 5.minute,
     maxHistoryLength = 10.seconds
   )
 
-  val defaultDispatcherSettings = Dispatcher.Settings(
-    workTimeout = 1.minute,
-    workRetry = 0,
-    workerPool = defaultWorkerPoolSettings,
-    circuitBreaker = defaultCircuitBreakerSettings,
-    backPressure = None,
-    autoScaling = Some(defaultAutoScalingSettings)
-  )
+  private def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) =
+    rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty()).withFallback(ConfigFactory.defaultReference(getClass.getClassLoader))
+
+  def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings = {
+    config.as[Dispatcher.Settings]("default-dispatcher")
+  }
 
   def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
-    val config = rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty())
+    val cfg = kanaloaConfig(rootConfig)
     (
-      config.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings),
-      MetricsCollector.fromConfig(dispatcherName, config)
+      cfg.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings(cfg)),
+      MetricsCollector.fromConfig(dispatcherName, cfg)
     )
   }
 }
@@ -100,14 +87,14 @@ object Dispatcher {
 case class PushingDispatcher(
   name:             String,
   settings:         Settings,
-  backendProps:     Props,
+  backend:          Backend,
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
   resultChecker:    ResultChecker
 )
   extends Dispatcher {
 
   protected lazy val queueProps = Queue.withBackPressure(
-    settings.backPressure.getOrElse(Dispatcher.defaultBackPressureSettings), WorkSettings(), metricsCollector
+    settings.backPressure.orElse(Dispatcher.defaultDispatcherSettings().backPressure).get, WorkSettings(), metricsCollector
   )
 
   override def extraReceive: Receive = {
@@ -140,12 +127,12 @@ object PushingDispatcher {
   }
 
   def props(
-    name:         String,
-    backendProps: Props,
-    rootConfig:   Config = ConfigFactory.load()
+    name:       String,
+    backend:    Backend,
+    rootConfig: Config  = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
-    Props(PushingDispatcher(name, settings, backendProps, metricsCollector, resultChecker))
+    Props(PushingDispatcher(name, settings, backend, metricsCollector, resultChecker))
   }
 
 }
@@ -154,7 +141,7 @@ case class PullingDispatcher(
   name:             String,
   iterator:         Iterator[_],
   settings:         Settings,
-  backendProps:     Props,
+  backend:          Backend,
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
   resultChecker:    ResultChecker
 ) extends Dispatcher {
@@ -163,13 +150,13 @@ case class PullingDispatcher(
 
 object PullingDispatcher {
   def props(
-    name:         String,
-    iterator:     Iterator[_],
-    backendProps: Props,
-    rootConfig:   Config      = ConfigFactory.load()
+    name:       String,
+    iterator:   Iterator[_],
+    backend:    Backend,
+    rootConfig: Config      = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
-    Props(PullingDispatcher(name, iterator, settings, backendProps, metricsCollector, resultChecker))
+    Props(PullingDispatcher(name, iterator, settings, backend, metricsCollector, resultChecker))
   }
 }
 

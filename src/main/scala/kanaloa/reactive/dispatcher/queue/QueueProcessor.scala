@@ -5,6 +5,7 @@ import java.time.{ LocalDateTime, ZoneOffset }
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
+import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
@@ -17,7 +18,7 @@ import scala.concurrent.duration._
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   import QueueProcessor.WorkerPool
   val queue: QueueRef
-  def delegateeProps: Props
+  def backend: Backend
   def settings: ProcessingWorkerPoolSettings
   def resultChecker: ResultChecker
   val metricsCollector: MetricsCollector
@@ -32,8 +33,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       case _: Exception ⇒ Restart
     }
 
-  def workerProp(queueRef: QueueRef, delegateeProps: Props): Props =
-    Worker.default(queue, delegateeProps)(resultChecker)
+  protected def workerProp(queueRef: QueueRef): Props = Worker.default(queue, backend)(resultChecker)
 
   def receive: Receive = {
     val workers = (1 to settings.startingPoolSize).map(createWorker).toSet
@@ -118,7 +118,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   private def createWorker(index: Int): WorkerRef = {
     val timestamp = LocalDateTime.now.toInstant(ZoneOffset.UTC).toEpochMilli
     val worker = context.actorOf(
-      workerProp(queue, delegateeProps),
+      workerProp(queue),
       s"worker-${queue.path.name}-$index-${timestamp}"
     )
     context watch worker
@@ -161,7 +161,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
  */
 case class DefaultQueueProcessor(
   queue:            QueueRef,
-  delegateeProps:   Props,
+  backend:          Backend,
   settings:         ProcessingWorkerPoolSettings,
   metricsCollector: MetricsCollector             = NoOpMetricsCollector,
   resultChecker:    ResultChecker
@@ -174,7 +174,7 @@ case class DefaultQueueProcessor(
 
 case class QueueProcessorWithCircuitBreaker(
   queue:                  QueueRef,
-  delegateeProps:         Props,
+  backend:                Backend,
   settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: CircuitBreakerSettings,
   metricsCollector:       MetricsCollector             = NoOpMetricsCollector,
@@ -209,13 +209,13 @@ object QueueProcessor {
 
   def default(
     queue:            QueueRef,
-    delegateeProps:   Props,
+    backend:          Backend,
     settings:         ProcessingWorkerPoolSettings,
     metricsCollector: MetricsCollector             = NoOpMetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new DefaultQueueProcessor(
       queue,
-      delegateeProps,
+      backend,
       settings,
       metricsCollector,
       resultChecker
@@ -223,14 +223,14 @@ object QueueProcessor {
 
   def withCircuitBreaker(
     queue:                  QueueRef,
-    delegateeProps:         Props,
+    backend:                Backend,
     settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
     metricsCollector:       MetricsCollector             = NoOpMetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,
-      delegateeProps,
+      backend,
       settings,
       circuitBreakerSettings,
       metricsCollector,
