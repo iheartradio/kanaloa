@@ -1,9 +1,6 @@
 package kanaloa.reactive.dispatcher.metrics
 
 import akka.actor._
-import com.typesafe.config.Config
-import kanaloa.util.ConfigWrapper
-import kanaloa.util.ConfigWrapper.ImplicitConfigWrapper
 
 /**
  * Collector that sends metrics to StatsD

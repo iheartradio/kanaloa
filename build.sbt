@@ -3,16 +3,12 @@ organization in Global := "com.iheart"
 name := "kanaloa"
 
 
-scalaVersion in Global := Versions.scala
-
-lazy val reactiveDispatcher = project in file(".")
-
+scalaVersion in Global := "2.11.7"
 
 resolvers ++= Dependencies.resolvers
 
 libraryDependencies ++= Dependencies.akka ++
                         Dependencies.test ++
-                        Dependencies.other ++
                         Dependencies.config
 
 

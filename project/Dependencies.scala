@@ -1,6 +1,10 @@
 import sbt._
 
 object Dependencies {
+  object Versions {
+    val akka        = "2.4.0"
+    val specs2      = "3.0"
+  }
 
   val resolvers = Seq(
     Resolver.typesafeRepo("releases"),
@@ -20,20 +24,9 @@ object Dependencies {
     "org.specs2" %% "specs2-scalacheck" % Versions.specs2 % "test"
   )
 
-  val other = Seq(
-    "org.scala-lang" % "scala-reflect" % Versions.scala)
-
   val config = Seq(
     "net.ceedubs" %% "ficus" % "1.1.2"
   )
 
 }
 
-object Versions {
-
-
-  val scala       = "2.11.7"
-  val akka        = "2.4.0"
-  val specs2      = "3.0"
-
-}

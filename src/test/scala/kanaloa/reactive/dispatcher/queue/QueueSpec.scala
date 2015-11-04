@@ -2,14 +2,13 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import akka.testkit.{ TestActorRef, TestProbe }
-import kanaloa.reactive.dispatcher
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully }
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
-import kanaloa.reactive.dispatcher.{ Backend, SpecWithActorSystem }
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.{ QueueStatus, WorkEnqueued, _ }
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ Shutdown, _ }
 import kanaloa.reactive.dispatcher.queue.TestUtils._
+import kanaloa.reactive.dispatcher.{ Backend, SpecWithActorSystem }
 import org.specs2.mock.Mockito
 
 import scala.concurrent.duration._

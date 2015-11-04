@@ -5,13 +5,13 @@ import java.time.{ LocalDateTime, ZoneOffset }
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
-import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
 import kanaloa.reactive.dispatcher.queue.Worker.Hold
+import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.util.FiniteCollection._
-import kanaloa.util.{ FiniteCollection, MessageScheduler }
+import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 
