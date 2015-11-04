@@ -1,9 +1,6 @@
 package kanaloa.reactive.dispatcher.metrics
 
 import akka.actor._
-import com.typesafe.config.Config
-import kanaloa.util.ConfigWrapper
-import kanaloa.util.ConfigWrapper.ImplicitConfigWrapper
 
 /**
  * Collector that sends metrics to StatsD
@@ -59,7 +56,7 @@ class StatsDMetricsCollector(
     case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
-    case DispatchWait(duration) ⇒
+    case ProcessTime(duration) ⇒
       statsd.timing("queue.avgProcessTime", duration.toMillis.toInt, eventSampleRate)
 
     case WorkQueueExpectedWaitTime(duration) ⇒

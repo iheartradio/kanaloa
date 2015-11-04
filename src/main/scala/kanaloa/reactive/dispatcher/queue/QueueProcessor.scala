@@ -5,13 +5,13 @@ import java.time.{ LocalDateTime, ZoneOffset }
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
-import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
 import kanaloa.reactive.dispatcher.queue.Worker.Hold
+import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.util.FiniteCollection._
-import kanaloa.util.{ FiniteCollection, MessageScheduler }
+import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 
@@ -61,8 +61,9 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         else if (diff < 0 && newPoolSize >= settings.minPoolSize)
           pool.take(-diff).foreach(_ ! Worker.Retire)
 
-      case WorkCompleted(worker) ⇒
+      case WorkCompleted(worker, duration) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
+        metricsCollector.send(Metric.ProcessTime(duration))
         metricsCollector.send(Metric.WorkCompleted)
 
       case WorkFailed(_) ⇒
@@ -199,7 +200,7 @@ object QueueProcessor {
     assert(numOfWorkers > 0)
   }
 
-  case class WorkCompleted(worker: WorkerRef)
+  case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)
 
   case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)

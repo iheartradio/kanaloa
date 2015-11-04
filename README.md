@@ -1,6 +1,6 @@
 # work-dispatcher
 
-[![Build Status](https://travis-ci.org/iheartradio/work-pipeline.svg)](https://travis-ci.org/iheartradio/work-pipeline)
+[![Build Status](https://travis-ci.org/iheartradio/kanaloa.svg)](https://travis-ci.org/iheartradio/kanaloa)
 
 An Akka work pipeline with back pressure control, circuit breaker and auto scaling. 
 

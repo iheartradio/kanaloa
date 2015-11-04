@@ -1,11 +1,14 @@
 package kanaloa.reactive.dispatcher.queue
 
+import java.time.LocalDateTime
+
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, WorkFailed, WorkTimedOut }
-import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import kanaloa.reactive.dispatcher.queue.Queue.{ NoWorkLeft, RequestWork, Unregister, Unregistered }
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
+import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
+import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
@@ -143,9 +146,14 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   protected def resultChecker: ResultChecker
 
-  protected case class Outstanding(work: Work, timeoutHandle: Cancellable, retried: Int = 0) {
+  protected case class Outstanding(
+    work:          Work,
+    timeoutHandle: Cancellable,
+    retried:       Int           = 0,
+    startAt:       LocalDateTime = LocalDateTime.now
+  ) {
     def success(result: Any): Unit = {
-      monitor ! WorkCompleted(self)
+      monitor ! WorkCompleted(self, startAt.until(LocalDateTime.now))
       done(result)
     }
 

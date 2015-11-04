@@ -6,9 +6,9 @@ import java.time.temporal.ChronoUnit
 import akka.actor._
 import akka.testkit.TestActorRef
 import kanaloa.reactive.dispatcher.ApiProtocol._
+import kanaloa.reactive.dispatcher.SpecWithActorSystem
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils._
-import kanaloa.reactive.dispatcher.{ ApiProtocol, SpecWithActorSystem }
 
 import scala.concurrent.duration._
 
@@ -72,11 +72,11 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     def status(ps: (Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory = ps.map { case (dispatched, size, time) ⇒ BufferHistoryEntry(dispatched, size, time) }.toVector)
 
     "return false if there is no entries" >> {
-      q.isOverCapacity(status()) must beFalse
+      q.checkCapacity(status()) must beFalse
     }
 
     "return false if there is only entries with 0 buffer" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (1, 0, LocalDateTime.now.minusMinutes(2)),
         (1, 0, LocalDateTime.now.minusMinutes(1)),
         (1, 0, LocalDateTime.now)
@@ -84,7 +84,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return true if the most recent size is larger than max buffer size" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (1, 0, LocalDateTime.now.minusMinutes(2)),
         (1, 0, LocalDateTime.now.minusMinutes(1)),
         (1, 11, LocalDateTime.now)
@@ -92,7 +92,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return false if most recent size is less than max buffer size" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (1, 0, LocalDateTime.now.minusMinutes(2)),
         (1, 0, LocalDateTime.now.minusMinutes(1)),
         (1, 8, LocalDateTime.now)
@@ -100,7 +100,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return false if wait time is within 5 minute" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (1, 3, LocalDateTime.now.minusMinutes(2)),
         (1, 3, LocalDateTime.now.minusMinutes(1)),
         (1, 3, LocalDateTime.now) // 3 left at server rate 1 per minute
@@ -108,7 +108,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return true if wait time is more than 5 minute" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (0, 8, LocalDateTime.now.minusMinutes(2)),
         (1, 7, LocalDateTime.now.minusMinutes(1)),
         (1, 6, LocalDateTime.now) // 6 left at server rate 1 per minute
@@ -116,7 +116,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return true for long queue but not enough dispatch lately at all" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (0, 4, LocalDateTime.now.minusMinutes(3)),
         (0, 5, LocalDateTime.now.minusMinutes(2)),
         (0, 6, LocalDateTime.now.minusMinutes(1)),
@@ -125,7 +125,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
     }
 
     "return false when just started to pickup traffic" >> {
-      q.isOverCapacity(status(
+      q.checkCapacity(status(
         (0, 9, LocalDateTime.now.minus(2, ChronoUnit.MILLIS)),
         (0, 9, LocalDateTime.now.minus(1, ChronoUnit.MILLIS)),
         (0, 9, LocalDateTime.now) // 6 left at server rate 1 per minute

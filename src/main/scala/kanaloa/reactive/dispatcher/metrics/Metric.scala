@@ -20,7 +20,7 @@ object Metric {
 
   case class PoolSize(size: Int) extends Status
   case class PoolUtilized(numWorkers: Int) extends Status
-  case class DispatchWait(duration: Duration) extends Status
+  case class ProcessTime(duration: Duration) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueExpectedWaitTime(duration: Duration) extends Status
 }

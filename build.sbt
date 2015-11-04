@@ -1,16 +1,14 @@
-organization in ThisBuild := "com.iheart"
+organization in Global := "com.iheart"
 
-version in ThisBuild := "1.0.0-" + Versions.releaseType
+name := "kanaloa"
 
-scalaVersion in ThisBuild := Versions.scala
 
-lazy val reactiveDispatcher = project in file(".")
+scalaVersion in Global := "2.11.7"
 
 resolvers ++= Dependencies.resolvers
 
 libraryDependencies ++= Dependencies.akka ++
                         Dependencies.test ++
-                        Dependencies.other ++
                         Dependencies.config
 
 
@@ -19,3 +17,6 @@ scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 Formatting.formatSettings
 
 testOptions in Test += Tests.Argument(TestFrameworks.Specs2, "-xonly")
+
+
+Publish.settings

@@ -3,7 +3,6 @@ package kanaloa.reactive.dispatcher.queue
 import java.time.{ Duration ⇒ JDuration, LocalDateTime }
 
 import akka.actor.{ Actor, ActorLogging, Props, Terminated }
-import kanaloa.reactive.dispatcher.ApiProtocol
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
