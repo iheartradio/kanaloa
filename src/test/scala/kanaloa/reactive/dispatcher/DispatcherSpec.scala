@@ -44,20 +44,18 @@ class DispatcherSpec extends SpecWithActorSystem {
         Backend((i: String) ⇒ Future.successful(MessageProcessed(i)))
       )(ResultChecker.simple[MessageProcessed]))
     }
-    "work happily with simpleBackend" in new SimplePushingDispatchScope {
 
+    "work happily with simpleBackend" in new SimplePushingDispatchScope {
       dispatcher ! "3"
       expectMsg(MessageProcessed("3"))
-
     }
 
     "let simple backend reject unrecognized message" in new SimplePushingDispatchScope {
       dispatcher ! 3
       expectMsgType[WorkFailed]
-
     }
 
-    "let simple result check fail on  unrecognized reply message" in new ScopeWithActor {
+    "let simple result check fail on unrecognized reply message" in new ScopeWithActor {
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
         Backend((i: String) ⇒ Future.successful("A Result"))
@@ -65,9 +63,7 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       dispatcher ! "3"
       expectMsgType[WorkFailed]
-
     }
-
   }
 
   "readConfig" should {

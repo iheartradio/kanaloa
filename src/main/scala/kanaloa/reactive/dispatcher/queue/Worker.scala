@@ -83,29 +83,35 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     outstanding:         Outstanding,
     isRetiring:          Boolean,
     delayBeforeNextWork: Option[FiniteDuration]
-  ): Receive = ({
+  ): Receive = {
+    val handleResult: Receive =
+      (resultChecker orElse ({
 
-    case DelegateeTimeout ⇒
-      log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
-      outstanding.timeout()
+        case m ⇒ Left(s"Unexpected Result ${m.getClass.getCanonicalName}")
 
-      if (isRetiring) finish() else {
-        askMoreWork(delayBeforeNextWork)
+      }: ResultChecker)).andThen[Unit] {
+
+        case Right(result) ⇒
+          outstanding.success(result)
+          if (isRetiring) finish() else {
+            askMoreWork(delayBeforeNextWork)
+          }
+        case Left(e) ⇒
+          log.error(s"error $e returned by delegatee in regards to running work $outstanding")
+          retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
       }
-    case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
 
-  }: Receive) orElse (resultChecker orElse ({
-    case m ⇒ Left(s"Unexpected Result ${m.getClass.getCanonicalName}")
-  }: ResultChecker)).andThen[Unit] {
+    ({
+      case DelegateeTimeout ⇒
+        log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+        outstanding.timeout()
 
-    case Right(result) ⇒
-      outstanding.success(result)
-      if (isRetiring) finish() else {
-        askMoreWork(delayBeforeNextWork)
-      }
-    case Left(e) ⇒
-      log.error(s"error $e returned by delegatee in regards to running work $outstanding")
-      retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
+        if (isRetiring) finish() else {
+          askMoreWork(delayBeforeNextWork)
+        }
+      case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
+
+    }: Receive) orElse handleResult
 
   }
 
