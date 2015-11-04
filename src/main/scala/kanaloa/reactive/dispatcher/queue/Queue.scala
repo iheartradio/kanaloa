@@ -31,7 +31,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
       case Enqueue(workMessage, replyTo, setting) ⇒
-        if (isOverCapacity(status)) {
+        if (checkCapacity(status)) {
           replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
           metricsCollector.send(Metric.EnqueueRejected)
         } else {
@@ -40,9 +40,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
           val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
 
           metricsCollector.send(Metric.WorkEnqueued)
-          status.avgDispatchDurationLowerBound.foreach { (d: Duration) ⇒
-            metricsCollector.send(Metric.DispatchWait(d))
-          }
 
           context become processing(newStatus)
           replyTo.foreach(_ ! WorkEnqueued)
@@ -76,7 +73,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     context stop self
   }
 
-  protected def isOverCapacity(qs: QueueStatus): Boolean
+  protected def checkCapacity(qs: QueueStatus): Boolean
 
   private def handleWork(status: QueueStatus, nextContext: QueueStatus ⇒ Receive): Receive = {
     def dispatchWorkAndBecome(status: QueueStatus, newContext: QueueStatus ⇒ Receive): Unit = {
@@ -146,10 +143,8 @@ case class QueueWithBackPressure(
   protected val bufferHistoryLength = (settings.maxHistoryLength.toMillis / historySampleRateInMills).toInt
   assert(bufferHistoryLength > 5, s"max history length should be at least ${historySampleRateInMills * 5} ms")
 
-  def isOverCapacity(qs: QueueStatus): Boolean =
-    if (qs.currentQueueLength == 0)
-      false
-    else if (qs.currentQueueLength >= settings.maxBufferSize) {
+  def checkCapacity(qs: QueueStatus): Boolean =
+    if (qs.currentQueueLength >= settings.maxBufferSize) {
       log.error("buffer overflowed " + settings.maxBufferSize)
       true
     } else {
@@ -165,7 +160,7 @@ case class QueueWithBackPressure(
 
 trait QueueWithoutBackPressure extends Queue {
   protected def bufferHistoryLength = 0
-  def isOverCapacity(qs: QueueStatus) = false
+  def checkCapacity(qs: QueueStatus) = false
 }
 
 case class DefaultQueue(

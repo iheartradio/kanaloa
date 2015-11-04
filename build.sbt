@@ -2,7 +2,7 @@ organization in ThisBuild := "com.iheart"
 
 name := "kanaloa"
 
-version in ThisBuild := "0.1.0" + Versions.releaseType
+version in ThisBuild := "0.1.1" + Versions.releaseType
 
 scalaVersion in ThisBuild := Versions.scala
 
