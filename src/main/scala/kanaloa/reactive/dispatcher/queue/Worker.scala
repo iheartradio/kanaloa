@@ -62,14 +62,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     case Worker.Retire       ⇒ context become retiring(Some(outstanding))
 
-  }: Receive).orElse(
-
-    waitingResult(outstanding, false, delayBeforeNextWork)
-  )
-
-    .orElse {
-      case msg ⇒ log.error(s"unrecognized interrupting msg during working $msg")
-    }
+  }: Receive).orElse(waitingResult(outstanding, false, delayBeforeNextWork))
 
   def retiring(outstanding: Option[Outstanding]): Receive = ({
     case Terminated(`queue`) ⇒ //ignore when retiring
@@ -101,7 +94,10 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       }
     case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
 
-  }: Receive) orElse resultChecker.andThen[Unit] {
+  }: Receive) orElse (resultChecker orElse ({
+    case m ⇒ Left(s"Unexpected Result ${m.getClass.getCanonicalName}")
+  }: ResultChecker)).andThen[Unit] {
+
     case Right(result) ⇒
       outstanding.success(result)
       if (isRetiring) finish() else {

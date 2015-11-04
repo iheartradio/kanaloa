@@ -46,11 +46,6 @@ trait Dispatcher extends Actor {
   def extraReceive: Receive = PartialFunction.empty
 }
 
-object Backend {
-  def apply(actorRef: ActorRef): Backend = (_) ⇒ actorRef
-  def apply(props: Props): Backend = f ⇒ f.actorOf(props, "backend")
-}
-
 object Dispatcher {
 
   case class Settings(

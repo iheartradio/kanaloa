@@ -3,9 +3,14 @@ package kanaloa.reactive.dispatcher
 import akka.actor.{ ActorSystem, Props }
 import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
 import com.typesafe.config.{ ConfigException, ConfigFactory }
+import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
+import kanaloa.reactive.dispatcher.Backend.UnexpectedRequest
 import kanaloa.reactive.dispatcher.metrics.{ NoOpMetricsCollector, StatsDMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
+import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.specs2.specification.Scope
+
+import scala.concurrent.Future
 
 class DispatcherSpec extends SpecWithActorSystem {
   "pulling work dispatcher" should {
@@ -30,6 +35,39 @@ class DispatcherSpec extends SpecWithActorSystem {
       delegatee.expectMsg(6)
       delegatee.reply(Success)
     }
+  }
+
+  "pushing work dispatcher" should {
+    trait SimplePushingDispatchScope extends ScopeWithActor {
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        name = "test",
+        Backend((i: String) ⇒ Future.successful(MessageProcessed(i)))
+      )(ResultChecker.simple[MessageProcessed]))
+    }
+    "work happily with simpleBackend" in new SimplePushingDispatchScope {
+
+      dispatcher ! "3"
+      expectMsg(MessageProcessed("3"))
+
+    }
+
+    "let simple backend reject unrecognized message" in new SimplePushingDispatchScope {
+      dispatcher ! 3
+      expectMsgType[WorkFailed]
+
+    }
+
+    "let simple result check fail on  unrecognized reply message" in new ScopeWithActor {
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        name = "test",
+        Backend((i: String) ⇒ Future.successful("A Result"))
+      )(ResultChecker.simple[MessageProcessed]))
+
+      dispatcher ! "3"
+      expectMsgType[WorkFailed]
+
+    }
+
   }
 
   "readConfig" should {
