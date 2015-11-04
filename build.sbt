@@ -1,19 +1,12 @@
-organization in ThisBuild := "com.iheart"
+organization in Global := "com.iheart"
 
 name := "kanaloa"
 
-version in ThisBuild := "0.1.1" + Versions.releaseType
 
-scalaVersion in ThisBuild := Versions.scala
-
-
-licenses += ("Apache-2.0", url("http://www.apache.org/licenses/"))
+scalaVersion in Global := Versions.scala
 
 lazy val reactiveDispatcher = project in file(".")
 
-bintrayOrganization := Some("iheartradio")
-
-bintrayPackageLabels := Seq("akka", "reactive")
 
 resolvers ++= Dependencies.resolvers
 
@@ -28,3 +21,6 @@ scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 Formatting.formatSettings
 
 testOptions in Test += Tests.Argument(TestFrameworks.Specs2, "-xonly")
+
+
+Publish.settings

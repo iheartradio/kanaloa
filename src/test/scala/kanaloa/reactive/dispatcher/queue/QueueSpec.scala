@@ -348,7 +348,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem {
     delegatee.expectMsg("d")
 
     receivedMetrics must contain(allOf[Metric](Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut))
-    receivedMetrics.find(_.isInstanceOf[ProcessTime]) must beSome[Metric]
+    receivedMetrics must contain(haveClass[ProcessTime]).exactly(1.times)
   }
 
 }
