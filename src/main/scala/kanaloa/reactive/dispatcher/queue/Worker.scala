@@ -62,14 +62,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     case Worker.Retire       ⇒ context become retiring(Some(outstanding))
 
-  }: Receive).orElse(
-
-    waitingResult(outstanding, false, delayBeforeNextWork)
-  )
-
-    .orElse {
-      case msg ⇒ log.error(s"unrecognized interrupting msg during working $msg")
-    }
+  }: Receive).orElse(waitingResult(outstanding, false, delayBeforeNextWork))
 
   def retiring(outstanding: Option[Outstanding]): Receive = ({
     case Terminated(`queue`) ⇒ //ignore when retiring
@@ -90,26 +83,35 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     outstanding:         Outstanding,
     isRetiring:          Boolean,
     delayBeforeNextWork: Option[FiniteDuration]
-  ): Receive = ({
+  ): Receive = {
+    val handleResult: Receive =
+      (resultChecker orElse ({
 
-    case DelegateeTimeout ⇒
-      log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
-      outstanding.timeout()
+        case m ⇒ Left(s"Unexpected Result ${m.getClass.getCanonicalName}")
 
-      if (isRetiring) finish() else {
-        askMoreWork(delayBeforeNextWork)
+      }: ResultChecker)).andThen[Unit] {
+
+        case Right(result) ⇒
+          outstanding.success(result)
+          if (isRetiring) finish() else {
+            askMoreWork(delayBeforeNextWork)
+          }
+        case Left(e) ⇒
+          log.error(s"error $e returned by delegatee in regards to running work $outstanding")
+          retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
       }
-    case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
 
-  }: Receive) orElse resultChecker.andThen[Unit] {
-    case Right(result) ⇒
-      outstanding.success(result)
-      if (isRetiring) finish() else {
-        askMoreWork(delayBeforeNextWork)
-      }
-    case Left(e) ⇒
-      log.error(s"error $e returned by delegatee in regards to running work $outstanding")
-      retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
+    ({
+      case DelegateeTimeout ⇒
+        log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+        outstanding.timeout()
+
+        if (isRetiring) finish() else {
+          askMoreWork(delayBeforeNextWork)
+        }
+      case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
+
+    }: Receive) orElse handleResult
 
   }
 
