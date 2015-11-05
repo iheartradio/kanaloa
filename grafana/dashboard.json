@@ -60,8 +60,8 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', 'success (\\1)')",
-              "textEditor": false
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
+              "textEditor": true
             }
           ],
           "timeFrom": null,
@@ -127,11 +127,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.failed.rate, '.*$namespace.(.*).work.failed.*', 'failure (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', 'timeout (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
               "textEditor": true
             }
           ],
@@ -212,11 +212,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueued.rate, '.*$namespace.(.*).queue.enqueued.rate', 'accepted (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueued.rate, '.*$namespace.(.*).queue.enqueued.rate', '\\1 (accepted)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueueRejected.rate, '.*$namespace.(.*).queue.enqueueRejected.rate', 'rejected (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueueRejected.rate, '.*$namespace.(.*).queue.enqueueRejected.rate', '\\1 (rejected)')",
               "textEditor": true
             }
           ],
@@ -281,7 +281,7 @@
           "targets": [
             {
               "hide": false,
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.length, '.*$namespace.(.*).queue.length', 'queue length (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.length, '.*$namespace.(.*).queue.length', '\\1')",
               "textEditor": true
             }
           ],
@@ -353,7 +353,7 @@
           "targets": [
             {
               "hide": false,
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', 'wait time (\\1)')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": false
             }
           ],
@@ -415,7 +415,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.avgProcessTime.mean, '.*$namespace.(.*).queue.*','process time (\\1)')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.avgProcessTime.mean, '.*$namespace.(.*).queue.*','\\1')",
               "textEditor": true
             }
           ],
@@ -485,7 +485,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', 'circuit breaker open (\\1)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": true
             }
           ],
@@ -553,11 +553,11 @@
           "steppedLine": true,
           "targets": [
             {
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.size, '.*$namespace.(.*).pool.size', 'max size (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.utilized, '.*$namespace.(.*).pool.utilized', 'utilized (\\1)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
               "textEditor": true
             }
           ],
