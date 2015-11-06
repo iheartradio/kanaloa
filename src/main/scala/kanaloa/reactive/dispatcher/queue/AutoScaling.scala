@@ -94,7 +94,6 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     val newEntry = PerformanceLogEntry(currentSize, dispatchWait, utilization, LocalDateTime.now)
 
     val fullyUtilized = utilization == currentSize
-
     // Send metrics
     metricsCollector.send(Metric.PoolSize(currentSize))
     metricsCollector.send(Metric.PoolUtilized(utilization))

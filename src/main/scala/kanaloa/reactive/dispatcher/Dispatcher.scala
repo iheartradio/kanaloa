@@ -63,19 +63,32 @@ object Dispatcher {
     maxHistoryLength = 10.seconds
   )
 
-  private def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) =
-    rootConfig.as[Option[Config]]("kanaloa").getOrElse(ConfigFactory.empty()).withFallback(ConfigFactory.defaultReference(getClass.getClassLoader))
+  private[dispatcher] def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) = {
+    val referenceConfig = ConfigFactory.defaultReference(getClass.getClassLoader).getConfig("kanaloa")
 
-  def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings = {
-    config.as[Dispatcher.Settings]("default-dispatcher")
+    rootConfig.as[Option[Config]]("kanaloa")
+      .getOrElse(ConfigFactory.empty())
+      .withFallback(referenceConfig)
   }
+
+  def defaultDispatcherConfig(config: Config = kanaloaConfig()): Config =
+    config.as[Config]("default-dispatcher")
+
+  def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings =
+    toDispatcherSettings(defaultDispatcherConfig(config))
+
+  private def toDispatcherSettings(config: Config): Dispatcher.Settings =
+    config.atPath("root").as[Dispatcher.Settings]("root")
 
   def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
     val cfg = kanaloaConfig(rootConfig)
-    (
-      cfg.as[Option[Dispatcher.Settings]]("dispatchers." + dispatcherName).getOrElse(defaultDispatcherSettings(cfg)),
-      MetricsCollector.fromConfig(dispatcherName, cfg)
-    )
+    val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg))
+
+    val settings = toDispatcherSettings(dispatcherCfg)
+
+    val metricsCollector = MetricsCollector.fromConfig(dispatcherName, cfg)
+
+    (settings, metricsCollector)
   }
 }
 
@@ -89,7 +102,7 @@ case class PushingDispatcher(
   extends Dispatcher {
 
   protected lazy val queueProps = Queue.withBackPressure(
-    settings.backPressure.orElse(Dispatcher.defaultDispatcherSettings().backPressure).get, WorkSettings(), metricsCollector
+    settings.backPressure.getOrElse(Dispatcher.defaultDispatcherConfig().as[BackPressureSettings]("backPressure")), WorkSettings(), metricsCollector
   )
 
   override def extraReceive: Receive = {
