@@ -113,7 +113,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       pool.foreach(_ ! PoisonPill)
       context stop self
 
-    case _ ⇒ sender ! ShuttingDown
+    case _ ⇒ //Ignore
   }
 
   private def createWorker(index: Int): WorkerRef = {

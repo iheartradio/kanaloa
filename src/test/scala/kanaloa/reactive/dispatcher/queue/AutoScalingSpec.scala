@@ -201,7 +201,7 @@ class AutoScalingScope(implicit system: ActorSystem)
     }
   })
 
-  case class MockQueueInfo(avgDispatchDurationLowerBound: Option[Duration]) extends QueueDispatchInfo
+  case class MockQueueInfo(avgDispatchDurationLowerBound: Option[Duration], allWorkerOccupied: Boolean = true) extends QueueDispatchInfo
 
   def autoScalingRef(explorationRatio: Double = 0.5) =
     TestActorRef[AutoScaling](AutoScaling.default(tQueue.ref, tProcessor.ref,
@@ -216,7 +216,7 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {
     tQueue.expectMsgType[QueryStatus]
-    tQueue.reply(MockQueueInfo(Some(dispatchDuration)))
+    tQueue.reply(MockQueueInfo(Some(dispatchDuration), numOfIdleWorkers == 0))
     tProcessor.expectMsgType[QueryStatus]
     val workers = (1 to numOfBusyWorkers).map(_ ⇒ newWorker(true)) ++
       (1 to numOfIdleWorkers).map(_ ⇒ newWorker(false))

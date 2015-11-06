@@ -1,16 +1,12 @@
+import sbt.Keys._
 import sbt._
 
 object Dependencies {
-  object Versions {
-    val akka        = "2.4.0"
-    val specs2      = "3.0"
-  }
 
-  val resolvers = Seq(
-    Resolver.typesafeRepo("releases"),
-    Resolver.bintrayRepo("scalaz", "releases"),
-    "Sonatype OSS Releases"  at "http://oss.sonatype.org/content/repositories/releases/"
-  )
+  object Versions {
+    val akka = "2.4.0"
+    val specs2 = "3.0"
+  }
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
@@ -18,14 +14,34 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-slf4j" % Versions.akka
   )
 
-  val test = Seq(
-    "org.specs2" %% "specs2-core" % Versions.specs2 % "test",
-    "org.specs2" %% "specs2-mock" % Versions.specs2 % "test",
-    "org.specs2" %% "specs2-scalacheck" % Versions.specs2 % "test"
-  )
+  val (test, integration) = {
+    val specs = Seq(
+      "org.specs2" %% "specs2-core" % Versions.specs2,
+      "org.specs2" %% "specs2-mock" % Versions.specs2,
+      "org.specs2" %% "specs2-scalacheck" % Versions.specs2
+    )
+
+    (specs.map(_ % "test"), specs.map(_ % "integration"))
+  }
 
   val config = Seq(
     "net.ceedubs" %% "ficus" % "1.1.2"
+  )
+
+  lazy val settings = Seq(
+
+    scalaVersion in Global := "2.11.7",
+
+    resolvers ++= Seq(
+      Resolver.typesafeRepo("releases"),
+      Resolver.bintrayRepo("scalaz", "releases"),
+      "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/"
+    ),
+
+    libraryDependencies ++= Dependencies.akka ++
+      Dependencies.test ++
+      Dependencies.config
+
   )
 
 }

@@ -24,7 +24,7 @@ trait Dispatcher extends Actor {
 
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
-  private val processor = context.actorOf(QueueProcessor.withCircuitBreaker(
+  private[dispatcher] val processor = context.actorOf(QueueProcessor.withCircuitBreaker(
     queue,
     backend,
     settings.workerPool,

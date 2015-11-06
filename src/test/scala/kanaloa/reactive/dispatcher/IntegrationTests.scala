@@ -1,14 +1,19 @@
 package kanaloa.reactive.dispatcher
 
+import java.time.LocalDateTime
+
 import akka.actor.{ ActorSystem, Props, ActorRef, Actor }
 import akka.testkit.{ TestActorRef, TestProbe, ImplicitSender, TestKit }
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.ApiProtocol.{ ShutdownSuccessfully, ShutdownGracefully }
+import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully, ShutdownGracefully }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.RunningStatus
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
-import scala.concurrent.Future
+import scala.concurrent.{ Promise, Future }
 import scala.concurrent.duration._
 import IntegrationTests._
+import kanaloa.util.Java8TimeExtensions._
+import scala.util.Random
 
 trait IntegrationSpec extends Specification {
   sequential
@@ -29,7 +34,7 @@ trait IntegrationSpec extends Specification {
 
 }
 
-class PushingDispatcherIntegrationSpec extends IntegrationSpec {
+class PushingDispatcherIntegration extends IntegrationSpec {
 
   "can process through a large number of messages" in new TestScope {
 
@@ -51,7 +56,7 @@ class PushingDispatcherIntegrationSpec extends IntegrationSpec {
 
     ignoreMsg { case Success ⇒ true }
 
-    val messagesSent = sendLoadsOfMessage(pd, duration = 1.seconds, msgPerMilli = 3)
+    val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 3)
 
     expectNoMsg(200.milliseconds) //wait for all message to be processed
 
@@ -65,30 +70,32 @@ class PushingDispatcherIntegrationSpec extends IntegrationSpec {
 
 }
 
-class AutoScalingIntegrationSpec extends IntegrationSpec {
+class AutoScalingIntegration extends IntegrationSpec {
 
   "pushing dispatcher move to the optimal pool size" in new TestScope {
 
-    val processTime = 2.milliseconds
-    val optimalSize = 19
-    val pd = system.actorOf(PushingDispatcher.props(
+    val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
+    val optimalSize = 8
+
+    val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
+    val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
       "test-pushing",
-      Backend(system.actorOf(backendProps(optimalSize, processTime))),
+      Backend(backend),
       ConfigFactory.parseString(
         """
           |kanaloa.dispatchers.test-pushing {
           |  workerPool {
-          |    startingPoolSize = 5
-          |    minPoolSize = 5
+          |    startingPoolSize = 3
+          |    minPoolSize = 1
           |  }
           |  backPressure {
-          |    maxBufferSize = 600000
-          |    thresholdForExpectedWaitTime = 3000m
+          |    maxBufferSize = 60000
+          |    thresholdForExpectedWaitTime = 1h
           |    maxHistoryLength = 3s
           |  }
           |  autoScaling {
           |    chanceOfScalingDownWhenFull = 0.1
-          |    actionFrequency = 10m
+          |    actionFrequency = 100ms
           |    downsizeAfterUnderUtilization = 72h
           |  }
           |}
@@ -98,15 +105,23 @@ class AutoScalingIntegrationSpec extends IntegrationSpec {
 
     ignoreMsg { case Success ⇒ true }
 
-    val optimalSpeed = optimalSize / processTime.toMillis
+    val optimalSpeed = optimalSize.toDouble / processTime.toMillis
 
-    val sent = sendLoadsOfMessage(pd, duration = 2.minute, msgPerMilli = optimalSpeed.toInt)
+    val sent = sendLoadsOfMessage(pd, duration = 15.seconds, msgPerMilli = optimalSpeed * 0.4)
 
-    println("all messages sent, now shut down!")
+    println(s"all messages ($sent) sent, now shut down!")
 
-    pd ! ShutdownGracefully(Some(self), timeout = 5.minutes)
+    pd.underlyingActor.processor ! QueryStatus(Some(self))
 
-    expectMsg(ShutdownSuccessfully)
+    val status = expectMsgClass(classOf[RunningStatus])
+
+    status.pool.size must be ~ (optimalSize +/- 4)
+
+    expectNoMsg(3.second) //wait for all message to be processed
+
+    pd ! ShutdownGracefully(Some(self), timeout = 10.seconds)
+
+    expectMsg(10.seconds, ShutdownSuccessfully)
 
   }
 
@@ -114,26 +129,43 @@ class AutoScalingIntegrationSpec extends IntegrationSpec {
 
 object IntegrationTests {
 
-  case class Reply(to: ActorRef)
+  case class Reply(to: ActorRef, delay: Duration, scheduled: LocalDateTime = LocalDateTime.now)
 
   case object Success
 
+  class Delay extends Actor {
+    def receive = {
+      case r @ Reply(to, delay, _) ⇒
+        Thread.sleep(delay.toMillis)
+        context.parent ! r
+        context stop self
+    }
+  }
+
   class ConcurrencyLimitedBackend(optimalSize: Int, baseWait: FiniteDuration) extends Actor {
     var concurrent = 0
-
+    var count = 0
     import context.dispatcher
+    val startAt = LocalDateTime.now
 
     def receive = {
-      case Reply(to) ⇒
+      case Reply(to, _, scheduled) ⇒
         concurrent -= 1
+        count += 1
+        if (count % 1000 == 0) {
+          println(s"Concurrency: $concurrent")
+          println(s"Total processed: $count at speed ${count.toFloat / startAt.until(LocalDateTime.now).toMillis} messages/ms")
+          println(s"Process Time this message: ${scheduled.until(LocalDateTime.now).toMillis} ms")
+        }
+
         to ! Success
 
       case msg ⇒
         concurrent += 1
         val overCap = Math.max(concurrent - optimalSize, 0)
-        val wait = baseWait * (1 + overCap * overCap)
-        context.system.scheduler.scheduleOnce(wait, self, Reply(sender))
+        val wait = baseWait * (1 + Math.pow(overCap, 1.7))
 
+        context.actorOf(Props(classOf[Delay])) ! Reply(sender, wait)
     }
   }
 
@@ -148,21 +180,24 @@ object IntegrationTests {
 
   val resultChecker: ResultChecker = {
     case Success ⇒ Right(Success)
-    case m       ⇒ throw new Exception("Unexpected msg")
   }
 
-  def backendProps(optimalSize: Int, baseWait: FiniteDuration = 1.milliseconds) =
+  def concurrencyLimitedBackendProps(optimalSize: Int, baseWait: FiniteDuration = 1.milliseconds) =
     Props(new ConcurrencyLimitedBackend(optimalSize, baseWait))
 
   class TestScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
 
-    def sendLoadsOfMessage(target: ActorRef, duration: FiniteDuration, msgPerMilli: Int): Int = {
+    def sendLoadsOfMessage(target: ActorRef, duration: FiniteDuration, msgPerMilli: Double): Int = {
 
       val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
+      val start = LocalDateTime.now
 
       1.to(numberOfMessages).foreach { i ⇒
         target ! i
-        if (i % msgPerMilli == 0) Thread.sleep(1)
+        if (i % (msgPerMilli * 50).toInt == 0) Thread.sleep(50)
+        if (i % 1000 == 0) {
+          println(s"Total message sent $i at speed ${i.toDouble / start.until(LocalDateTime.now).toMillis} messages/ms")
+        }
       }
 
       numberOfMessages

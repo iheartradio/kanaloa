@@ -232,6 +232,7 @@ object Queue {
 
   trait QueueDispatchInfo {
     def avgDispatchDurationLowerBound: Option[Duration]
+    def allWorkerOccupied: Boolean
   }
   protected[queue] case class QueueStatus(
     workBuffer:      ScalaQueue[Work]           = ScalaQueue.empty,
@@ -239,6 +240,8 @@ object Queue {
     countOfWorkSent: Int                        = 0,
     bufferHistory:   Vector[BufferHistoryEntry] = Vector.empty
   ) extends QueueDispatchInfo {
+
+    def allWorkerOccupied = !workBuffer.isEmpty
 
     lazy val relevantHistory: Vector[BufferHistoryEntry] = bufferHistory.takeRightWhile(_.queueLength > 0) //only take into account latest busy queue history
 

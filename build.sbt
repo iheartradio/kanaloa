@@ -3,20 +3,15 @@ organization in Global := "com.iheart"
 name := "kanaloa"
 
 
-scalaVersion in Global := "2.11.7"
-
-resolvers ++= Dependencies.resolvers
-
-libraryDependencies ++= Dependencies.akka ++
-                        Dependencies.test ++
-                        Dependencies.config
-
+lazy val root = (project in file(".")).configs(Testing.Integration)
 
 scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
-Formatting.formatSettings
+Dependencies.settings
 
-testOptions in Test += Tests.Argument(TestFrameworks.Specs2, "-xonly")
-
+Format.settings
 
 Publish.settings
+
+Testing.settings
+
