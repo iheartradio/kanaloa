@@ -2,7 +2,7 @@ package kanaloa.reactive.dispatcher
 
 import java.time.LocalDateTime
 
-import akka.actor.{ ActorSystem, Props, ActorRef, Actor }
+import akka.actor._
 import akka.testkit.{ TestActorRef, TestProbe, ImplicitSender, TestKit }
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully, ShutdownGracefully }
@@ -16,20 +16,29 @@ import kanaloa.util.Java8TimeExtensions._
 import scala.util.Random
 
 trait IntegrationSpec extends Specification {
+
+  val verbose = false
+
+  private val logLevel = if (verbose) "INFO" else "OFF"
   sequential
 
   implicit lazy val system = ActorSystem("test", ConfigFactory.parseString(
-    """
+    s"""
       |akka {
-      |log-dead-letters = off
-      |log-dead-letters-during-shutdown = off
-      |scheduler {
-      |  tick-duration = 1ms
-      |  ticks-per-wheel = 2
-      |}
+      |  log-dead-letters = off
+      |  log-dead-letters-during-shutdown = off
+      |
+      |  scheduler {
+      |    tick-duration = 1ms
+      |    ticks-per-wheel = 2
+      |  }
+      |  stdout-loglevel = ${logLevel}
+      |
+      |  loglevel = ${logLevel}
       |}
     """.stripMargin
   ))
+
   def afterAll(): Unit = system.terminate()
 
 }
@@ -56,13 +65,11 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
     ignoreMsg { case Success ⇒ true }
 
-    val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 3)
+    val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 3, verbose)
 
     expectNoMsg(200.milliseconds) //wait for all message to be processed
 
-    pd ! ShutdownGracefully(Some(self))
-
-    expectMsg(ShutdownSuccessfully)
+    shutdown(pd)
 
     backend.underlyingActor.count === messagesSent
 
@@ -70,7 +77,7 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
 }
 
-class AutoScalingIntegration extends IntegrationSpec {
+class AutoScalingGeneralIntegration extends IntegrationSpec {
 
   "pushing dispatcher move to the optimal pool size" in new TestScope {
 
@@ -107,21 +114,51 @@ class AutoScalingIntegration extends IntegrationSpec {
 
     val optimalSpeed = optimalSize.toDouble / processTime.toMillis
 
-    val sent = sendLoadsOfMessage(pd, duration = 15.seconds, msgPerMilli = optimalSpeed * 0.4)
+    val sent = sendLoadsOfMessage(pd, duration = 10.seconds, msgPerMilli = optimalSpeed * 0.4, verbose)
 
-    println(s"all messages ($sent) sent, now shut down!")
+    val actualPoolSize = getPoolSize(pd.underlyingActor)
 
-    pd.underlyingActor.processor ! QueryStatus(Some(self))
+    expectNoMsg(1.second) //wait for all message to be processed
 
-    val status = expectMsgClass(classOf[RunningStatus])
+    shutdown(pd)
 
-    status.pool.size must be ~ (optimalSize +/- 4)
+    actualPoolSize must be ~ (optimalSize +/- 2)
+  }
+}
 
-    expectNoMsg(3.second) //wait for all message to be processed
+class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
+  "downsize when the traffic is sparse" in new TestScope {
+    val backend = TestActorRef[SimpleBackend]
+    val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
+      "test-pushing",
+      Backend(backend),
+      ConfigFactory.parseString(
+        """
+          |kanaloa.dispatchers.test-pushing {
+          |  workerPool {
+          |    startingPoolSize = 10
+          |    minPoolSize = 2
+          |  }
+          |  autoScaling {
+          |    actionFrequency = 10ms
+          |    downsizeAfterUnderUtilization = 100ms
+          |  }
+          |}
+        """.stripMargin
+      )
+    )(resultChecker))
 
-    pd ! ShutdownGracefully(Some(self), timeout = 10.seconds)
+    pd ! "a msg"
 
-    expectMsg(10.seconds, ShutdownSuccessfully)
+    expectMsg(Success)
+
+    expectNoMsg(200.milliseconds) //wait for the downsize to happen
+
+    val actualPoolSize = getPoolSize(pd.underlyingActor)
+
+    shutdown(pd)
+
+    actualPoolSize === 2
 
   }
 
@@ -142,10 +179,9 @@ object IntegrationTests {
     }
   }
 
-  class ConcurrencyLimitedBackend(optimalSize: Int, baseWait: FiniteDuration) extends Actor {
+  class ConcurrencyLimitedBackend(optimalSize: Int, baseWait: FiniteDuration) extends Actor with ActorLogging {
     var concurrent = 0
     var count = 0
-    import context.dispatcher
     val startAt = LocalDateTime.now
 
     def receive = {
@@ -153,9 +189,9 @@ object IntegrationTests {
         concurrent -= 1
         count += 1
         if (count % 1000 == 0) {
-          println(s"Concurrency: $concurrent")
-          println(s"Total processed: $count at speed ${count.toFloat / startAt.until(LocalDateTime.now).toMillis} messages/ms")
-          println(s"Process Time this message: ${scheduled.until(LocalDateTime.now).toMillis} ms")
+          log.info(s"Concurrency: $concurrent")
+          log.info(s"Total processed: $count at speed ${count.toFloat / startAt.until(LocalDateTime.now).toMillis} messages/ms")
+          log.info(s"Process Time this message: ${scheduled.until(LocalDateTime.now).toMillis} ms")
         }
 
         to ! Success
@@ -187,7 +223,7 @@ object IntegrationTests {
 
   class TestScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
 
-    def sendLoadsOfMessage(target: ActorRef, duration: FiniteDuration, msgPerMilli: Double): Int = {
+    def sendLoadsOfMessage(target: ActorRef, duration: FiniteDuration, msgPerMilli: Double, verbose: Boolean = false): Int = {
 
       val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
       val start = LocalDateTime.now
@@ -195,12 +231,26 @@ object IntegrationTests {
       1.to(numberOfMessages).foreach { i ⇒
         target ! i
         if (i % (msgPerMilli * 50).toInt == 0) Thread.sleep(50)
-        if (i % 1000 == 0) {
+        if (verbose && i % 1000 == 0) {
           println(s"Total message sent $i at speed ${i.toDouble / start.until(LocalDateTime.now).toMillis} messages/ms")
         }
       }
 
       numberOfMessages
+    }
+
+    def getPoolSize(rd: Dispatcher): Int = {
+      rd.processor ! QueryStatus(Some(self))
+
+      val status = expectMsgClass(classOf[RunningStatus])
+
+      status.pool.size
+    }
+
+    def shutdown(rd: ActorRef): Unit = {
+      rd ! ShutdownGracefully(Some(self), timeout = 10.seconds)
+
+      expectMsg(10.seconds, ShutdownSuccessfully)
     }
   }
 

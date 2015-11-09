@@ -50,12 +50,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   private def collectingStatus(status: SystemStatus): Receive = watchingQueueAndProcessor orElse {
     case qdi: QueueDispatchInfo ⇒
-      val waitDuration = qdi.avgDispatchDurationLowerBound
-      if (waitDuration.isDefined) {
-        processor ! QueryStatus()
-        continueCollectingStatus(status.copy(dispatchWait = waitDuration, fullyUtilized = Some(qdi.allWorkerOccupied)))
-      } else
-        takeABreak()
+      processor ! QueryStatus()
+      continueCollectingStatus(status.copy(dispatchWait = qdi.avgDispatchDurationLowerBound, fullyUtilized = Some(qdi.allWorkerOccupied)))
 
     case RunningStatus(pool) ⇒
       pool.foreach(_ ! QueryStatus())
@@ -81,16 +77,16 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def continueCollectingStatus(newStatus: SystemStatus) = newStatus match {
-    case SystemStatus(Some(fullyUtilized), Some(qs), Some(wp), ws) if newStatus.collected ⇒
+    case SystemStatus(Some(fullyUtilized), qs, Some(wp), ws) if newStatus.collected ⇒
       val action = chooseAction(fullyUtilized, qs, wp, ws)
-      log.info(s"Auto scaling $action is chosen. Current dispatch time: ${qs.toMillis}; Pool size: ${wp.size}")
+      log.info(s"Auto scaling $action is chosen. Current dispatch time (when fully utilized): ${qs.map(_.toMillis)}; Pool size: ${wp.size}")
       action.foreach(processor ! _)
       takeABreak()
     case _ ⇒
       context become collectingStatus(newStatus)
   }
 
-  private def chooseAction(fullyUtilized: Boolean, dispatchWait: Duration, workerPool: WorkerPool, workerStatus: List[WorkerStatus]): Option[ScaleTo] = {
+  private def chooseAction(fullyUtilized: Boolean, dispatchWait: Option[Duration], workerPool: WorkerPool, workerStatus: List[WorkerStatus]): Option[ScaleTo] = {
     val utilization = workerStatus.count(_ == Working)
 
     val currentSize: PoolSize = workerPool.size
@@ -103,9 +99,9 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))
     else None
 
-    if (fullyUtilized) {
-      val toUpdate = perfLog.get(currentSize).fold(dispatchWait) { oldSpeed ⇒
-        val nanos = (oldSpeed.toNanos * (1d - weightOfLatestMetric)) + (dispatchWait.toNanos * weightOfLatestMetric)
+    if (fullyUtilized && dispatchWait.isDefined) {
+      val toUpdate = perfLog.get(currentSize).fold(dispatchWait.get) { oldSpeed ⇒
+        val nanos = (oldSpeed.toNanos * (1d - weightOfLatestMetric)) + (dispatchWait.get.toNanos * weightOfLatestMetric)
         Duration.fromNanos(nanos)
       }
       perfLog = perfLog + (currentSize → toUpdate)
@@ -166,10 +162,7 @@ object AutoScaling {
     workerPool:    Option[WorkerPool] = None,
     workersStatus: List[WorkerStatus] = Nil
   ) {
-    def collected: Boolean = (for {
-      _ ← dispatchWait
-      pool ← workerPool
-    } yield workersStatus.length == pool.size).getOrElse(false)
+    def collected: Boolean = workerPool.fold(false)(_.size == workersStatus.length)
   }
   type PoolSize = Int
 

@@ -54,11 +54,11 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       case ScaleTo(newPoolSize, reason) ⇒
         log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
         metricsCollector.send(Metric.PoolSize(newPoolSize))
-
-        val diff = newPoolSize - pool.size
+        val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
+        val diff = toPoolSize - pool.size
         if (diff > 0)
           context become monitoring(resultHistory)(pool ++ (1 to diff).map(createWorker))
-        else if (diff < 0 && newPoolSize >= settings.minPoolSize)
+        else if (diff < 0)
           pool.take(-diff).foreach(_ ! Worker.Retire)
 
       case WorkCompleted(worker, duration) ⇒
@@ -197,7 +197,7 @@ object QueueProcessor {
   private[queue]type WorkerPool = Set[WorkerRef]
 
   case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) {
-    assert(numOfWorkers > 0)
+    assert(numOfWorkers >= 0)
   }
 
   case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)

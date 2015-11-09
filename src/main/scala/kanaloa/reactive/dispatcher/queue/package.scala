@@ -42,7 +42,8 @@ package kanaloa.reactive.dispatcher.queue {
   case class ProcessingWorkerPoolSettings(
     startingPoolSize:  Int                    = 5,
     maxProcessingTime: Option[FiniteDuration] = None,
-    minPoolSize:       Int                    = 3
+    minPoolSize:       Int                    = 3,
+    maxPoolSize:       Int                    = 400
   )
 
   /**
