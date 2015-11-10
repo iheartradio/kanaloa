@@ -21,7 +21,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     as ! OptimizeOrExplore
     tQueue.expectMsgType[QueryStatus]
     tQueue.reply(MockQueueInfo(None))
-    tProcessor.expectNoMsg(40.milliseconds)
+    tProcessor.expectMsgType[QueryStatus]
   }
 
   "send metrics to metricsCollector" in new AutoScalingScope {
@@ -201,7 +201,7 @@ class AutoScalingScope(implicit system: ActorSystem)
     }
   })
 
-  case class MockQueueInfo(avgDispatchDurationLowerBound: Option[Duration]) extends QueueDispatchInfo
+  case class MockQueueInfo(avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
 
   def autoScalingRef(explorationRatio: Double = 0.5) =
     TestActorRef[AutoScaling](AutoScaling.default(tQueue.ref, tProcessor.ref,
@@ -216,11 +216,14 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {
     tQueue.expectMsgType[QueryStatus]
-    tQueue.reply(MockQueueInfo(Some(dispatchDuration)))
+    val fullyUtilized = numOfIdleWorkers == 0
+    tQueue.reply(MockQueueInfo(if (fullyUtilized) Some(dispatchDuration) else None))
+
     tProcessor.expectMsgType[QueryStatus]
     val workers = (1 to numOfBusyWorkers).map(_ ⇒ newWorker(true)) ++
       (1 to numOfIdleWorkers).map(_ ⇒ newWorker(false))
     tProcessor.reply(RunningStatus(workers.toSet))
+
   }
 
   def mockBusyHistory(subject: ActorRef, ps: (PoolSize, Duration)*) = {

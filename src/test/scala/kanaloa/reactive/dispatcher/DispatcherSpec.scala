@@ -23,7 +23,9 @@ class DispatcherSpec extends SpecWithActorSystem {
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         backend,
         metricsCollector = NoOpMetricsCollector,
-        ({ case Success ⇒ Right(()) })
+        ({
+          case Success ⇒ Right(())
+        })
       )))
 
       delegatee.expectMsg(1)
@@ -70,14 +72,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "use default settings when nothing is in config" in {
       val (settings, mc) = Dispatcher.readConfig("example", ConfigFactory.empty)
       settings.workRetry === 0
+      settings.autoScaling must beSome
       mc === NoOpMetricsCollector
     }
+
     "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
       val cfgStr =
         """
           |kanaloa {
           |  default-dispatcher {
-          |     workRetry = 27
+          |    workRetry = 27
           |  }
           |  dispatchers {
           |
@@ -88,6 +92,27 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.workRetry === 27
+    }
+
+    "fall back to default-dispatcher settings when a field is missing in the dispatcher section" in {
+      val cfgStr =
+        """
+          |kanaloa {
+          |  default-dispatcher {
+          |    workRetry = 29
+          |  }
+          |  dispatchers {
+          |    example {
+          |      workTimeout = 1m
+          |    }
+          |  }
+          |
+          |}
+        """.stripMargin
+
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      settings.workRetry === 29
+      settings.autoScaling must beSome
     }
 
     "parse settings that match the name" in {

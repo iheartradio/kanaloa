@@ -19,10 +19,11 @@ object TestUtils {
 
   def iteratorQueueProps(
     iterator:         Iterator[String],
-    workSetting:      WorkSettings     = WorkSettings(),
-    metricsCollector: MetricsCollector = NoOpMetricsCollector
+    historySettings:  BufferHistorySettings = BufferHistorySettings(),
+    workSetting:      WorkSettings          = WorkSettings(),
+    metricsCollector: MetricsCollector      = NoOpMetricsCollector
   ): Props =
-    Queue.ofIterator(iterator.map(DelegateeMessage(_)), workSetting, metricsCollector)
+    Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, metricsCollector)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
 
@@ -34,7 +35,6 @@ object TestUtils {
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
       metricsCollector: MetricsCollector             = NoOpMetricsCollector
-    ) =
-      QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
+    ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
   }
 }

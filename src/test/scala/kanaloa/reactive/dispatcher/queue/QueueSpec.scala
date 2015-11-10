@@ -376,26 +376,26 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
 
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings()): QueueRef =
+  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), historySettings: BufferHistorySettings = BufferHistorySettings()): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, workSetting, metricsCollector),
+      iteratorQueueProps(iterator, historySettings, workSetting, metricsCollector),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
-  def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
+  def defaultQueue(workSetting: WorkSettings = WorkSettings(), historySettings: BufferHistorySettings = BufferHistorySettings()): QueueRef =
     system.actorOf(
-      Queue.default(workSetting, metricsCollector),
+      Queue.default(historySettings, workSetting, metricsCollector),
       "default-queue-" + Random.nextInt(100000)
     )
 
   def withBackPressure(
-    backPressureSetting: BackPressureSettings = BackPressureSettings(),
-    defaultWorkSetting:  WorkSettings         = WorkSettings()
-  ) =
-    system.actorOf(
-      Queue.withBackPressure(backPressureSetting, defaultWorkSetting, metricsCollector),
-      "with-back-pressure-queue" + Random.nextInt(500000)
-    )
+    backPressureSetting: BackPressureSettings  = BackPressureSettings(),
+    defaultWorkSetting:  WorkSettings          = WorkSettings(),
+    historySettings:     BufferHistorySettings = BufferHistorySettings()
+  ) = system.actorOf(
+    Queue.withBackPressure(historySettings, backPressureSetting, defaultWorkSetting, metricsCollector),
+    "with-back-pressure-queue" + Random.nextInt(500000)
+  )
 }
 
 class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {

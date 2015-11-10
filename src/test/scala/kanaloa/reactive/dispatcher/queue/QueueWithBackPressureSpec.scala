@@ -64,71 +64,80 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
 
   "isOverCapacity" >> {
 
-    val q = TestActorRef[QueueWithBackPressure](Queue.withBackPressure(BackPressureSettings(
-      maxBufferSize = 10,
-      thresholdForExpectedWaitTime = 5.minutes
-    ))).underlyingActor
+    val q = TestActorRef[QueueWithBackPressure](Queue.withBackPressure(
+      BufferHistorySettings(),
+      BackPressureSettings(
+        maxBufferSize = 10,
+        thresholdForExpectedWaitTime = 5.minutes
+      )
+    )).underlyingActor
 
-    def status(ps: (Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory = ps.map { case (dispatched, size, time) ⇒ BufferHistoryEntry(dispatched, size, time) }.toVector)
+    def status(stats: (Int, Int, Int, LocalDateTime)*): QueueStatus =
+      QueueStatus(bufferHistory = stats.map(BufferHistoryEntry.tupled).toVector)
+
+    def statusWithQueueSize(queueSizes: (Int, LocalDateTime)*): QueueStatus =
+      status(queueSizes.map {
+        case (queueSize, time) ⇒ (1, queueSize, 1, time)
+      }: _*)
 
     "return false if there is no entries" >> {
       q.checkCapacity(status()) must beFalse
     }
 
     "return false if there is only entries with 0 buffer" >> {
-      q.checkCapacity(status(
-        (1, 0, LocalDateTime.now.minusMinutes(2)),
-        (1, 0, LocalDateTime.now.minusMinutes(1)),
-        (1, 0, LocalDateTime.now)
+      q.checkCapacity(statusWithQueueSize(
+        (0, LocalDateTime.now.minusMinutes(2)),
+        (0, LocalDateTime.now.minusMinutes(1)),
+        (0, LocalDateTime.now)
       )) must beFalse
     }
 
     "return true if the most recent size is larger than max buffer size" >> {
-      q.checkCapacity(status(
-        (1, 0, LocalDateTime.now.minusMinutes(2)),
-        (1, 0, LocalDateTime.now.minusMinutes(1)),
-        (1, 11, LocalDateTime.now)
+      q.checkCapacity(statusWithQueueSize(
+        (0, LocalDateTime.now.minusMinutes(2)),
+        (0, LocalDateTime.now.minusMinutes(1)),
+        (11, LocalDateTime.now)
       )) must beTrue
     }
 
     "return false if most recent size is less than max buffer size" >> {
-      q.checkCapacity(status(
-        (1, 0, LocalDateTime.now.minusMinutes(2)),
-        (1, 0, LocalDateTime.now.minusMinutes(1)),
-        (1, 8, LocalDateTime.now)
+      q.checkCapacity(statusWithQueueSize(
+        (0, LocalDateTime.now.minusMinutes(2)),
+        (0, LocalDateTime.now.minusMinutes(1)),
+        (8, LocalDateTime.now)
       )) must beFalse
     }
 
     "return false if wait time is within 5 minute" >> {
       q.checkCapacity(status(
-        (1, 3, LocalDateTime.now.minusMinutes(2)),
-        (1, 3, LocalDateTime.now.minusMinutes(1)),
-        (1, 3, LocalDateTime.now) // 3 left at server rate 1 per minute
+        (1, 3, 1, LocalDateTime.now.minusMinutes(2)),
+        (1, 3, 1, LocalDateTime.now.minusMinutes(1)),
+        (1, 3, 1, LocalDateTime.now) // 3 left at server rate 1 per minute
       )) must beFalse
     }
 
     "return true if wait time is more than 5 minute" >> {
       q.checkCapacity(status(
-        (0, 8, LocalDateTime.now.minusMinutes(2)),
-        (1, 7, LocalDateTime.now.minusMinutes(1)),
-        (1, 6, LocalDateTime.now) // 6 left at server rate 1 per minute
+        (0, 8, 0, LocalDateTime.now.minusMinutes(2)),
+        (1, 7, 0, LocalDateTime.now.minusMinutes(1)),
+        (1, 6, 0, LocalDateTime.now) // 6 left at server rate 1 per minute
       )) must beTrue
     }
 
     "return true for long queue but not enough dispatch lately at all" >> {
       q.checkCapacity(status(
-        (0, 4, LocalDateTime.now.minusMinutes(3)),
-        (0, 5, LocalDateTime.now.minusMinutes(2)),
-        (0, 6, LocalDateTime.now.minusMinutes(1)),
-        (0, 7, LocalDateTime.now) // 6 left at server rate 1 per minute
+        (0, 4, 0, LocalDateTime.now.minusMinutes(3)),
+        (0, 5, 0, LocalDateTime.now.minusMinutes(2)),
+        (0, 6, 0, LocalDateTime.now.minusMinutes(1)),
+        (0, 7, 0, LocalDateTime.now) // 6 left at server rate 1 per minute
       )) must beTrue
     }
 
     "return false when just started to pickup traffic" >> {
       q.checkCapacity(status(
-        (0, 9, LocalDateTime.now.minus(2, ChronoUnit.MILLIS)),
-        (0, 9, LocalDateTime.now.minus(1, ChronoUnit.MILLIS)),
-        (0, 9, LocalDateTime.now) // 6 left at server rate 1 per minute
+        (0, 9, 1, LocalDateTime.now.minus(2, ChronoUnit.MILLIS)),
+        (0, 9, 1, LocalDateTime.now.minus(1, ChronoUnit.MILLIS)),
+        (0, 9, 1, LocalDateTime.now) // 6 left at server rate 1 per minute
       )) must beFalse
     }
 

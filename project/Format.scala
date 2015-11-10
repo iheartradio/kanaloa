@@ -2,8 +2,8 @@ import sbt._
 import com.typesafe.sbt.SbtScalariform
 import com.typesafe.sbt.SbtScalariform.ScalariformKeys
 
-object Formatting {
-  val formatSettings = SbtScalariform.scalariformSettings ++ Seq(
+object Format {
+  lazy val settings = SbtScalariform.scalariformSettings ++ Seq(
     ScalariformKeys.preferences in Compile  := formattingPreferences,
     ScalariformKeys.preferences in Test     := formattingPreferences
   )
