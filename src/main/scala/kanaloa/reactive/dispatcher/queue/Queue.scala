@@ -241,7 +241,7 @@ object Queue {
   protected[queue] case class QueueStatus(
     workBuffer:      ScalaQueue[Work]           = ScalaQueue.empty,
     queuedWorkers:   ScalaQueue[ActorRef]       = ScalaQueue.empty,
-    countOfWorkSent: Int                        = 0,
+    countOfWorkSent: Long                       = 0,
     bufferHistory:   Vector[BufferHistoryEntry] = Vector.empty
   ) extends QueueDispatchInfo {
 
@@ -261,10 +261,10 @@ object Queue {
     lazy val currentQueueLength = bufferHistory.lastOption.map(_.queueLength).getOrElse(0)
   }
 
-  private[queue] case class BufferHistoryEntry(dispatched: Int, queueLength: Int, workersLeft: Int, time: LocalDateTime) {
+  private[queue] case class BufferHistoryEntry(dispatched: Int, queueLength: Int, waitingWorkers: Int, time: LocalDateTime) {
     def aggregate(that: BufferHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
 
-    def allWorkerOccupied = queueLength > 0 || workersLeft == 0
+    def allWorkerOccupied = queueLength > 0 || waitingWorkers == 0
   }
 
   def ofIterator(

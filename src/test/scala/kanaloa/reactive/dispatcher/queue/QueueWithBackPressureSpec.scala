@@ -72,9 +72,13 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       )
     )).underlyingActor
 
-    def status(ps: (Int, Int, Int, LocalDateTime)*): QueueStatus = QueueStatus(bufferHistory = ps.map { case (dispatched, queueSize, workerSize, time) ⇒ BufferHistoryEntry(dispatched, queueSize, workerSize, time) }.toVector)
+    def status(stats: (Int, Int, Int, LocalDateTime)*): QueueStatus =
+      QueueStatus(bufferHistory = stats.map(BufferHistoryEntry.tupled).toVector)
 
-    def statusWithQueueSize(ps: (Int, LocalDateTime)*): QueueStatus = status(ps.map { case (queueSize, time) ⇒ (1, queueSize, 1, time) }: _*)
+    def statusWithQueueSize(queueSizes: (Int, LocalDateTime)*): QueueStatus =
+      status(queueSizes.map {
+        case (queueSize, time) ⇒ (1, queueSize, 1, time)
+      }: _*)
 
     "return false if there is no entries" >> {
       q.checkCapacity(status()) must beFalse

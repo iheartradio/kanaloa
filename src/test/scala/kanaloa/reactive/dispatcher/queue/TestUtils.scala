@@ -35,7 +35,6 @@ object TestUtils {
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
       metricsCollector: MetricsCollector             = NoOpMetricsCollector
-    ) =
-      QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
+    ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
   }
 }
