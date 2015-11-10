@@ -74,7 +74,7 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
     ignoreMsg { case Success ⇒ true }
 
-    val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 3, verbose)
+    val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 1, verbose)
 
     shutdown(pd)
 
@@ -107,7 +107,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
     watch(pd)
 
-    expectTerminated(pd, 3.seconds)
+    expectTerminated(pd, shutdownTimeout)
 
     iterator.messageCount.get() === 3000
   }
@@ -232,7 +232,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       lastPoolSize
     }
 
-    val failRatio = performMultipleTests(test, optimalSize)
+    val failRatio = performMultipleTests(test, optimalSize, 6)
 
     failRatio must be_<=(0.5)
   }
@@ -277,6 +277,7 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
 }
 
 object IntegrationTests {
+  val shutdownTimeout = 30.seconds
 
   case class Reply(to: ActorRef, delay: Duration, scheduled: LocalDateTime = LocalDateTime.now)
 
@@ -372,9 +373,9 @@ object IntegrationTests {
     }
 
     def shutdown(rd: ActorRef): Unit = {
-      rd ! ShutdownGracefully(Some(self), timeout = 10.seconds)
+      rd ! ShutdownGracefully(Some(self), timeout = shutdownTimeout)
 
-      expectMsg(30.seconds, ShutdownSuccessfully)
+      expectMsg(shutdownTimeout, ShutdownSuccessfully)
     }
 
     def performMultipleTests(test: ⇒ Int, targetSize: Int, numberOfTests: Int = 4) = {
