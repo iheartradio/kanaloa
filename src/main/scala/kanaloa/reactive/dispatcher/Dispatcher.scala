@@ -51,6 +51,7 @@ object Dispatcher {
   case class Settings(
     workTimeout:    FiniteDuration               = 1.minute,
     workRetry:      Int                          = 0,
+    bufferHistory:  BufferHistorySettings,
     workerPool:     ProcessingWorkerPoolSettings,
     circuitBreaker: CircuitBreakerSettings,
     backPressure:   Option[BackPressureSettings],
@@ -102,7 +103,10 @@ case class PushingDispatcher(
   extends Dispatcher {
 
   protected lazy val queueProps = Queue.withBackPressure(
-    settings.backPressure.getOrElse(Dispatcher.defaultDispatcherConfig().as[BackPressureSettings]("backPressure")), WorkSettings(), metricsCollector
+    settings.bufferHistory,
+    settings.backPressure.getOrElse(Dispatcher.defaultDispatcherConfig().as[BackPressureSettings]("backPressure")),
+    WorkSettings(),
+    metricsCollector
   )
 
   override def extraReceive: Receive = {
@@ -153,7 +157,7 @@ case class PullingDispatcher(
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
   resultChecker:    ResultChecker
 ) extends Dispatcher {
-  protected def queueProps = QueueOfIterator.props(iterator, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+  protected def queueProps = QueueOfIterator.props(iterator, settings.bufferHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
 }
 
 object PullingDispatcher {

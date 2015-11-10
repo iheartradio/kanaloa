@@ -1,12 +1,13 @@
 package kanaloa.reactive.dispatcher
 
 import java.time.LocalDateTime
+import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
 import akka.testkit.{ TestActorRef, TestProbe, ImplicitSender, TestKit }
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully, ShutdownGracefully }
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.RunningStatus
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ ShuttingDown, RunningStatus }
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 import scala.concurrent.{ Promise, Future }
@@ -14,12 +15,13 @@ import scala.concurrent.duration._
 import IntegrationTests._
 import kanaloa.util.Java8TimeExtensions._
 import scala.util.Random
+import scala.language.reflectiveCalls
 
 trait IntegrationSpec extends Specification {
 
   val verbose = false
 
-  private val logLevel = if (verbose) "INFO" else "OFF"
+  private lazy val logLevel = if (verbose) "INFO" else "OFF"
   sequential
 
   implicit lazy val system = ActorSystem("test", ConfigFactory.parseString(
@@ -35,6 +37,13 @@ trait IntegrationSpec extends Specification {
       |  stdout-loglevel = ${logLevel}
       |
       |  loglevel = ${logLevel}
+      |}
+      |
+      |kanaloa.default-dispatcher {
+      |  bufferHistory {
+      |    maxHistoryLength = 200ms
+      |    historySampleRate = 20ms
+      |  }
       |}
     """.stripMargin
   ))
@@ -77,7 +86,37 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
 }
 
-class AutoScalingGeneralIntegration extends IntegrationSpec {
+class PullingDispatcherIntegration extends IntegrationSpec {
+
+  "can process through a large number of messages" in new TestScope {
+
+    val backend = TestActorRef[SimpleBackend]
+    val iterator = iteratorOf(3000)
+    val pd = system.actorOf(PullingDispatcher.props(
+      "test-pulling",
+      iterator,
+      Backend(backend),
+      ConfigFactory.parseString(
+        s"""
+          |kanaloa.dispatchers.test-pulling {
+          |  workerPool {
+          |    startingPoolSize = 8
+          |  }
+          |}
+        """.stripMargin
+      )
+    )(resultChecker))
+
+    watch(pd)
+
+    expectTerminated(pd, 3.seconds)
+
+    iterator.messageCount.get() === 3000
+  }
+
+}
+
+class AutoScalingWithPushingIntegration extends IntegrationSpec {
 
   "pushing dispatcher move to the optimal pool size" in new TestScope {
 
@@ -126,6 +165,64 @@ class AutoScalingGeneralIntegration extends IntegrationSpec {
   }
 }
 
+class AutoScalingWithPullingIntegration extends IntegrationSpec {
+  //  override val verbose = true
+  "pulling dispatcher move to the optimal pool size" in new TestScope {
+
+    val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
+    val optimalSize = 8
+    val optimalSpeed = optimalSize.toDouble / processTime.toMillis
+    val duration = 15.seconds
+    val msgPerMilli = optimalSpeed * 0.4
+    val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
+
+    val iterator = iteratorOf(numberOfMessages)
+
+    val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
+    val pd = TestActorRef[Dispatcher](PullingDispatcher.props(
+      "test-pulling",
+      iterator,
+      Backend(backend),
+      ConfigFactory.parseString(
+        """
+          |kanaloa.dispatchers.test-pulling {
+          |  workerPool {
+          |    startingPoolSize = 3
+          |    minPoolSize = 1
+          |  }
+          |  backPressure {
+          |    maxBufferSize = 60000
+          |    thresholdForExpectedWaitTime = 1h
+          |    maxHistoryLength = 3s
+          |  }
+          |  autoScaling {
+          |    chanceOfScalingDownWhenFull = 0.1
+          |    actionFrequency = 50ms
+          |    downsizeAfterUnderUtilization = 72h
+          |  }
+          |}
+        """.stripMargin
+      )
+    )(resultChecker))
+
+    ignoreMsg { case Success ⇒ true }
+
+    watch(pd)
+    pd.underlyingActor.processor ! QueryStatus()
+    var lastPoolSize = 0
+    fishForMessage(30.seconds) {
+      case Terminated(`pd`) | ShuttingDown ⇒ true
+      case RunningStatus(pool) ⇒
+        lastPoolSize = pool.size
+        pd.underlyingActor.processor ! QueryStatus()
+        false
+    }
+
+    iterator.messageCount.get() === numberOfMessages
+    lastPoolSize must be ~ (optimalSize +/- 3)
+  }
+}
+
 class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
   "downsize when the traffic is sparse" in new TestScope {
     val backend = TestActorRef[SimpleBackend]
@@ -169,6 +266,7 @@ object IntegrationTests {
   case class Reply(to: ActorRef, delay: Duration, scheduled: LocalDateTime = LocalDateTime.now)
 
   case object Success
+  case class SuccessOf(msg: Int)
 
   class Delay extends Actor {
     def receive = {
@@ -218,6 +316,14 @@ object IntegrationTests {
     case Success ⇒ Right(Success)
   }
 
+  def iteratorOf(numberOfMessages: Int) = new Iterator[Int] {
+    var messageCount = new AtomicLong()
+    def hasNext: Boolean = messageCount.get() < numberOfMessages
+    def next(): Int = {
+      messageCount.getAndIncrement().toInt
+    }
+  }
+
   def concurrencyLimitedBackendProps(optimalSize: Int, baseWait: FiniteDuration = 1.milliseconds) =
     Props(new ConcurrencyLimitedBackend(optimalSize, baseWait))
 
@@ -240,7 +346,7 @@ object IntegrationTests {
     }
 
     def getPoolSize(rd: Dispatcher): Int = {
-      rd.processor ! QueryStatus(Some(self))
+      rd.processor ! QueryStatus()
 
       val status = expectMsgClass(classOf[RunningStatus])
 

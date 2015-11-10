@@ -27,6 +27,11 @@ package kanaloa.reactive.dispatcher.queue {
     historyLength:      Int            = 10
   )
 
+  case class BufferHistorySettings(
+    maxHistoryLength:  FiniteDuration = 10.seconds,
+    historySampleRate: FiniteDuration = 500.milliseconds
+  )
+
   case class BackPressureSettings(
     maxBufferSize:                Int            = 1000,
     thresholdForExpectedWaitTime: FiniteDuration = 1.minute,
