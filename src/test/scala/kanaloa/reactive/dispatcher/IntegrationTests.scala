@@ -161,7 +161,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
 
     shutdown(pd)
 
-    actualPoolSize must be ~ (optimalSize +/- 2)
+    actualPoolSize must be ~ (optimalSize +/- 3)
   }
 }
 
@@ -172,7 +172,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
     val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
     val optimalSize = 8
     val optimalSpeed = optimalSize.toDouble / processTime.toMillis
-    val duration = 15.seconds
+    val duration = 20.seconds
     val msgPerMilli = optimalSpeed * 0.4
     val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
 
@@ -197,7 +197,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
           |  }
           |  autoScaling {
           |    chanceOfScalingDownWhenFull = 0.1
-          |    actionFrequency = 50ms
+          |    actionFrequency = 100ms
           |    downsizeAfterUnderUtilization = 72h
           |  }
           |}
@@ -210,12 +210,15 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
     watch(pd)
     pd.underlyingActor.processor ! QueryStatus()
     var lastPoolSize = 0
-    fishForMessage(30.seconds) {
+    import system.dispatcher
+    fishForMessage(duration * 2) {
       case Terminated(`pd`) | ShuttingDown ⇒ true
       case RunningStatus(pool) ⇒
         lastPoolSize = pool.size
-        pd.underlyingActor.processor ! QueryStatus()
+        system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.processor, QueryStatus(Some(self)))
         false
+      case m ⇒ throw new Exception("unexpected, " + m)
+
     }
 
     iterator.messageCount.get() === numberOfMessages
@@ -356,7 +359,7 @@ object IntegrationTests {
     def shutdown(rd: ActorRef): Unit = {
       rd ! ShutdownGracefully(Some(self), timeout = 10.seconds)
 
-      expectMsg(10.seconds, ShutdownSuccessfully)
+      expectMsg(30.seconds, ShutdownSuccessfully)
     }
   }
 
