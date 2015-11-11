@@ -15,9 +15,9 @@ cache:
   - $HOME/.ivy2/cache
   - $HOME/.sbt/boot/
 
-before_script:
-  - mkdir -p $HOME/.sbt/launchers/0.13.8/
-  - curl -L -o $HOME/.sbt/launchers/0.13.8/sbt-launch.jar https://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.8/sbt-launch.jar
+script:
+  - sbt  ++$TRAVIS_SCALA_VERSION clean test integration:test
 
-script: "sbt clean test integration:test"
-
+  # Tricks to avoid unnecessary cache updates
+  - find $HOME/.sbt -name "*.lock" | xargs rm
+  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
