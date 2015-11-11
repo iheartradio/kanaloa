@@ -376,22 +376,22 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
 
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), historySettings: BufferHistorySettings = BufferHistorySettings()): QueueRef =
+  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
     system.actorOf(
       iteratorQueueProps(iterator, historySettings, workSetting, metricsCollector),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
-  def defaultQueue(workSetting: WorkSettings = WorkSettings(), historySettings: BufferHistorySettings = BufferHistorySettings()): QueueRef =
+  def defaultQueue(workSetting: WorkSettings = WorkSettings(), historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
     system.actorOf(
       Queue.default(historySettings, workSetting, metricsCollector),
       "default-queue-" + Random.nextInt(100000)
     )
 
   def withBackPressure(
-    backPressureSetting: BackPressureSettings  = BackPressureSettings(),
-    defaultWorkSetting:  WorkSettings          = WorkSettings(),
-    historySettings:     BufferHistorySettings = BufferHistorySettings()
+    backPressureSetting: BackPressureSettings    = BackPressureSettings(),
+    defaultWorkSetting:  WorkSettings            = WorkSettings(),
+    historySettings:     DispatchHistorySettings = DispatchHistorySettings()
   ) = system.actorOf(
     Queue.withBackPressure(historySettings, backPressureSetting, defaultWorkSetting, metricsCollector),
     "with-back-pressure-queue" + Random.nextInt(500000)

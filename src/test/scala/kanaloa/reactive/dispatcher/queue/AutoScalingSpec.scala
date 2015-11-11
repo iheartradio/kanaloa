@@ -173,17 +173,6 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
     tProcessor.expectNoMsg(50.millis)
   }
-
-  "do not go beyond upperBound when optimizing" in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 0)
-    subject.underlyingActor.perfLog = Map(350 → 2.nanosecond, 400 → 1.nanosecond)
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 295, dispatchDuration = 10.milliseconds)
-
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
-    scaleCmd === ScaleTo(300, Some("optimizing"))
-
-  }
 }
 
 class AutoScalingScope(implicit system: ActorSystem)
@@ -209,9 +198,8 @@ class AutoScalingScope(implicit system: ActorSystem)
         chanceOfScalingDownWhenFull = 0.3,
         actionFrequency = 1.hour, //manual action only
         explorationRatio = explorationRatio,
-        bufferRatio = 0.8,
-        numOfAdjacentSizesToConsiderDuringOptimization = 6,
-        upperBound = 300
+        downsizeRatio = 0.8,
+        numOfAdjacentSizesToConsiderDuringOptimization = 6
       ), metricsCollector))
 
   def replyStatus(numOfBusyWorkers: Int, dispatchDuration: Duration = 5.milliseconds, numOfIdleWorkers: Int = 0): Unit = {

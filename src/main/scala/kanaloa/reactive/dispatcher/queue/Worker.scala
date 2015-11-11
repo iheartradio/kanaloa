@@ -97,13 +97,13 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
             askMoreWork(delayBeforeNextWork)
           }
         case Left(e) ⇒
-          log.error(s"error $e returned by delegatee in regards to running work $outstanding")
+          log.warning(s"Error $e returned by delegatee in regards to running work $outstanding")
           retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
       }
 
     ({
       case DelegateeTimeout ⇒
-        log.error(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+        log.warning(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
         outstanding.timeout()
 
         if (isRetiring) finish() else {
@@ -123,11 +123,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   ): Unit = {
     outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
-      log.info(s"Retry work $outstanding")
+      log.debug(s"Retry work $outstanding")
       sendWorkToDelegatee(outstanding.work, outstanding.retried + 1, None)
     } else {
       val message = s"Work failed after ${outstanding.retried} try(s)"
-      log.error(s"$message, work $outstanding abandoned")
+      log.warning(s"$message, work $outstanding abandoned")
       outstanding.fail(WorkFailed(message + s" due to $error"))
       if (isRetiring) finish()
       else
