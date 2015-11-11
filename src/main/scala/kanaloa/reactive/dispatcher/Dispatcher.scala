@@ -26,18 +26,12 @@ trait Dispatcher extends Actor {
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
   private[dispatcher] val processor = {
-    val props = settings.circuitBreaker.map(QueueProcessor.withCircuitBreaker(
-      queue,
-      backend,
-      settings.workerPool,
-      _,
-      metricsCollector
-    )(resultChecker)).getOrElse(QueueProcessor.default(
-      queue,
-      backend,
-      settings.workerPool,
-      metricsCollector
-    )(resultChecker))
+    val props = (settings.circuitBreaker match {
+      case Some(cb) ⇒
+        QueueProcessor.withCircuitBreaker(queue, backend, settings.workerPool, cb, metricsCollector) _
+      case None ⇒
+        QueueProcessor.default(queue, backend, settings.workerPool, metricsCollector) _
+    })(resultChecker)
 
     context.actorOf(props, name + "-queue-processor")
   }
@@ -125,14 +119,10 @@ case class PushingDispatcher(
 )
   extends Dispatcher {
 
-  protected lazy val queueProps = settings.backPressure.map(
-    Queue.withBackPressure(
-      settings.dispatchHistory,
-      _,
-      WorkSettings(),
-      metricsCollector
-    )
-  ).getOrElse(Queue.default(settings.dispatchHistory, WorkSettings(), metricsCollector))
+  protected lazy val queueProps = settings.backPressure match {
+    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, WorkSettings(), metricsCollector)
+    case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(), metricsCollector)
+  }
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingDispatcher.handlerProps(settings, queue)) forward m

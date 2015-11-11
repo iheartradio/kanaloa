@@ -26,26 +26,26 @@ trait IntegrationSpec extends Specification {
 
   implicit lazy val system = ActorSystem("test", ConfigFactory.parseString(
     s"""
-      |akka {
-      |  log-dead-letters = off
-      |  log-dead-letters-during-shutdown = off
-      |
-      |  scheduler {
-      |    tick-duration = 1ms
-      |    ticks-per-wheel = 2
-      |  }
-      |  stdout-loglevel = ${logLevel}
-      |
-      |  loglevel = ${logLevel}
-      |}
-      |
-      |kanaloa.default-dispatcher {
-      |  dispatchHistory {
-      |    maxHistoryLength = 200ms
-      |    historySampleRate = 20ms
-      |  }
-      |}
-    """.stripMargin
+      akka {
+        log-dead-letters = off
+        log-dead-letters-during-shutdown = off
+      
+        scheduler {
+          tick-duration = 1ms
+          ticks-per-wheel = 2
+        }
+        stdout-loglevel = ${logLevel}
+      
+        loglevel = ${logLevel}
+      }
+      
+      kanaloa.default-dispatcher {
+        dispatchHistory {
+          maxHistoryLength = 200ms
+          historySampleRate = 20ms
+        }
+      }
+    """
   ))
 
   def afterAll(): Unit = system.terminate()
@@ -63,12 +63,12 @@ class PushingDispatcherIntegration extends IntegrationSpec {
       Backend(backend),
       ConfigFactory.parseString(
         s"""
-          |kanaloa.dispatchers.test-pushing {
-          |  workerPool {
-          |    startingPoolSize = 8
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pushing {
+            workerPool {
+              startingPoolSize = 8
+            }
+          }
+        """
       )
     )(resultChecker))
 
@@ -95,21 +95,21 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
       Backend(backend),
       ConfigFactory.parseString(
         s"""
-          |kanaloa.dispatchers.test-pushing {
-          |  workerPool {
-          |    startingPoolSize = 8
-          |  }
-          |  autoScaling {
-          |    enabled = off
-          |  }
-          |  backPressure {
-          |    enabled = off
-          |  }
-          |  circuitBreaker {
-          |    enabled = off
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pushing {
+            workerPool {
+              startingPoolSize = 8
+            }
+            autoScaling {
+              enabled = off
+            }
+            backPressure {
+              enabled = off
+            }
+            circuitBreaker {
+              enabled = off
+            }
+          }
+        """
       )
     )(resultChecker))
 
@@ -137,12 +137,12 @@ class PullingDispatcherIntegration extends IntegrationSpec {
       Backend(backend),
       ConfigFactory.parseString(
         s"""
-          |kanaloa.dispatchers.test-pulling {
-          |  workerPool {
-          |    startingPoolSize = 8
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pulling {
+            workerPool {
+              startingPoolSize = 8
+            }
+          }
+        """
       )
     )(resultChecker))
 
@@ -169,23 +169,23 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
         Backend(backend),
         ConfigFactory.parseString(
           """
-          |kanaloa.dispatchers.test-pushing {
-          |  workerPool {
-          |    startingPoolSize = 3
-          |    minPoolSize = 1
-          |  }
-          |  backPressure {
-          |    maxBufferSize = 60000
-          |    thresholdForExpectedWaitTime = 1h
-          |    maxHistoryLength = 3s
-          |  }
-          |  autoScaling {
-          |    chanceOfScalingDownWhenFull = 0.1
-          |    actionFrequency = 100ms
-          |    downsizeAfterUnderUtilization = 72h
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pushing {
+            workerPool {
+              startingPoolSize = 3
+              minPoolSize = 1
+            }
+            backPressure {
+              maxBufferSize = 60000
+              thresholdForExpectedWaitTime = 1h
+              maxHistoryLength = 3s
+            }
+            autoScaling {
+              chanceOfScalingDownWhenFull = 0.1
+              actionFrequency = 100ms
+              downsizeAfterUnderUtilization = 72h
+            }
+          }
+        """
         )
       )(resultChecker))
       ignoreMsg {
@@ -226,23 +226,23 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       Backend(backend),
       ConfigFactory.parseString(
         """
-          |kanaloa.dispatchers.test-pulling {
-          |  workerPool {
-          |    startingPoolSize = 3
-          |    minPoolSize = 1
-          |  }
-          |  backPressure {
-          |    maxBufferSize = 60000
-          |    thresholdForExpectedWaitTime = 1h
-          |    maxHistoryLength = 3s
-          |  }
-          |  autoScaling {
-          |    chanceOfScalingDownWhenFull = 0.1
-          |    actionFrequency = 100ms
-          |    downsizeAfterUnderUtilization = 72h
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pulling {
+            workerPool {
+              startingPoolSize = 3
+              minPoolSize = 1
+            }
+            backPressure {
+              maxBufferSize = 60000
+              thresholdForExpectedWaitTime = 1h
+              maxHistoryLength = 3s
+            }
+            autoScaling {
+              chanceOfScalingDownWhenFull = 0.1
+              actionFrequency = 100ms
+              downsizeAfterUnderUtilization = 72h
+            }
+          }
+        """
       )
     )(resultChecker)
 
@@ -287,17 +287,17 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
       Backend(backend),
       ConfigFactory.parseString(
         """
-          |kanaloa.dispatchers.test-pushing {
-          |  workerPool {
-          |    startingPoolSize = 10
-          |    minPoolSize = 2
-          |  }
-          |  autoScaling {
-          |    actionFrequency = 10ms
-          |    downsizeAfterUnderUtilization = 100ms
-          |  }
-          |}
-        """.stripMargin
+          kanaloa.dispatchers.test-pushing {
+            workerPool {
+              startingPoolSize = 10
+              minPoolSize = 2
+            }
+            autoScaling {
+              actionFrequency = 10ms
+              downsizeAfterUnderUtilization = 100ms
+            }
+          }
+        """
       )
     )(resultChecker))
 
