@@ -10,6 +10,7 @@ import kanaloa.reactive.dispatcher.queue.Queue.{ Enqueue, EnqueueRejected, WorkE
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+import net.ceedubs.ficus.readers.ValueReader
 
 import scala.concurrent.duration._
 
@@ -24,13 +25,22 @@ trait Dispatcher extends Actor {
 
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
-  private[dispatcher] val processor = context.actorOf(QueueProcessor.withCircuitBreaker(
-    queue,
-    backend,
-    settings.workerPool,
-    settings.circuitBreaker,
-    metricsCollector
-  )(resultChecker), name + "-queue-processor")
+  private[dispatcher] val processor = {
+    val props = settings.circuitBreaker.map(QueueProcessor.withCircuitBreaker(
+      queue,
+      backend,
+      settings.workerPool,
+      _,
+      metricsCollector
+    )(resultChecker)).getOrElse(QueueProcessor.default(
+      queue,
+      backend,
+      settings.workerPool,
+      metricsCollector
+    )(resultChecker))
+
+    context.actorOf(props, name + "-queue-processor")
+  }
 
   context watch processor
 
@@ -49,13 +59,13 @@ trait Dispatcher extends Actor {
 object Dispatcher {
 
   case class Settings(
-    workTimeout:    FiniteDuration               = 1.minute,
-    workRetry:      Int                          = 0,
-    bufferHistory:  BufferHistorySettings,
-    workerPool:     ProcessingWorkerPoolSettings,
-    circuitBreaker: CircuitBreakerSettings,
-    backPressure:   Option[BackPressureSettings],
-    autoScaling:    Option[AutoScalingSettings]
+    workTimeout:     FiniteDuration                 = 1.minute,
+    workRetry:       Int                            = 0,
+    dispatchHistory: DispatchHistorySettings,
+    workerPool:      ProcessingWorkerPoolSettings,
+    circuitBreaker:  Option[CircuitBreakerSettings],
+    backPressure:    Option[BackPressureSettings],
+    autoScaling:     Option[AutoScalingSettings]
   )
 
   val defaultBackPressureSettings = BackPressureSettings(
@@ -78,8 +88,21 @@ object Dispatcher {
   def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings =
     toDispatcherSettings(defaultDispatcherConfig(config))
 
-  private def toDispatcherSettings(config: Config): Dispatcher.Settings =
-    config.atPath("root").as[Dispatcher.Settings]("root")
+  private def toDispatcherSettings(config: Config): Dispatcher.Settings = {
+    val settings = config.atPath("root").as[Dispatcher.Settings]("root")
+    settings.copy(
+      backPressure = readComponent[BackPressureSettings]("backPressure", config),
+      circuitBreaker = readComponent[CircuitBreakerSettings]("circuitBreaker", config),
+      autoScaling = readComponent[AutoScalingSettings]("autoScaling", config)
+    )
+  }
+
+  private def readComponent[SettingT: ValueReader](name: String, config: Config): Option[SettingT] =
+    for {
+      componentCfg ← config.as[Option[Config]](name)
+      enabled ← componentCfg.as[Option[Boolean]]("enabled")
+      settings ← componentCfg.atPath("root").as[Option[SettingT]]("root") if enabled
+    } yield settings
 
   def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
     val cfg = kanaloaConfig(rootConfig)
@@ -102,12 +125,14 @@ case class PushingDispatcher(
 )
   extends Dispatcher {
 
-  protected lazy val queueProps = Queue.withBackPressure(
-    settings.bufferHistory,
-    settings.backPressure.getOrElse(Dispatcher.defaultDispatcherConfig().as[BackPressureSettings]("backPressure")),
-    WorkSettings(),
-    metricsCollector
-  )
+  protected lazy val queueProps = settings.backPressure.map(
+    Queue.withBackPressure(
+      settings.dispatchHistory,
+      _,
+      WorkSettings(),
+      metricsCollector
+    )
+  ).getOrElse(Queue.default(settings.dispatchHistory, WorkSettings(), metricsCollector))
 
   override def extraReceive: Receive = {
     case m ⇒ context.actorOf(PushingDispatcher.handlerProps(settings, queue)) forward m
@@ -157,7 +182,7 @@ case class PullingDispatcher(
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
   resultChecker:    ResultChecker
 ) extends Dispatcher {
-  protected def queueProps = QueueOfIterator.props(iterator, settings.bufferHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+  protected def queueProps = QueueOfIterator.props(iterator, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
 }
 
 object PullingDispatcher {

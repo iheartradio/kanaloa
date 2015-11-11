@@ -19,9 +19,9 @@ object TestUtils {
 
   def iteratorQueueProps(
     iterator:         Iterator[String],
-    historySettings:  BufferHistorySettings = BufferHistorySettings(),
-    workSetting:      WorkSettings          = WorkSettings(),
-    metricsCollector: MetricsCollector      = NoOpMetricsCollector
+    historySettings:  DispatchHistorySettings = DispatchHistorySettings(),
+    workSetting:      WorkSettings            = WorkSettings(),
+    metricsCollector: MetricsCollector        = NoOpMetricsCollector
   ): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, metricsCollector)
 

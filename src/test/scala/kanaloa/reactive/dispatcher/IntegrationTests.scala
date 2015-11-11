@@ -40,7 +40,7 @@ trait IntegrationSpec extends Specification {
       |}
       |
       |kanaloa.default-dispatcher {
-      |  bufferHistory {
+      |  dispatchHistory {
       |    maxHistoryLength = 200ms
       |    historySampleRate = 20ms
       |  }
@@ -75,6 +75,47 @@ class PushingDispatcherIntegration extends IntegrationSpec {
     ignoreMsg { case Success ⇒ true }
 
     val messagesSent = sendLoadsOfMessage(pd, duration = 3.seconds, msgPerMilli = 1, verbose)
+
+    shutdown(pd)
+
+    backend.underlyingActor.count === messagesSent
+
+  }
+
+}
+
+class MinimalPushingDispatcherIntegration extends IntegrationSpec {
+
+  "can process through a large number of messages" in new TestScope {
+
+    val backend = TestActorRef[SimpleBackend]
+
+    val pd = system.actorOf(PushingDispatcher.props(
+      "test-pushing",
+      Backend(backend),
+      ConfigFactory.parseString(
+        s"""
+          |kanaloa.dispatchers.test-pushing {
+          |  workerPool {
+          |    startingPoolSize = 8
+          |  }
+          |  autoScaling {
+          |    enabled = off
+          |  }
+          |  backPressure {
+          |    enabled = off
+          |  }
+          |  circuitBreaker {
+          |    enabled = off
+          |  }
+          |}
+        """.stripMargin
+      )
+    )(resultChecker))
+
+    ignoreMsg { case Success ⇒ true }
+
+    val messagesSent = sendLoadsOfMessage(pd, duration = 2.seconds, msgPerMilli = 1, verbose)
 
     shutdown(pd)
 

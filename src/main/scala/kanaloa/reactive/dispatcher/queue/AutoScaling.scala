@@ -122,7 +122,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   private def downsize: Option[ScaleTo] = {
     underUtilizationStreak.flatMap { streak ⇒
       if (streak.start.isBefore(LocalDateTime.now.minus(downsizeAfterUnderUtilization)))
-        Some(ScaleTo((streak.highestUtilization * bufferRatio).toInt, Some("downsizing")))
+        Some(ScaleTo((streak.highestUtilization * downsizeRatio).toInt, Some("downsizing")))
       else
         None
     }
@@ -141,7 +141,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
     val optimalSize = adjacentDispatchWaits.minBy(_._2)._1
     val scaleStep = Math.ceil((optimalSize - currentSize) / 2).toInt
-    ScaleTo(Math.min(upperBound, currentSize + scaleStep), Some("optimizing"))
+    ScaleTo(currentSize + scaleStep, Some("optimizing"))
   }
 
   private def explore(currentSize: PoolSize): ScaleTo = {
