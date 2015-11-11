@@ -45,7 +45,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         }
 
       case Retire(timeout) ⇒
-        log.info("Queue commanded to retire")
+        log.debug("Queue commanded to retire")
         val newStatus = dispatchWork(status, retiring = true)
         context become retiring(newStatus)
         newStatus.queuedWorkers.foreach { (qw) ⇒
@@ -93,7 +93,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         context become nextContext(status.copy(queuedWorkers = status.queuedWorkers.filter(_ != worker)))
 
       case Rejected(w, reason) ⇒
-        log.info(s"work rejected, reason given by worker is '$reason'")
+        log.debug(s"work rejected, reason given by worker is '$reason'")
         dispatchWorkAndBecome(status.copy(workBuffer = status.workBuffer.enqueue(w)), nextContext)
 
       case qs: QueryStatus ⇒ qs reply status
@@ -134,22 +134,22 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 }
 
 case class QueueWithBackPressure(
-  bufferHistorySettings: BufferHistorySettings,
-  backPressureSettings:  BackPressureSettings,
-  defaultWorkSettings:   WorkSettings          = WorkSettings(),
-  metricsCollector:      MetricsCollector      = NoOpMetricsCollector
+  dispatchHistorySettings: DispatchHistorySettings,
+  backPressureSettings:    BackPressureSettings,
+  defaultWorkSettings:     WorkSettings            = WorkSettings(),
+  metricsCollector:        MetricsCollector        = NoOpMetricsCollector
 ) extends Queue {
 
   def checkCapacity(qs: QueueStatus): Boolean =
     if (qs.currentQueueLength >= backPressureSettings.maxBufferSize) {
-      log.error("buffer overflowed " + backPressureSettings.maxBufferSize)
+      log.warning("buffer overflowed " + backPressureSettings.maxBufferSize)
       true
     } else {
       val expectedWaitTime = qs.avgDispatchDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength
       metricsCollector.send(Metric.WorkQueueExpectedWaitTime(expectedWaitTime))
 
       val ret = expectedWaitTime > backPressureSettings.thresholdForExpectedWaitTime
-      if (ret) log.error(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${backPressureSettings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
+      if (ret) log.warning(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${backPressureSettings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
       ret
     }
 
@@ -178,7 +178,7 @@ class QueueOfIterator(
         if (iterator.hasNext) {
           context.parent ! Enqueue(iterator.next)
         } else {
-          log.info("iterator queue completes")
+          log.debug("Iterator queue completes.")
           context.parent ! Retire()
         }
     }

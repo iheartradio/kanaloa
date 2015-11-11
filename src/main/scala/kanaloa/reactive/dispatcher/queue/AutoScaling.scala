@@ -58,7 +58,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       continueCollectingStatus(status.copy(workerPool = Some(pool)))
 
     case StatusCollectionTimedOut ⇒
-      log.error("Timedout to collect status from the queue and processor. Next time!")
+      log.warning("Timed out to collect status from the queue and processor. Next time!")
       takeABreak()
 
     case Worker.Retiring ⇒
@@ -67,7 +67,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     case ws: WorkerStatus ⇒
       continueCollectingStatus(status.copy(workersStatus = status.workersStatus :+ ws))
 
-    case msg ⇒ log.error(s"unexpected msg $msg")
+    case msg ⇒ log.error(s"Unexpected msg $msg returned while collecting status")
 
   }
 
@@ -79,7 +79,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   private def continueCollectingStatus(newStatus: SystemStatus) = newStatus match {
     case SystemStatus(qs, Some(wp), ws) if newStatus.collected ⇒
       val action = chooseAction(qs, wp, ws)
-      log.info(s"Auto scaling $action is chosen. Current dispatch time (when fully utilized): ${qs.map(_.toMillis)}; Pool size: ${wp.size}")
+      log.debug(s"Auto scaling $action is chosen. Current dispatch time (when fully utilized): ${qs.map(_.toMillis)}; Pool size: ${wp.size}")
       action.foreach(processor ! _)
       takeABreak()
     case _ ⇒

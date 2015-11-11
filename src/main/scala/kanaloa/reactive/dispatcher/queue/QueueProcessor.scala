@@ -52,7 +52,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     {
       case ScaleTo(newPoolSize, reason) ⇒
-        log.info(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
+        log.debug(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
         metricsCollector.send(Metric.PoolSize(newPoolSize))
         val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
         val diff = toPoolSize - pool.size
@@ -78,7 +78,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         removeWorker(pool, worker, monitoring(resultHistory), "Worker removed")
 
       case Terminated(`queue`) ⇒
-        log.info(s"Queue ${queue.path} is terminated")
+        log.debug(s"Queue ${queue.path} is terminated")
         self ! Shutdown(retireQueue = false)
 
       case QueueMaxProcessTimeReached(queue) ⇒
@@ -109,7 +109,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒ qs reply ShuttingDown
 
     case ShutdownTimeout ⇒
-      log.error("Shutdown timed out, forcefully shutting down")
+      log.warning("Shutdown timed out, forcefully shutting down")
       pool.foreach(_ ! PoisonPill)
       context stop self
 
