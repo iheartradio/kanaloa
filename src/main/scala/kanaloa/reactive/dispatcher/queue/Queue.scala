@@ -272,6 +272,14 @@ object Queue {
     def allWorkerOccupied = queueLength > 0 || waitingWorkers == 0
   }
 
+  def ofIterable(
+    iterable:                Iterable[_],
+    dispatchHistorySettings: DispatchHistorySettings,
+    defaultWorkSetting:      WorkSettings            = WorkSettings(),
+    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+  ): Props =
+    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector)
+
   def ofIterator(
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
