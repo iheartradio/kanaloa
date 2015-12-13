@@ -4,17 +4,15 @@ import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
-import akka.testkit.{ TestActorRef, TestProbe, ImplicitSender, TestKit }
+import akka.testkit.{ TestActorRef, ImplicitSender, TestKit }
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully, ShutdownGracefully }
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ ShuttingDown, RunningStatus }
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
-import scala.concurrent.{ Promise, Future }
 import scala.concurrent.duration._
 import IntegrationTests._
 import kanaloa.util.Java8TimeExtensions._
-import scala.util.Random
 import scala.language.reflectiveCalls
 
 trait IntegrationSpec extends Specification {
@@ -60,7 +58,7 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
     val pd = system.actorOf(PushingDispatcher.props(
       "test-pushing",
-      Backend(backend),
+      backend,
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
@@ -92,7 +90,7 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
 
     val pd = system.actorOf(PushingDispatcher.props(
       "test-pushing",
-      Backend(backend),
+      backend,
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
@@ -134,7 +132,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
     val pd = system.actorOf(PullingDispatcher.props(
       "test-pulling",
       iterator,
-      Backend(backend),
+      backend,
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
@@ -166,7 +164,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
       val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
       val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
         "test-pushing",
-        Backend(backend),
+        backend,
         ConfigFactory.parseString(
           """
           kanaloa.dispatchers.test-pushing {
@@ -223,7 +221,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
     def dispatcherProps(backend: ActorRef) = PullingDispatcher.props(
       "test-pulling",
       iteratorOf(numberOfMessages),
-      Backend(backend),
+      backend,
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pulling {
@@ -284,7 +282,7 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
     val backend = TestActorRef[SimpleBackend]
     val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
       "test-pushing",
-      Backend(backend),
+      backend,
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pushing {

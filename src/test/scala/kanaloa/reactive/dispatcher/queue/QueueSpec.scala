@@ -323,7 +323,7 @@ class QueueWorkMetricsSpec extends SpecWithActorSystem {
 
     val workerProps: Props = Worker.default(
       TestProbe().ref,
-      Backend(Props.empty)
+      Props.empty
     )(resultChecker)
 
     val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))

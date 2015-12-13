@@ -2,8 +2,8 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor.{ ActorSystem, Props }
 import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
-import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
 import org.specs2.specification.Scope
 
 object TestUtils {
@@ -29,7 +29,7 @@ object TestUtils {
 
     val delegatee = TestProbe()
 
-    val backend = Backend(delegatee.ref)
+    val backend = delegatee.ref
 
     def defaultProcessorProps(
       queue:            QueueRef,

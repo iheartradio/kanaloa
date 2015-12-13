@@ -3,6 +3,7 @@ package kanaloa.reactive.dispatcher
 import akka.actor._
 import com.typesafe.config.{ Config, ConfigFactory }
 import kanaloa.reactive.dispatcher.ApiProtocol.{ ShutdownGracefully, WorkRejected }
+import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
 import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.OverCapacity
@@ -108,6 +109,7 @@ object Dispatcher {
 
     (settings, metricsCollector)
   }
+
 }
 
 case class PushingDispatcher(
@@ -153,10 +155,10 @@ object PushingDispatcher {
     Props(new Handler(settings, queue))
   }
 
-  def props(
+  def props[T: BackendAdaptor](
     name:       String,
-    backend:    Backend,
-    rootConfig: Config  = ConfigFactory.load()
+    backend:    T,
+    rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
     Props(PushingDispatcher(name, settings, backend, metricsCollector, resultChecker))
@@ -176,10 +178,10 @@ case class PullingDispatcher(
 }
 
 object PullingDispatcher {
-  def props(
+  def props[T: BackendAdaptor](
     name:       String,
     iterator:   Iterator[_],
-    backend:    Backend,
+    backend:    T,
     rootConfig: Config      = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)

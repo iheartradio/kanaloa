@@ -1,15 +1,29 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ Actor, Props, ActorRef }
+import akka.actor.{ ActorRefFactory, Actor, Props, ActorRef }
+import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import scala.reflect._
 
 import scala.concurrent.Future
 
-object Backend {
+trait Backend {
+  def apply(f: ActorRefFactory): ActorRef
+}
 
-  def apply(actorRef: ActorRef): Backend = (_) ⇒ actorRef
-  def apply(props: Props): Backend = f ⇒ f.actorOf(props, "backend")
-  def apply[ReqT: ClassTag, ResponseT](f: ReqT ⇒ Future[ResponseT]): Backend = apply(Props(new SimpleDelegatee[ReqT, ResponseT](f)))
+object Backend extends BackendAdaptors {
+
+  type BackendAdaptor[T] = T ⇒ Backend
+
+  def apply(f: ActorRefFactory ⇒ ActorRef): Backend = new Backend {
+    def apply(factory: ActorRefFactory): ActorRef = f(factory)
+  }
+}
+
+trait BackendAdaptors {
+  implicit val artb: BackendAdaptor[ActorRef] = ar ⇒ Backend((_: ActorRefFactory) ⇒ ar)
+  implicit val aptb: BackendAdaptor[Props] = props ⇒ Backend((f: ActorRefFactory) ⇒ f.actorOf(props))
+  implicit def aftb[ReqT: ClassTag, ResponseT]: BackendAdaptor[ReqT ⇒ Future[ResponseT]] =
+    (f: ReqT ⇒ Future[ResponseT]) ⇒ Backend((factory: ActorRefFactory) ⇒ factory.actorOf(Props(new SimpleDelegatee[ReqT, ResponseT](f))))
 
   case class UnexpectedRequest(request: Any) extends Exception
   private class SimpleDelegatee[ReqT: ClassTag, ResponseT](f: ReqT ⇒ Future[ResponseT]) extends Actor {

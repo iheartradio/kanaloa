@@ -4,7 +4,6 @@ import akka.actor.{ ActorSystem, Props }
 import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
 import com.typesafe.config.{ ConfigException, ConfigFactory }
 import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
-import kanaloa.reactive.dispatcher.Backend.UnexpectedRequest
 import kanaloa.reactive.dispatcher.metrics.{ NoOpMetricsCollector, StatsDMetricsCollector }
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
@@ -43,7 +42,7 @@ class DispatcherSpec extends SpecWithActorSystem {
     trait SimplePushingDispatchScope extends ScopeWithActor {
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
-        Backend((i: String) ⇒ Future.successful(MessageProcessed(i)))
+        (i: String) ⇒ Future.successful(MessageProcessed(i))
       )(ResultChecker.simple[MessageProcessed]))
     }
 
@@ -60,7 +59,7 @@ class DispatcherSpec extends SpecWithActorSystem {
     "let simple result check fail on unrecognized reply message" in new ScopeWithActor {
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
-        Backend((i: String) ⇒ Future.successful("A Result"))
+        (i: String) ⇒ Future.successful("A Result")
       )(ResultChecker.simple[MessageProcessed]))
 
       dispatcher ! "3"
@@ -221,5 +220,5 @@ class ScopeWithActor(implicit system: ActorSystem) extends TestKit(system) with 
 
   val delegatee = TestProbe()
 
-  val backend = Backend(delegatee.ref)
+  val backend: Backend = delegatee.ref
 }
