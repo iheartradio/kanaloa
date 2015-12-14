@@ -24,7 +24,7 @@ For the detailed algorithm please see the [implementation detail](#impl) below.
 ```
 resolvers += Resolver.jcenterRepo
 
-libraryDependencies +=  "com.iheart" %% "kanaloa" % "0.1.7"
+libraryDependencies +=  "com.iheart" %% "kanaloa" % "0.2.0"
 ```
 
 #### Config
