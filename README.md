@@ -9,7 +9,7 @@
 Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.io/docs/akka/snapshot/scala/dispatchers.html).
 
 ### Motivation
- Kanaloa work dispatchers sit in front of your service and dispatch received work to them. They make your service more resilient through the following means:
+ Kanaloa work dispatchers sit in front of your service and dispatches received work to them. They make your service more resilient through the following means:
   1. **Auto scaling** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka's [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
   2. **Back pressure control** - this control is [Little's law](https://en.wikipedia.org/wiki/Little%27s_law) inspired. It rejects requests when estimated wait time for which exceeds a certain threshold.
   3. **Circuit breaker** - when error rate from your service goes above a certain threshold, the kanaloa dispatcher stops all requests for a short period of time to give your service a chance to "cool down".
