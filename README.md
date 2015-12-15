@@ -88,8 +88,7 @@ val dispatcher =
     case _ => Left("shit happened")
   })
 
-dispatcher ! SomeWork("blahblah") //dispatcher replies the result (whatever wrapped in the SuccessResult) back.
-
+// dispatcher will pull all work in dispatch them to service and shutdown itself when all done. 
 
 ```
 
