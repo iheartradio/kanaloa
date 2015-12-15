@@ -93,7 +93,10 @@ dispatcher ! SomeWork("blahblah") //dispatcher replies the result (whatever wrap
 
 ```
 
-We used an [ActorRef](http://doc.akka.io/api/akka/snapshot/index.html#akka.actor.ActorRef) as service here, Kanaloa also supports [Props](http://doc.akka.io/api/akka/snapshot/index.html#akka.actor.Props) and `T => Future[R]` function as service. For any `T` if you implement an implicit `T => ActorRefFactory => ActorRef`, then you can use `T` as your backend.
+We used an [ActorRef](http://doc.akka.io/api/akka/snapshot/index.html#akka.actor.ActorRef) as service here, Kanaloa also supports [Props](http://doc.akka.io/api/akka/snapshot/index.html#akka.actor.Props) and `T => Future[R]` function as service. You can use any `T` as service if you implement an implicit `T => Backend` where `Backend` is a simple trait:
+```
+trait Backend { def apply(af: ActorRefFactory): ActorRef }
+```
 
 ### StatsD monitor
 
