@@ -87,7 +87,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     val handleResult: Receive =
       (resultChecker orElse ({
 
-        case m ⇒ Left(s"Unexpected Result ${m.getClass.getCanonicalName}")
+        case m ⇒ Left(s"Unmatched Result '${descriptionOf(m)}' from the backend service, update your ResultChecker if you want to prevent it from being treated as an error.")
 
       }: ResultChecker)).andThen[Unit] {
 
@@ -126,9 +126,12 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       log.debug(s"Retry work $outstanding")
       sendWorkToDelegatee(outstanding.work, outstanding.retried + 1, None)
     } else {
-      val message = s"Work failed after ${outstanding.retried + 1} try(s)"
-      log.warning(s"$message, work $outstanding abandoned")
-      outstanding.fail(WorkFailed(message + s" due to $error"))
+      def message = {
+        val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
+        s"Processing of '${outstanding.workDescription}' failed $retryMessage"
+      }
+      log.warning(s"$message, work abandoned")
+      outstanding.fail(WorkFailed(message + s" due to ${descriptionOf(error)}"))
       if (isRetiring) finish()
       else
         askMoreWork(delayBeforeNextWork)
@@ -147,6 +150,14 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   }
 
   protected def resultChecker: ResultChecker
+
+  protected def descriptionOf(any: Any, maxLength: Int = 100): String = {
+    val msgString = any.toString
+    if (msgString.length < maxLength)
+      msgString
+    else
+      msgString.take(msgString.lastIndexWhere(_.isWhitespace, maxLength)).trim + "..."
+  }
 
   protected case class Outstanding(
     work:          Work,
@@ -176,11 +187,12 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     def cancel(): Unit = if (!timeoutHandle.isCancelled) timeoutHandle.cancel()
 
-    override def toString = work.messageToDelegatee.getClass.toString
+    lazy val workDescription = descriptionOf(work.messageToDelegatee)
 
     def reportResult(result: Any): Unit = work.settings.sendResultTo.foreach(_ ! result)
 
   }
+
 }
 
 object Worker {
