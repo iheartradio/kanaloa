@@ -25,13 +25,14 @@ object Publish {
     val contents = IO.read(file("README.md"))
 
     val p = Project.extract(s)
+    import p.get
 
-    val pattern = "(\"" + p.get(organization) + "\"\\s+%+\\s+\"" + p.get(name) + "\"\\s+%\\s+\")[\\w\\.-]+(\")"
+    val libDependencyPatten = "(\"" + get(organization) + "\"\\s+%+\\s+\"" + get(name) + "\"\\s+%\\s+\")[\\w\\.-]+(\")"
 
-    val newContents = contents.replaceAll(pattern, "$1" + p.get(version) + "$2")
+    val newContents = contents.replaceAll(libDependencyPatten, "$1" + get(version) + "$2")
     IO.write(file("README.md"), newContents)
 
-    val vcs = p.get(releaseVcs).getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
+    val vcs = get(releaseVcs).getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
     vcs.add(file("README.md").getAbsolutePath) !! s.log
 
     s
