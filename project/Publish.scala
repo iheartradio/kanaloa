@@ -1,5 +1,7 @@
 import sbt._, Keys._
 import bintray.BintrayKeys._
+import sbtrelease.ReleasePlugin.autoImport._
+import ReleaseTransformations._
 
 
 object Publish {
@@ -19,5 +21,32 @@ object Publish {
     publishArtifact in Test := false
   )
 
-  val settings = bintraySettings ++ publishingSettings
+  val updateReadmeVersion = ReleaseStep(action = s ⇒ {
+    val contents = IO.read(file("README.md"))
+
+    val p = Project.extract(s)
+
+    val pattern = "(\"" + p.get(organization) + "\"\\s+%+\\s+\"" + p.get(name) + "\"\\s+%\\s+\")[\\w\\.-]+(\")"
+
+    val newContents = contents.replaceAll(pattern, "$1" + p.get(version) + "$2")
+    IO.write(file("README.md"), newContents)
+
+    val vcs = p.get(releaseVcs).getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
+    vcs.add(file("README.md").getAbsolutePath) !! s.log
+
+    s
+  })
+
+  def insertBeforeIn(seq: Seq[ReleaseStep], before: ReleaseStep, step: ReleaseStep) = {
+    val (beforeStep, rest) =
+      seq.span(_ != before)
+
+    (beforeStep :+ step) ++ rest
+  }
+
+  val extraReleaseStep = Seq(
+    releaseProcess := insertBeforeIn(releaseProcess.value, commitReleaseVersion, updateReadmeVersion)
+  )
+
+  val settings = bintraySettings ++ publishingSettings ++ extraReleaseStep
 }
