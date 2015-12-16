@@ -63,7 +63,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     tProcessor.expectNoMsg(15.millisecond)
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
-    expectNoMsg(5.millisecond) //wait
+    expectNoMsg(15.millisecond) //wait
     as.underlyingActor.underUtilizationStreak must beEmpty
   }
 
@@ -75,7 +75,7 @@ class AutoScalingSpec extends SpecWithActorSystem with Mockito {
     as ! OptimizeOrExplore
     replyStatus(numOfBusyWorkers = 5, numOfIdleWorkers = 1)
 
-    tProcessor.expectNoMsg(5.millisecond)
+    tProcessor.expectNoMsg(15.millisecond)
     as.underlyingActor.underUtilizationStreak.get.start === start
     as.underlyingActor.underUtilizationStreak.get.highestUtilization === 5
   }
