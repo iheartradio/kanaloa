@@ -126,9 +126,9 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
 class PullingDispatcherIntegration extends IntegrationSpec {
 
   "can process through a large number of messages" in new TestScope {
-
+    val numOfMessages = 1000
     val backend = TestActorRef[SimpleBackend]
-    val iterator = iteratorOf(3000)
+    val iterator = iteratorOf(numOfMessages)
     val pd = system.actorOf(PullingDispatcher.props(
       "test-pulling",
       iterator,
@@ -148,7 +148,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
     expectTerminated(pd, shutdownTimeout)
 
-    iterator.messageCount.get() === 3000
+    iterator.messageCount.get() === numOfMessages
   }
 
 }
