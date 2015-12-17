@@ -65,7 +65,7 @@ val dispatcher =
     serviceActor
   ) {
     case SuccessResult(r) => Right(r)  // ResultChecker that tells kanaloa if the request is handled succesffully
-    case _ => Left("shit happened")
+    case _ => Left("something bad happened")
   })
 
 dispatcher ! SomeWork("blahblah") //dispatcher replies the result (whatever wrapped in the SuccessResult) back.
@@ -86,7 +86,7 @@ val dispatcher =
     serviceActor
   ) {
     case SuccessResult(r) => Right(r)     // this is your ResultChecker which tell kanaloa if the request is handled succesffully
-    case _ => Left("shit happened")
+    case _ => Left("something bad happened")
   })
 
 // dispatcher will pull all work in dispatch them to service and shutdown itself when all done. 
