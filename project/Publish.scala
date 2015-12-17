@@ -27,9 +27,9 @@ object Publish {
     val p = Project.extract(s)
     import p.get
 
-    val libDependencyPatten = "(\"" + get(organization) + "\"\\s+%+\\s+\"" + get(name) + "\"\\s+%\\s+\")[\\w\\.-]+(\")"
+    val libDependencyPattern = s"""("${get(organization)}"\s+%+\s+"${get(name)}"\s+%\s+")[\w\.-]+(")"""
 
-    val newContents = contents.replaceAll(libDependencyPatten, "$1" + get(version) + "$2")
+    val newContents = contents.replaceAll(libDependencyPattern, "$1" + get(version) + "$2")
     IO.write(file("README.md"), newContents)
 
     val vcs = get(releaseVcs).getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
