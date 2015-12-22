@@ -11,7 +11,7 @@ Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.
 
 ### Motivation
  Kanaloa work dispatchers sit in front of your service and dispatch received work to them. They make your service more resilient through the following means:
-  1. **Auto scaling** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka's [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
+  1. **Auto scaling** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
   2. **Back pressure control** - this control is [Little's law](https://en.wikipedia.org/wiki/Little%27s_law) inspired. It rejects requests when estimated wait time for which exceeds a certain threshold.
   3. **Circuit breaker** - when error rate from your service goes above a certain threshold, the kanaloa dispatcher stops all requests for a short period of time to give your service a chance to "cool down".
   4. **Real-time monitoring** - a built-in statsD reporter allows you to monitor a set of critical metrics (throughput, failure rate, queue length, expected wait time, service process time, number of concurrent requests, etc) in real time. It also provides real-time insights into how kanaloa dispatchers are working. An example on Grafana:
@@ -139,6 +139,8 @@ The dispatchers keep track of throughput at each pool size and perform the follo
 When the pool is fully-utilized (i.e. all workers are busy), it randomly chooses between exploring and optimizing. When the pool has not been fully-utilized for a period of time, it will downsize the pool to the last seen max utilization multiplied by a configurable ratio.
 
 By constantly exploring and optimizing, the resizer will eventually walk to the optimal size and remain nearby. When the optimal size changes it will start walking towards the new one.
+
+If auto-scaling is all you need, you should consider using [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) in an Akka router. (The caveat is that you need to make sure that your routees block on handling messages, i.e. they can’t simply asynchronously pass work to the backend service).
 
 
 ### Contribute
