@@ -25,7 +25,7 @@ object Dependencies {
   }
 
   val config = Seq(
-    "net.ceedubs" %% "ficus" % "1.1.2"
+    "com.iheart" %% "ficus" % "1.2.1"
   )
 
   lazy val settings = Seq(
