@@ -48,7 +48,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         log.debug("Queue commanded to retire")
         val newStatus = dispatchWork(status, retiring = true)
         context become retiring(newStatus)
-        newStatus.queuedWorkers.foreach { (qw) ⇒
+        newStatus.queuedWorkers.foreach { qw ⇒
           qw ! NoWorkLeft
           context unwatch qw
         }

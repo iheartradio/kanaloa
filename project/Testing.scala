@@ -14,9 +14,8 @@ object Testing {
       libraryDependencies ++= Dependencies.test ++ Dependencies.integration,
       scalacOptions in Test ++= Seq("-Yrangepos"),
       testOptions in Test := Seq(
-        Tests.Argument(TestFrameworks.Specs2, "-xonly"),
         Tests.Filter(isUnitTest)),
-      testOptions in Integration := Seq(Tests.Filter(isIntegrationTest))
+        testOptions in Integration := Seq(Tests.Filter(isIntegrationTest))
     ) ++ inConfig(Integration)(Defaults.testTasks)
   }
 

@@ -1,6 +1,8 @@
 
 [![Join the chat at https://gitter.im/iheartradio/kanaloa](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/iheartradio/kanaloa?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Build Status](https://travis-ci.org/iheartradio/kanaloa.svg)](https://travis-ci.org/iheartradio/kanaloa)
+[![Codacy Badge](https://api.codacy.com/project/badge/coverage/a2cce2086ae145018ff5738e8f9d2d52)](https://www.codacy.com/app/kailuo-wang/kanaloa)
+[![Codacy Badge](https://api.codacy.com/project/badge/grade/a2cce2086ae145018ff5738e8f9d2d52)](https://www.codacy.com/app/kailuo-wang/kanaloa)
 [![Download](https://api.bintray.com/packages/iheartradio/maven/kanaloa/images/download.svg)](https://bintray.com/iheartradio/maven/kanaloa/_latestVersion)
 
 # Kanaloa
