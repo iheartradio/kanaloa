@@ -1,10 +1,10 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ ActorSystem, Props }
-import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
-import com.typesafe.config.{ ConfigException, ConfigFactory }
+import akka.actor.{ActorSystem, Props}
+import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import com.typesafe.config.{ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
-import kanaloa.reactive.dispatcher.metrics.{ NoOpMetricsCollector, StatsDMetricsCollector }
+import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.specs2.specification.Scope

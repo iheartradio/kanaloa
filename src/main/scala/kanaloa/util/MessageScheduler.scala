@@ -1,6 +1,6 @@
 package kanaloa.util
 
-import akka.actor.{ Actor, ActorLogging, ActorRef, Cancellable }
+import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable}
 
 import scala.concurrent.duration.FiniteDuration
 

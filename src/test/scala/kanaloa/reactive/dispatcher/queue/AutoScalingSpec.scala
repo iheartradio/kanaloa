@@ -2,15 +2,15 @@ package kanaloa.reactive.dispatcher.queue
 
 import java.time.LocalDateTime
 
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.SpecWithActorSystem
-import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
-import kanaloa.reactive.dispatcher.queue.AutoScaling.{ OptimizeOrExplore, PoolSize, UnderUtilizationStreak }
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.queue.AutoScaling.{OptimizeOrExplore, PoolSize, UnderUtilizationStreak}
 import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ RunningStatus, ScaleTo }
-import kanaloa.reactive.dispatcher.queue.Worker.{ Idle, Working }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo}
+import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 

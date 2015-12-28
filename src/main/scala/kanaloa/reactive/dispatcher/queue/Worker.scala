@@ -3,11 +3,11 @@ package kanaloa.reactive.dispatcher.queue
 import java.time.LocalDateTime
 
 import akka.actor._
-import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, WorkFailed, WorkTimedOut }
-import kanaloa.reactive.dispatcher.queue.Queue.{ NoWorkLeft, RequestWork, Unregister, Unregistered }
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
+import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
-import kanaloa.reactive.dispatcher.{ Backend, ResultChecker }
+import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
