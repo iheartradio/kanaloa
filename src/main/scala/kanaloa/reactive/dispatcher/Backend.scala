@@ -1,6 +1,6 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ ActorRefFactory, Actor, Props, ActorRef }
+import akka.actor.{ActorRefFactory, Actor, Props, ActorRef}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import scala.reflect._
 

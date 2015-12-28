@@ -1,13 +1,13 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor._
-import com.typesafe.config.{ Config, ConfigFactory }
-import kanaloa.reactive.dispatcher.ApiProtocol.{ ShutdownGracefully, WorkRejected }
+import com.typesafe.config.{Config, ConfigFactory}
+import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
-import kanaloa.reactive.dispatcher.metrics.{ MetricsCollector, NoOpMetricsCollector }
+import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.OverCapacity
-import kanaloa.reactive.dispatcher.queue.Queue.{ Enqueue, EnqueueRejected, WorkEnqueued }
+import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected, WorkEnqueued}
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._

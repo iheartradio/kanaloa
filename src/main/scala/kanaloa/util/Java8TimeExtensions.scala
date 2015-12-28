@@ -1,7 +1,7 @@
 package kanaloa.util
 
 import java.time.LocalDateTime
-import java.time.temporal.{ ChronoUnit, Temporal }
+import java.time.temporal.{ChronoUnit, Temporal}
 
 import scala.concurrent.duration._
 

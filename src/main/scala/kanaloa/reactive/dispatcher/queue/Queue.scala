@@ -5,15 +5,15 @@ import java.time.temporal.ChronoUnit
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
-import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.{ OverCapacity, Reason }
-import kanaloa.reactive.dispatcher.queue.Queue.{ QueueStatus, _ }
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.{OverCapacity, Reason}
+import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, _}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.annotation.tailrec
-import scala.collection.immutable.{ Queue ⇒ ScalaQueue }
+import scala.collection.immutable.{Queue ⇒ ScalaQueue}
 import scala.concurrent.duration._
 
 trait Queue extends Actor with ActorLogging with MessageScheduler {

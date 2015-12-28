@@ -1,14 +1,14 @@
 package kanaloa.reactive.dispatcher.queue
 
-import java.time.{ Duration ⇒ JDuration, LocalDateTime }
+import java.time.{Duration ⇒ JDuration, LocalDateTime}
 
-import akka.actor.{ Actor, ActorLogging, Props, Terminated }
+import akka.actor.{Actor, ActorLogging, Props, Terminated}
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.metrics.{ Metric, MetricsCollector, NoOpMetricsCollector }
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
 import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ ScaleTo, _ }
-import kanaloa.reactive.dispatcher.queue.Worker.{ WorkerStatus, Working }
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, _}
+import kanaloa.reactive.dispatcher.queue.Worker.{WorkerStatus, Working}
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._

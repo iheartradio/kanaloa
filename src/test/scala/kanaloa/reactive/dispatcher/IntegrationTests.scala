@@ -4,10 +4,10 @@ import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
-import akka.testkit.{ TestActorRef, ImplicitSender, TestKit }
+import akka.testkit.{TestActorRef, ImplicitSender, TestKit}
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.ApiProtocol.{ QueryStatus, ShutdownSuccessfully, ShutdownGracefully }
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ ShuttingDown, RunningStatus }
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, ShutdownGracefully}
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ShuttingDown, RunningStatus}
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 import scala.concurrent.duration._
