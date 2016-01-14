@@ -27,16 +27,16 @@ trait IntegrationSpec extends Specification {
       akka {
         log-dead-letters = off
         log-dead-letters-during-shutdown = off
-      
+
         scheduler {
           tick-duration = 1ms
           ticks-per-wheel = 2
         }
         stdout-loglevel = ${logLevel}
-      
+
         loglevel = ${logLevel}
       }
-      
+
       kanaloa.default-dispatcher {
         dispatchHistory {
           maxHistoryLength = 200ms
