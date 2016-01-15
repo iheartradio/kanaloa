@@ -24,24 +24,25 @@ object Backend {
   trait BackendAdaptors {
 
     // helper to create an adapator from a function
-    def apply[T](f: T ⇒ Backend) = new BackendAdaptor[T] {
+    def apply[T](f: T ⇒ Backend): BackendAdaptor[T] = new BackendAdaptor[T] {
       def apply(t: T): Backend = f(t)
     }
 
     implicit val backendBackend = apply[Backend](identity)
 
     // accepting subtypes of ActorRef to also support TestActorRef
-    implicit def actorRefBackend[T <: ActorRef] = apply[T](ref ⇒ Backend(_ ⇒ ref))
+    implicit def actorRefBackend[T <: ActorRef]: BackendAdaptor[T] = apply[T](ref ⇒ Backend(_ ⇒ ref))
 
     implicit val propsBackend = apply[Props](props ⇒ Backend(_.actorOf(props)))
 
-    implicit def delegateeeBackend[ReqT: ClassTag, ResponseT] = apply[ReqT ⇒ Future[ResponseT]](
-      f ⇒ Backend(_.actorOf(Props(new SimpleDelegatee[ReqT, ResponseT](f))))
-    )
+    implicit def delegateeBackend[ReqT: ClassTag, ResT]: BackendAdaptor[ReqT ⇒ Future[ResT]] =
+      apply[ReqT ⇒ Future[ResT]] { f ⇒
+        Backend(_.actorOf(Props(new SimpleDelegatee[ReqT, ResT](f))))
+      }
 
     case class UnexpectedRequest(request: Any) extends Exception
 
-    private class SimpleDelegatee[ReqT: ClassTag, ResponseT](f: ReqT ⇒ Future[ResponseT]) extends Actor {
+    private class SimpleDelegatee[ReqT: ClassTag, ResT](f: ReqT ⇒ Future[ResT]) extends Actor {
       import context.dispatcher
       def receive: Receive = {
         case t: ReqT if classTag[ReqT].runtimeClass.isInstance(t) ⇒
