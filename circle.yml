@@ -1,0 +1,25 @@
+
+machine:
+  timezone: UTC
+  java:
+    version: oraclejdk8
+  environment:
+    SBT_OPTS: "-Xmx1G -XX:MaxMetaspaceSize=384M -XX:+UseCompressedOops"
+
+dependencies:
+  cache_directories:
+    - "~/.sbt"
+    - "target/resolution-cache"
+    - "target/streams"
+    - "project/target/resolution-cache"
+    - "project/target/streams"
+
+test:
+  override:
+    - sbt test 
+    - sbt integration:test
+
+  post:
+    - mkdir -p $CIRCLE_TEST_REPORTS/junit/
+    - find . -type f -regex ".*/target/test-reports/.*xml" -exec cp {} $CIRCLE_TEST_REPORTS/junit/ \;
+

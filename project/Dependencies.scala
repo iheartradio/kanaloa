@@ -5,7 +5,7 @@ object Dependencies {
 
   object Versions {
     val akka = "2.4.0"
-    val specs2 = "3.0"
+    val specs2 = "3.6.6"
   }
 
   val akka = Seq(
@@ -35,7 +35,7 @@ object Dependencies {
     resolvers ++= Seq(
       Resolver.typesafeRepo("releases"),
       Resolver.bintrayRepo("scalaz", "releases"),
-      "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/"
+      Resolver.sonatypeRepo("releases")
     ),
 
     libraryDependencies ++= Dependencies.akka ++
