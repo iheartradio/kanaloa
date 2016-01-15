@@ -161,7 +161,8 @@ object PushingDispatcher {
     rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
-    Props(PushingDispatcher(name, settings, backend, metricsCollector, resultChecker))
+    val toBackend = implicitly[BackendAdaptor[T]]
+    Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker))
   }
 
 }
@@ -185,7 +186,8 @@ object PullingDispatcher {
     rootConfig: Config      = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
-    Props(PullingDispatcher(name, iterator, settings, backend, metricsCollector, resultChecker))
+    val toBackend = implicitly[BackendAdaptor[T]]
+    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, resultChecker))
   }
 }
 

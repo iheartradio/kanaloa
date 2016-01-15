@@ -83,7 +83,7 @@ class DispatcherSpec extends SpecWithActorSystem {
               workRetry = 27
             }
             dispatchers {
-          
+
             }
           }
         """
@@ -104,7 +104,7 @@ class DispatcherSpec extends SpecWithActorSystem {
                 workTimeout = 1m
               }
             }
-          
+
           }
         """
 
