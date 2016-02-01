@@ -105,7 +105,7 @@ object Dispatcher {
 
     val settings = toDispatcherSettings(dispatcherCfg)
 
-    val metricsCollector = MetricsCollector.fromConfig(dispatcherName, cfg)
+    val metricsCollector = MetricsCollector.fromConfig(dispatcherName: String, dispatcherCfg)
 
     (settings, metricsCollector)
   }

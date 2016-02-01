@@ -11,6 +11,10 @@
 #### A set of work dispatchers implemented using Akka actors
 Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.io/docs/akka/snapshot/scala/dispatchers.html).
 
+### Migration from 0.2.x -> 0.3.0
+1. Moved metrics reporting configuration to dispatcher level and added the on/off flag. Default metrics report settings is now in the defatult-dispatcher section. See the [reference configuration](src/main/resources/reference.conf) for details.
+
+
 ### Motivation
  Kanaloa work dispatchers sit in front of your service and dispatch received work to them. They make your service more resilient through the following means:
   1. **Auto scaling** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
@@ -108,22 +112,31 @@ Kanaloa has a built-in statsD reporter that allows users to monitor important me
 Add following to your config
 ```
 kanaloa {
-  metrics {
-    enabled = on
-    statsd {
-      host = "localhost" #host of your statsD server
-      port = 8125
+  default-dispatcher {
+    metrics {
+      enabled = on
+      statsd {
+        host = "localhost" #host of your statsD server
+        port = 8125
+      }
     }
   }
 }
 ```
 
-Metrics reporting can be turned off at the dispatcher level, e.g.
+Metrics reporting settings at the dispatcher level, e.g.
 ```
 kanaloa {
   dispatchers {
     example {
-      metrics = off
+      metrics.enabled = off
+    }
+    example2 {
+      metrics {
+        statsd {
+          eventSampleRate = 0.01
+        }
+      }
     }
   }
 }

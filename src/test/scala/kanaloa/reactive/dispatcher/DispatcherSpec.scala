@@ -185,8 +185,9 @@ class DispatcherSpec extends SpecWithActorSystem {
     "parse statsD collector " in {
       val cfgStr =
         """
-          kanaloa {
+          kanaloa.default-dispatcher {
             metrics {
+              enabled  = on
               statsd {
                 host = "localhost"
                 eventSampleRate = 0.5
@@ -206,16 +207,20 @@ class DispatcherSpec extends SpecWithActorSystem {
           kanaloa {
             dispatchers {
               example {
-                metrics = off
+                metrics.enabled = off
               }
             }
             dispatchers {
               example2 { }
             }
-            metrics {
-              statsd {
-                host = "localhost"
-                eventSampleRate = 0.5
+
+            default-dispatcher {
+              metrics {
+                enabled = on
+                statsd {
+                  host = "localhost"
+                  eventSampleRate = 0.5
+                }
               }
             }
           }
@@ -229,11 +234,42 @@ class DispatcherSpec extends SpecWithActorSystem {
       mc2 must beAnInstanceOf[StatsDMetricsCollector]
     }
 
+    "override collector settings at the dispatcher level" in {
+      val cfgStr =
+        """
+          kanaloa {
+            dispatchers {
+              example {
+                metrics {
+                  statsd {
+                    host = "localhost"
+                    eventSampleRate = 0.7
+                  }
+                }
+              }
+            }
+            default-dispatcher.metrics {
+              enabled  = on
+              statsd {
+                host = "localhost"
+                eventSampleRate = 0.5
+              }
+            }
+          }
+        """
+
+      val strCfg: Config = ConfigFactory.parseString(cfgStr)
+      val (_, mc) = Dispatcher.readConfig("example", strCfg)
+      mc must beAnInstanceOf[StatsDMetricsCollector]
+      mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.7
+
+    }
+
     "turn off metrics collector when disabled at the config level" in {
       val cfgStr =
         """
           kanaloa {
-            metrics {
+            default-dispatcher.metrics {
               enabled = off
               statsd {
                 host = "localhost"
@@ -252,7 +288,8 @@ class DispatcherSpec extends SpecWithActorSystem {
       val cfgStr =
         """
           kanaloa {
-            metrics {
+            default-dispatcher.metrics {
+              enabled = on
               statsd {}
             }
           }
