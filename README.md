@@ -12,7 +12,7 @@
 Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.io/docs/akka/snapshot/scala/dispatchers.html).
 
 ### Migration from 0.2.x -> 0.3.0
-1. Moved metrics reporting configuration to dispatcher level and added the on/off flag. Default metrics report settings is now in the defatult-dispatcher section. See the [reference configuration](src/main/resources/reference.conf) for details.
+1. Moved metrics reporting configuration to dispatcher level and added the on/off flag. Default metrics report settings is now in the default-dispatcher section. See the [reference configuration](src/main/resources/reference.conf) for details.
 
 
 ### Motivation
