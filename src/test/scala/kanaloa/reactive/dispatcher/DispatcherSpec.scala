@@ -2,7 +2,7 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import com.typesafe.config.{ConfigException, ConfigFactory}
+import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
 import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
@@ -198,6 +198,54 @@ class DispatcherSpec extends SpecWithActorSystem {
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       mc must beAnInstanceOf[StatsDMetricsCollector]
       mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.5
+    }
+
+    "turn off metrics collector when disabled at the dispatcher level" in {
+      val cfgStr =
+        """
+          kanaloa {
+            dispatchers {
+              example {
+                metrics = off
+              }
+            }
+            dispatchers {
+              example2 { }
+            }
+            metrics {
+              statsd {
+                host = "localhost"
+                eventSampleRate = 0.5
+              }
+            }
+          }
+        """
+
+      val strCfg: Config = ConfigFactory.parseString(cfgStr)
+      val (_, mc) = Dispatcher.readConfig("example", strCfg)
+      mc === NoOpMetricsCollector
+
+      val (_, mc2) = Dispatcher.readConfig("example2", strCfg)
+      mc2 must beAnInstanceOf[StatsDMetricsCollector]
+    }
+
+    "turn off metrics collector when disabled at the config level" in {
+      val cfgStr =
+        """
+          kanaloa {
+            metrics {
+              enabled = off
+              statsd {
+                host = "localhost"
+                eventSampleRate = 0.5
+              }
+            }
+          }
+        """
+
+      val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      mc === NoOpMetricsCollector
+
     }
 
     "throw exception when host is missing" in {

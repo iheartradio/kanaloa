@@ -16,9 +16,13 @@ object MetricsCollector {
   def fromConfig(dispatcherName: String, config: Config)(implicit system: ActorSystem): MetricsCollector = {
     import net.ceedubs.ficus.Ficus._
     import net.ceedubs.ficus.readers.ArbitraryTypeReader._
-    config.as[Option[StatsDMetricsCollectorSettings]]("metrics.statsd").fold[MetricsCollector](NoOpMetricsCollector) { settings ⇒
-      StatsDMetricsCollector.apply(dispatcherName, settings)
-    }
+
+    val enabledGlobally = config.getOrElse("metrics.enabled", true)
+    val enabledAtDispatcher = config.getOrElse(s"dispatchers.$dispatcherName.metrics", true)
+
+    val settings = config.as[Option[StatsDMetricsCollectorSettings]]("metrics.statsd").filter(_ ⇒ enabledGlobally && enabledAtDispatcher)
+
+    settings.fold(NoOpMetricsCollector: MetricsCollector)(StatsDMetricsCollector(dispatcherName, _))
   }
 }
 
