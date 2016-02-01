@@ -109,9 +109,21 @@ Add following to your config
 ```
 kanaloa {
   metrics {
+    enabled = on
     statsd {
       host = "localhost" #host of your statsD server
       port = 8125
+    }
+  }
+}
+```
+
+Metrics reporting can be turned off at the dispatcher level, e.g.
+```
+kanaloa {
+  dispatchers {
+    example {
+      metrics = off
     }
   }
 }
