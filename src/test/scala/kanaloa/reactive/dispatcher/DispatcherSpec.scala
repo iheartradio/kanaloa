@@ -3,13 +3,14 @@ package kanaloa.reactive.dispatcher
 import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
-import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
+import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownSuccessfully, ShutdownGracefully, WorkFailed}
 import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.specs2.specification.Scope
 
 import scala.concurrent.Future
+import concurrent.duration._
 
 class DispatcherSpec extends SpecWithActorSystem {
   "pulling work dispatcher" should {
@@ -35,6 +36,32 @@ class DispatcherSpec extends SpecWithActorSystem {
       delegatee.reply(Success)
       delegatee.expectMsg(6)
       delegatee.reply(Success)
+    }
+
+    "stop in the middle of processing a list" in new ScopeWithActor {
+      import akka.actor.ActorDSL._
+      val echoSuccess = actor(new Act {
+        become {
+          case _ ⇒ sender ! Success
+        }
+      })
+
+      val iterator = Stream.continually(1).iterator
+      val pwp = system.actorOf(Props(PullingDispatcher(
+        "test",
+        iterator,
+        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
+        echoSuccess,
+        metricsCollector = NoOpMetricsCollector,
+        ({
+          case Success ⇒ Right(())
+        })
+      )))
+
+      expectNoMsg(20.milliseconds)
+      pwp ! ShutdownGracefully(Some(self))
+
+      expectMsg(ShutdownSuccessfully)
     }
   }
 
@@ -78,15 +105,15 @@ class DispatcherSpec extends SpecWithActorSystem {
     "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
       val cfgStr =
         """
-          kanaloa {
-            default-dispatcher {
-              workRetry = 27
-            }
-            dispatchers {
+            kanaloa {
+              default-dispatcher {
+                workRetry = 27
+              }
+              dispatchers {
 
+              }
             }
-          }
-        """
+          """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.workRetry === 27
@@ -95,18 +122,18 @@ class DispatcherSpec extends SpecWithActorSystem {
     "fall back to default-dispatcher settings when a field is missing in the dispatcher section" in {
       val cfgStr =
         """
-          kanaloa {
-            default-dispatcher {
-              workRetry = 29
-            }
-            dispatchers {
-              example {
-                workTimeout = 1m
+            kanaloa {
+              default-dispatcher {
+                workRetry = 29
               }
-            }
+              dispatchers {
+                example {
+                  workTimeout = 1m
+                }
+              }
 
-          }
-        """
+            }
+          """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.workRetry === 29
@@ -116,16 +143,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "turn off autoScaling if set to off" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                autoScaling {
-                  enabled = off
+            kanaloa {
+              dispatchers {
+                example {
+                  autoScaling {
+                    enabled = off
+                  }
                 }
               }
             }
-          }
-        """
+          """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.autoScaling must beNone
     }
@@ -133,16 +160,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "turn off backPressure if set to off" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                backPressure {
-                  enabled = off
+            kanaloa {
+              dispatchers {
+                example {
+                  backPressure {
+                    enabled = off
+                  }
                 }
               }
             }
-          }
-        """
+          """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.backPressure must beNone
     }
@@ -150,16 +177,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "turn off circuitBreaker if set to off" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                circuitBreaker {
-                  enabled = off
+            kanaloa {
+              dispatchers {
+                example {
+                  circuitBreaker {
+                    enabled = off
+                  }
                 }
               }
             }
-          }
-        """
+          """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.circuitBreaker must beNone
     }
@@ -167,16 +194,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "parse settings that match the name" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                circuitBreaker {
-                  errorRateThreshold = 0.5
+            kanaloa {
+              dispatchers {
+                example {
+                  circuitBreaker {
+                    errorRateThreshold = 0.5
+                  }
                 }
               }
             }
-          }
-        """
+          """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.circuitBreaker.get.errorRateThreshold === 0.5
@@ -185,16 +212,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "parse statsD collector " in {
       val cfgStr =
         """
-          kanaloa.default-dispatcher {
-            metrics {
-              enabled  = on
-              statsd {
-                host = "localhost"
-                eventSampleRate = 0.5
+            kanaloa.default-dispatcher {
+              metrics {
+                enabled  = on
+                statsd {
+                  host = "localhost"
+                  eventSampleRate = 0.5
+                }
               }
             }
-          }
-        """
+          """
 
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       mc must beAnInstanceOf[StatsDMetricsCollector]
@@ -204,27 +231,27 @@ class DispatcherSpec extends SpecWithActorSystem {
     "turn off metrics collector when disabled at the dispatcher level" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                metrics.enabled = off
+            kanaloa {
+              dispatchers {
+                example {
+                  metrics.enabled = off
+                }
               }
-            }
-            dispatchers {
-              example2 { }
-            }
+              dispatchers {
+                example2 { }
+              }
 
-            default-dispatcher {
-              metrics {
-                enabled = on
-                statsd {
-                  host = "localhost"
-                  eventSampleRate = 0.5
+              default-dispatcher {
+                metrics {
+                  enabled = on
+                  statsd {
+                    host = "localhost"
+                    eventSampleRate = 0.5
+                  }
                 }
               }
             }
-          }
-        """
+          """
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, mc) = Dispatcher.readConfig("example", strCfg)
@@ -237,26 +264,26 @@ class DispatcherSpec extends SpecWithActorSystem {
     "override collector settings at the dispatcher level" in {
       val cfgStr =
         """
-          kanaloa {
-            dispatchers {
-              example {
-                metrics {
-                  statsd {
-                    host = "localhost"
-                    eventSampleRate = 0.7
+            kanaloa {
+              dispatchers {
+                example {
+                  metrics {
+                    statsd {
+                      host = "localhost"
+                      eventSampleRate = 0.7
+                    }
                   }
                 }
               }
-            }
-            default-dispatcher.metrics {
-              enabled  = on
-              statsd {
-                host = "localhost"
-                eventSampleRate = 0.5
+              default-dispatcher.metrics {
+                enabled  = on
+                statsd {
+                  host = "localhost"
+                  eventSampleRate = 0.5
+                }
               }
             }
-          }
-        """
+          """
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, mc) = Dispatcher.readConfig("example", strCfg)
@@ -268,16 +295,16 @@ class DispatcherSpec extends SpecWithActorSystem {
     "turn off metrics collector when disabled at the config level" in {
       val cfgStr =
         """
-          kanaloa {
-            default-dispatcher.metrics {
-              enabled = off
-              statsd {
-                host = "localhost"
-                eventSampleRate = 0.5
+            kanaloa {
+              default-dispatcher.metrics {
+                enabled = off
+                statsd {
+                  host = "localhost"
+                  eventSampleRate = 0.5
+                }
               }
             }
-          }
-        """
+          """
 
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       mc === NoOpMetricsCollector
@@ -287,13 +314,13 @@ class DispatcherSpec extends SpecWithActorSystem {
     "throw exception when host is missing" in {
       val cfgStr =
         """
-          kanaloa {
-            default-dispatcher.metrics {
-              enabled = on
-              statsd {}
+            kanaloa {
+              default-dispatcher.metrics {
+                enabled = on
+                statsd {}
+              }
             }
-          }
-        """
+          """
 
       Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr)) must throwA[ConfigException]
     }
