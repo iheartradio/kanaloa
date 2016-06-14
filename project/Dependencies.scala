@@ -4,7 +4,7 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val akka = "2.4.0"
+    val akka = "2.4.7"
     val specs2 = "3.0"
   }
 
@@ -25,12 +25,12 @@ object Dependencies {
   }
 
   val config = Seq(
-    "com.iheart" %% "ficus" % "1.2.1"
+    "com.iheart" %% "ficus" % "1.2.6"
   )
 
   lazy val settings = Seq(
 
-    scalaVersion in Global := "2.11.7",
+    scalaVersion in Global := "2.11.8",
 
     resolvers ++= Seq(
       Resolver.typesafeRepo("releases"),
