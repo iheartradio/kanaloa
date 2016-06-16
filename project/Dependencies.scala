@@ -34,6 +34,7 @@ object Dependencies {
 
     resolvers ++= Seq(
       Resolver.typesafeRepo("releases"),
+      Resolver.jcenterRepo,
       Resolver.bintrayRepo("scalaz", "releases"),
       "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/"
     ),
