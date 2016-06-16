@@ -33,12 +33,14 @@ import java.nio.channels.DatagramChannel
 import java.util.Random
 
 import akka.actor._
+import akka.dispatch.{BalancingDispatcherConfigurator, ForkJoinExecutorConfigurator}
+import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 
 /**
  * Client for sending stats to StatsD uses Akka to manage concurrency
  *
- * @param context The Akka ActorContext
+ * @param system The Akka ActorContext
  * @param host The statsd host
  * @param port The statsd port
  * @param prefix Prefix for metrics keys (no trailing period), can be empty string
@@ -47,18 +49,34 @@ import org.slf4j.LoggerFactory
  * @param defaultSampleRate Default sample rate to use for metrics, if unspecified
  */
 class StatsDClient(
-  context:           ActorRefFactory,
+  system:            ActorSystem,
   host:              String,
   port:              Int,
-  prefix:            String          = "",
-  multiMetrics:      Boolean         = true,
-  packetBufferSize:  Int             = 1024,
-  defaultSampleRate: Double          = 1.0
+  prefix:            String      = "",
+  multiMetrics:      Boolean     = true,
+  packetBufferSize:  Int         = 1024,
+  defaultSampleRate: Double      = 1.0
 ) {
 
   private val rand = new Random()
 
-  private val actorRef = context.actorOf(Props(new StatsDActor(host, port, multiMetrics, packetBufferSize)))
+  private val actorRef = {
+    import scala.collection.JavaConverters._
+    val dispatcherId = s"kanaloa-statsDClient"
+
+    def dispatchers = system.dispatchers
+
+    if (!dispatchers.hasDispatcher(dispatcherId)) {
+      val dispatcherConfig = ConfigFactory.parseMap(Map("id" → dispatcherId, "name" → s"$dispatcherId-dispatcher").asJava).withFallback(dispatchers.defaultDispatcherConfig)
+
+      dispatchers.registerConfigurator(dispatcherId, new BalancingDispatcherConfigurator(
+        dispatcherConfig,
+        dispatchers.prerequisites
+      ))
+    }
+
+    system.actorOf(Props(new StatsDActor(host, port, multiMetrics, packetBufferSize)).withDispatcher(dispatcherId))
+  }
 
   /**
    * Sends timing stats in milliseconds to StatsD
