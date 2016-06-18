@@ -1,16 +1,48 @@
-organization in Global := "com.iheart"
 
-name := "kanaloa"
 
-lazy val root = (project in file(".")).configs(Testing.Integration)
+val commonSettings = Seq(
+  scalaVersion := "2.11.8",
+  scalacOptions ++= Seq(
+    "-encoding", "UTF-8",
+    "-deprecation", // warning and location for usages of deprecated APIs
+    "-feature", // warning and location for usages of features that should be imported explicitly
+    "-unchecked", // additional warnings where generated code depends on assumptions
+    "-Xlint", // recommended additional warnings
+    "-Ywarn-adapted-args", // Warn if an argument list is modified to match the receiver
+    "-Ywarn-inaccessible",
+    "-Ywarn-dead-code",
+    "-Ywarn-numeric-widen"
+  ),
+  organization in Global := "com.iheart",
+  name := "kanaloa"
+)
 
-scalacOptions ++= List("-feature", "-deprecation", "-unchecked", "-Xlint")
 
-Dependencies.settings
+val noPublishing = Seq(publish := (), publishLocal := (), publishArtifact := false)
 
-Format.settings
 
-Publish.settings
+lazy val root = project.in(file("."))
+  .aggregate(core, cluster)
+  .settings(moduleName := "kanaloa")
+  .settings(Publish.settings:_*)
+  .settings(Publish.extraReleaseStep:_*)
 
-Testing.settings
+lazy val core = project
+  .configs(Testing.Integration)
+  .settings(moduleName := "kanaloa-core")
+  .settings(commonSettings:_*)
+  .settings(Dependencies.settings:_*)
+  .settings(Format.settings:_*)
+  .settings(Publish.settings:_*)
+  .settings(Testing.settings:_*)
+
+lazy val cluster = project
+  .settings(moduleName := "kanaloa-cluster")
+  .configs(Testing.Integration)
+  .settings(commonSettings:_*)
+  .settings(Dependencies.settings:_*)
+  .settings(Format.settings:_*)
+  .settings(Publish.settings:_*)
+  .settings(Testing.settings:_*)
+
 

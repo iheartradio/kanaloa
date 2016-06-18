@@ -50,5 +50,5 @@ object Publish {
     releaseProcess := insertBeforeIn(releaseProcess.value, commitReleaseVersion, updateReadmeVersion)
   )
 
-  val settings = bintraySettings ++ publishingSettings ++ extraReleaseStep
+  val settings = bintraySettings ++ publishingSettings
 }
