@@ -3,6 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import java.time.LocalDateTime
 
 import akka.actor._
+import akka.routing.Routee
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
@@ -19,34 +20,42 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
 
-  def receive = idle()
+  def receive = starting
 
   context watch queue
 
+  private var routee: Routee = null
+
   override def preStart(): Unit = {
-    askMoreWork(None)
+    import context.dispatcher
+    backend(context).foreach { ref ⇒
+      self ! RouteeReceived(ref)
+    }
   }
 
-  private lazy val delegatee: ActorRef = {
-    val ref = backend(context)
-    context watch ref
-    ref
+  def starting: Receive = whileWaiting(Starting) orElse {
+    case RouteeReceived(r) ⇒
+      routee = r
+      context become idle()
+      askMoreWork(None)
   }
 
-  def idle(delayBeforeNextWork: Option[FiniteDuration] = None): Receive = {
+  def idle(delayBeforeNextWork: Option[FiniteDuration] = None): Receive =
+    whileWaiting(Idle) orElse {
 
-    case Hold(period) ⇒ context become idle(Some(period))
+      case Hold(period) ⇒ context become idle(Some(period))
 
-    case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
+      case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
+    }
 
-    case NoWorkLeft ⇒
-      finish()
+  def whileWaiting(currentStatus: WorkerStatus): Receive = {
+    case NoWorkLeft ⇒ finish()
 
     case Worker.Retire ⇒
       queue ! Unregister(self)
       context become retiring(None)
 
-    case qs: QueryStatus     ⇒ qs reply Idle
+    case qs: QueryStatus     ⇒ qs reply currentStatus
 
     case Terminated(`queue`) ⇒ finish()
   }
@@ -97,13 +106,13 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
             askMoreWork(delayBeforeNextWork)
           }
         case Left(e) ⇒
-          log.warning(s"Error $e returned by delegatee in regards to running work $outstanding")
+          log.warning(s"Error $e returned by routee in regards to running work $outstanding")
           retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
       }
 
     ({
-      case DelegateeTimeout ⇒
-        log.warning(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+      case RouteeTimeout ⇒
+        log.warning(s"Routee timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
         outstanding.timeout()
 
         if (isRetiring) finish() else {
@@ -139,8 +148,16 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def sendWorkToDelegatee(work: Work, retried: Int, delay: Option[FiniteDuration]): Unit = {
-    val timeoutHandle: Cancellable = delayedMsg(delay.fold(work.settings.timeout)(_ + work.settings.timeout), DelegateeTimeout)
-    maybeDelayedMsg(delay, work.messageToDelegatee, delegatee)
+    val timeoutHandle: Cancellable = delayedMsg(delay.fold(work.settings.timeout)(_ + work.settings.timeout), RouteeTimeout)
+    delay match {
+      case Some(d) ⇒
+        import context.dispatcher
+        context.system.scheduler.scheduleOnce(d) {
+          routee.send(work.messageToDelegatee, self)
+        }
+      case None ⇒
+        routee.send(work.messageToDelegatee, self)
+    }
     context become working(Outstanding(work, timeoutHandle, retried))
   }
 
@@ -196,10 +213,12 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
 object Worker {
 
-  private case object DelegateeTimeout
+  private case object RouteeTimeout
+  private case class RouteeReceived(delegatee: Routee)
   case object Retire
 
   sealed trait WorkerStatus
+  case object Starting extends WorkerStatus
   case object Retiring extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus

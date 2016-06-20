@@ -37,6 +37,8 @@ lazy val core = project
   .settings(Testing.settings:_*)
 
 lazy val cluster = project
+  .dependsOn(core)
+  .aggregate(core)
   .settings(moduleName := "kanaloa-cluster")
   .configs(Testing.Integration)
   .settings(commonSettings:_*)
@@ -44,5 +46,8 @@ lazy val cluster = project
   .settings(Format.settings:_*)
   .settings(Publish.settings:_*)
   .settings(Testing.settings:_*)
+  .settings(
+    libraryDependencies ++= Dependencies.akkaCluster
+  )
 
 

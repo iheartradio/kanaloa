@@ -13,6 +13,10 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-slf4j" % Versions.akka
   )
 
+  val akkaCluster = Seq(
+    "com.typesafe.akka" %% "akka-cluster" % Versions.akka,
+    "com.typesafe.akka" %% "akka-cluster-tools" % Versions.akka
+  )
   val (test, integration) = {
     val specs = Seq(
       "org.scalatest" %% "scalatest" % "2.2.6",
