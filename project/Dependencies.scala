@@ -5,7 +5,6 @@ object Dependencies {
 
   object Versions {
     val akka = "2.4.7"
-    val specs2 = "3.0"
   }
 
   val akka = Seq(
@@ -16,9 +15,8 @@ object Dependencies {
 
   val (test, integration) = {
     val specs = Seq(
-      "org.specs2" %% "specs2-core" % Versions.specs2,
-      "org.specs2" %% "specs2-mock" % Versions.specs2,
-      "org.specs2" %% "specs2-scalacheck" % Versions.specs2
+      "org.scalatest" %% "scalatest" % "2.2.6",
+      "org.mockito" % "mockito-core" % "1.10.19"
     )
 
     (specs.map(_ % "test"), specs.map(_ % "integration"))

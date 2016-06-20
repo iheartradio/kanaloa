@@ -1,12 +1,15 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor.ActorSystem
-import org.specs2.mutable.Specification
-import org.specs2.specification.AfterAll
+import akka.testkit.{ImplicitSender, TestKit}
+import org.scalatest.{BeforeAndAfterAll, ShouldMatchers, WordSpec, WordSpecLike}
 
-trait SpecWithActorSystem extends Specification with AfterAll {
-  sequential
-  implicit lazy val system = ActorSystem()
+abstract class SpecWithActorSystem(_sys: ActorSystem) extends TestKit(_sys)
+  with ImplicitSender with WordSpecLike with BeforeAndAfterAll with ShouldMatchers {
 
-  def afterAll(): Unit = system.terminate()
+  def this() = this(ActorSystem("Spec"))
+
+  override protected def afterAll(): Unit = {
+    system.terminate()
+  }
 }

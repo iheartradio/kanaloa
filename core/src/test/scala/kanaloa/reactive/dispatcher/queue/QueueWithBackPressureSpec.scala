@@ -14,55 +14,58 @@ import scala.concurrent.duration._
 
 class QueueWithBackPressureSpec extends SpecWithActorSystem {
 
-  "records history correctly" in new QueueScope {
-    val q = withBackPressure()
-    initQueue(q, numberOfWorkers = 2)
+  "Queue with Backpressure" should {
 
-    waitForWorkerRegistration(q, 2)
+    "records history correctly" in new QueueScope {
+      val q = withBackPressure()
+      initQueue(q, numberOfWorkers = 2)
 
-    q ! Enqueue("a", self)
-    expectMsg(WorkEnqueued)
-    q ! QueryStatus()
-    val qs = expectMsgType[QueueStatus]
-    qs.queuedWorkers.size === 1
-    qs.dispatchHistory.last.queueLength === 0
-    qs.dispatchHistory.map(_.dispatched).sum === 1
+      waitForWorkerRegistration(q, 2)
 
-    q ! Enqueue("b", self)
-    expectMsg(WorkEnqueued)
-    q ! QueryStatus()
-    val qs2 = expectMsgType[QueueStatus]
-    qs2.queuedWorkers.size === 0
+      q ! Enqueue("a", self)
+      expectMsg(WorkEnqueued)
+      q ! QueryStatus()
+      val qs = expectMsgType[QueueStatus]
+      qs.queuedWorkers.size === 1
+      qs.dispatchHistory.last.queueLength === 0
+      qs.dispatchHistory.map(_.dispatched).sum === 1
 
-    qs2.dispatchHistory.last.queueLength === 0
-    qs2.dispatchHistory.map(_.dispatched).sum === 2
+      q ! Enqueue("b", self)
+      expectMsg(WorkEnqueued)
+      q ! QueryStatus()
+      val qs2 = expectMsgType[QueueStatus]
+      qs2.queuedWorkers.size === 0
 
-    q ! Enqueue("c", self)
-    expectMsg(WorkEnqueued)
-    q ! QueryStatus()
-    val qs3 = expectMsgType[QueueStatus]
+      qs2.dispatchHistory.last.queueLength === 0
+      qs2.dispatchHistory.map(_.dispatched).sum === 2
 
-    qs3.queuedWorkers.size === 0
-    qs3.dispatchHistory.last.queueLength === 1
-    qs3.dispatchHistory.map(_.dispatched).sum === 2
-    delegatee.expectMsg("a")
-    delegatee.expectMsg("b")
+      q ! Enqueue("c", self)
+      expectMsg(WorkEnqueued)
+      q ! QueryStatus()
+      val qs3 = expectMsgType[QueueStatus]
 
-    delegatee.reply(MessageProcessed("a"))
-    delegatee.expectMsg("c")
-    expectNoMsg(50.milliseconds)
+      qs3.queuedWorkers.size === 0
+      qs3.dispatchHistory.last.queueLength === 1
+      qs3.dispatchHistory.map(_.dispatched).sum === 2
+      delegatee.expectMsg("a")
+      delegatee.expectMsg("b")
 
-    q ! QueryStatus()
-    val qs4 = expectMsgType[QueueStatus]
+      delegatee.reply(MessageProcessed("a"))
+      delegatee.expectMsg("c")
+      expectNoMsg(50.milliseconds)
 
-    qs4.queuedWorkers.size === 0
-    qs4.workBuffer.size === 0
-    qs4.dispatchHistory.last.queueLength === 0
-    qs4.dispatchHistory.map(_.dispatched).sum === 3
+      q ! QueryStatus()
+      val qs4 = expectMsgType[QueueStatus]
 
+      qs4.queuedWorkers.size === 0
+      qs4.workBuffer.size === 0
+      qs4.dispatchHistory.last.queueLength === 0
+      qs4.dispatchHistory.map(_.dispatched).sum === 3
+
+    }
   }
 
-  "isOverCapacity" >> {
+  "isOverCapacity" should {
 
     val q = TestActorRef[QueueWithBackPressure](Queue.withBackPressure(
       DispatchHistorySettings(),
@@ -80,65 +83,65 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
         case (queueSize, time) ⇒ (1, queueSize, 1, time)
       }: _*)
 
-    "return false if there is no entries" >> {
-      q.checkOverCapacity(status()) must beFalse
+    "return false if there is no entries" in {
+      q.checkOverCapacity(status()) shouldBe false
     }
 
-    "return false if there is only entries with 0 buffer" >> {
+    "return false if there is only entries with 0 buffer" in {
       q.checkOverCapacity(statusWithQueueSize(
         (0, LocalDateTime.now.minusMinutes(2)),
         (0, LocalDateTime.now.minusMinutes(1)),
         (0, LocalDateTime.now)
-      )) must beFalse
+      )) shouldBe false
     }
 
-    "return true if the most recent size is larger than max buffer size" >> {
+    "return true if the most recent size is larger than max buffer size" in {
       q.checkOverCapacity(statusWithQueueSize(
         (0, LocalDateTime.now.minusMinutes(2)),
         (0, LocalDateTime.now.minusMinutes(1)),
         (11, LocalDateTime.now)
-      )) must beTrue
+      )) shouldBe true
     }
 
-    "return false if most recent size is less than max buffer size" >> {
+    "return false if most recent size is less than max buffer size" in {
       q.checkOverCapacity(statusWithQueueSize(
         (0, LocalDateTime.now.minusMinutes(2)),
         (0, LocalDateTime.now.minusMinutes(1)),
         (8, LocalDateTime.now)
-      )) must beFalse
+      )) shouldBe false
     }
 
-    "return false if wait time is within 5 minute" >> {
+    "return false if wait time is within 5 minute" in {
       q.checkOverCapacity(status(
         (1, 3, 1, LocalDateTime.now.minusMinutes(2)),
         (1, 3, 1, LocalDateTime.now.minusMinutes(1)),
         (1, 3, 1, LocalDateTime.now) // 3 left at server rate 1 per minute
-      )) must beFalse
+      )) shouldBe false
     }
 
-    "return true if wait time is more than 5 minute" >> {
+    "return true if wait time is more than 5 minute" in {
       q.checkOverCapacity(status(
         (0, 8, 0, LocalDateTime.now.minusMinutes(2)),
         (1, 7, 0, LocalDateTime.now.minusMinutes(1)),
         (1, 6, 0, LocalDateTime.now) // 6 left at server rate 1 per minute
-      )) must beTrue
+      )) shouldBe true
     }
 
-    "return true for long queue but not enough dispatch lately at all" >> {
+    "return true for long queue but not enough dispatch lately at all" in {
       q.checkOverCapacity(status(
         (0, 4, 0, LocalDateTime.now.minusMinutes(3)),
         (0, 5, 0, LocalDateTime.now.minusMinutes(2)),
         (0, 6, 0, LocalDateTime.now.minusMinutes(1)),
         (0, 7, 0, LocalDateTime.now) // 6 left at server rate 1 per minute
-      )) must beTrue
+      )) shouldBe true
     }
 
-    "return false when just started to pickup traffic" >> {
+    "return false when just started to pickup traffic" in {
       q.checkOverCapacity(status(
         (0, 9, 1, LocalDateTime.now.minus(2, ChronoUnit.MILLIS)),
         (0, 9, 1, LocalDateTime.now.minus(1, ChronoUnit.MILLIS)),
         (0, 9, 1, LocalDateTime.now) // 6 left at server rate 1 per minute
-      )) must beFalse
+      )) shouldBe false
     }
 
   }

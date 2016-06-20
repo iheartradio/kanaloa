@@ -4,23 +4,23 @@ import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
-import akka.testkit.{TestActorRef, ImplicitSender, TestKit}
+import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, ShutdownGracefully}
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ShuttingDown, RunningStatus}
-import org.specs2.mutable.Specification
-import org.specs2.specification.Scope
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownGracefully, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ShuttingDown}
+
 import scala.concurrent.duration._
 import IntegrationTests._
 import kanaloa.util.Java8TimeExtensions._
+import org.scalatest.{ShouldMatchers, WordSpecLike}
+
 import scala.language.reflectiveCalls
 
-trait IntegrationSpec extends Specification {
+trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
 
   val verbose = false
 
   private lazy val logLevel = if (verbose) "INFO" else "OFF"
-  sequential
 
   implicit lazy val system = ActorSystem("test", ConfigFactory.parseString(
     s"""
@@ -273,7 +273,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
 
     val failRatio = performMultipleTests(test, optimalSize, 6)
 
-    failRatio must be_<=(0.5)
+    failRatio should be <= 0.5
   }
 }
 
@@ -385,7 +385,7 @@ object IntegrationTests {
   def concurrencyLimitedBackendProps(optimalSize: Int, baseWait: FiniteDuration = 1.milliseconds, totalMessagesCap: Option[Int] = None) =
     Props(new ConcurrencyLimitedBackend(optimalSize, baseWait, totalMessagesCap))
 
-  class TestScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
+  class TestScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 
     def sendLoadsOfMessage(target: ActorRef, duration: FiniteDuration, msgPerMilli: Double, verbose: Boolean = false): Int = {
 
