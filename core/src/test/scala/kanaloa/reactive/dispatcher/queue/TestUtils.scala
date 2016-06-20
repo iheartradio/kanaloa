@@ -4,7 +4,6 @@ import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
-import org.specs2.specification.Scope
 
 object TestUtils {
 
@@ -25,7 +24,7 @@ object TestUtils {
   ): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, metricsCollector)
 
-  class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
+  class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 
     val delegatee = TestProbe()
 

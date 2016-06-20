@@ -11,172 +11,180 @@ import kanaloa.reactive.dispatcher.queue.AutoScaling.{OptimizeOrExplore, PoolSiz
 import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
-import org.specs2.mock.Mockito
-import org.specs2.specification.Scope
+import org.scalatest.OptionValues
+import org.scalatest.concurrent.Eventually
+import org.scalatest.mock.MockitoSugar
+
+import org.mockito.Mockito._
 
 import scala.concurrent.duration._
 
-class AutoScalingSpec extends SpecWithActorSystem with Mockito {
-  "when no history" in new AutoScalingScope {
-    as ! OptimizeOrExplore
-    tQueue.expectMsgType[QueryStatus]
-    tQueue.reply(MockQueueInfo(None))
-    tProcessor.expectMsgType[QueryStatus]
-  }
+class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionValues with Eventually {
 
-  "send metrics to metricsCollector" in new AutoScalingScope {
-    override val metricsCollector: MetricsCollector = mock[MetricsCollector]
-    val mc = metricsCollector
+  "AutoScaling" should {
+    "when no history" in new AutoScalingScope {
+      as ! OptimizeOrExplore
+      tQueue.expectMsgType[QueryStatus]
+      tQueue.reply(MockQueueInfo(None))
+      tProcessor.expectMsgType[QueryStatus]
+    }
 
-    as ! OptimizeOrExplore
+    "send metrics to metricsCollector" in new AutoScalingScope {
+      override val metricsCollector: MetricsCollector = mock[MetricsCollector]
+      val mc = metricsCollector
 
-    replyStatus(
-      numOfBusyWorkers = 3,
-      numOfIdleWorkers = 1
-    )
+      as ! OptimizeOrExplore
 
-    there was after(50.milliseconds).
-      one(mc).send(Metric.PoolSize(4)) andThen
-      one(mc).send(Metric.PoolUtilized(3))
-  }
+      replyStatus(
+        numOfBusyWorkers = 3,
+        numOfIdleWorkers = 1
+      )
 
-  "record perfLog" in new AutoScalingScope {
-    as ! OptimizeOrExplore
-    tQueue.expectMsgType[QueryStatus]
-    tQueue.reply(MockQueueInfo(Some(1.second)))
-    tProcessor.expectMsgType[QueryStatus]
-    tProcessor.reply(RunningStatus(Set(newWorker(), newWorker())))
-    tProcessor.expectMsgType[ScaleTo]
-    as.underlyingActor.perfLog must not(beEmpty)
-  }
+      eventually {
+        verify(mc).send(Metric.PoolSize(4))
+        verify(mc).send(Metric.PoolUtilized(3))
+        verifyNoMoreInteractions(mc)
+      }
+    }
 
-  "start an underutilizationStreak" in new AutoScalingScope {
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(15.millisecond)
-    as.underlyingActor.underUtilizationStreak.get.highestUtilization === 3
-  }
+    "record perfLog" in new AutoScalingScope {
+      as ! OptimizeOrExplore
+      tQueue.expectMsgType[QueryStatus]
+      tQueue.reply(MockQueueInfo(Some(1.second)))
+      tProcessor.expectMsgType[QueryStatus]
+      tProcessor.reply(RunningStatus(Set(newWorker(), newWorker())))
+      tProcessor.expectMsgType[ScaleTo]
+      as.underlyingActor.perfLog should not be empty
+    }
 
-  "stop an underutilizationStreak" in new AutoScalingScope {
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(15.millisecond)
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
-    expectNoMsg(15.millisecond) //wait
-    as.underlyingActor.underUtilizationStreak must beEmpty
-  }
+    "start an underutilizationStreak" in new AutoScalingScope {
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+      tProcessor.expectNoMsg(15.millisecond)
+      as.underlyingActor.underUtilizationStreak.get.highestUtilization === 3
+    }
 
-  "update an underutilizationStreak" in new AutoScalingScope {
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(50.millisecond)
-    val start = as.underlyingActor.underUtilizationStreak.get.start
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 5, numOfIdleWorkers = 1)
+    "stop an underutilizationStreak" in new AutoScalingScope {
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+      tProcessor.expectNoMsg(15.millisecond)
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 4, numOfIdleWorkers = 0)
+      expectNoMsg(15.millisecond) //wait
+      as.underlyingActor.underUtilizationStreak shouldBe empty
+    }
 
-    tProcessor.expectNoMsg(15.millisecond)
-    as.underlyingActor.underUtilizationStreak.get.start === start
-    as.underlyingActor.underUtilizationStreak.get.highestUtilization === 5
-  }
+    "update an underutilizationStreak" in new AutoScalingScope {
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+      tProcessor.expectNoMsg(50.millisecond)
+      val start = as.underlyingActor.underUtilizationStreak.get.start
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 5, numOfIdleWorkers = 1)
 
-  "explore when currently maxed out and exploration rate is 1" in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 1)
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 0)
+      tProcessor.expectNoMsg(15.millisecond)
+      as.underlyingActor.underUtilizationStreak.get.start === start
+      as.underlyingActor.underUtilizationStreak.get.highestUtilization === 5
+    }
 
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+    "explore when currently maxed out and exploration rate is 1" in new AutoScalingScope {
+      val subject = autoScalingRef(explorationRatio = 1)
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 0)
 
-    scaleCmd.reason must beSome("exploring")
-  }
+      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
 
-  "does not optimize when not currently maxed" in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 1)
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 0)
-    tProcessor.expectMsgType[ScaleTo]
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
-    tProcessor.expectNoMsg(30.millisecond)
-  }
+      scaleCmd.reason.value shouldBe "exploring"
+    }
 
-  "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 0)
-    mockBusyHistory(
-      subject,
-      (30, 32.milliseconds),
-      (30, 30.milliseconds),
-      (40, 20.milliseconds),
-      (40, 23.milliseconds),
-      (35, 25.milliseconds)
-    )
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 32, numOfIdleWorkers = 0, dispatchDuration = 43.milliseconds)
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+    "does not optimize when not currently maxed" in new AutoScalingScope {
+      val subject = autoScalingRef(explorationRatio = 1)
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 0)
+      tProcessor.expectMsgType[ScaleTo]
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+      tProcessor.expectNoMsg(30.millisecond)
+    }
 
-    scaleCmd.reason must beSome("optimizing")
-    scaleCmd.numOfWorkers must be_>(35)
-    scaleCmd.numOfWorkers must be_<(40)
-  }
+    "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutoScalingScope {
+      val subject = autoScalingRef(explorationRatio = 0)
+      mockBusyHistory(
+        subject,
+        (30, 32.milliseconds),
+        (30, 30.milliseconds),
+        (40, 20.milliseconds),
+        (40, 23.milliseconds),
+        (35, 25.milliseconds)
+      )
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 32, numOfIdleWorkers = 0, dispatchDuration = 43.milliseconds)
+      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
 
-  "ignore further away sample data when optmizing" in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 0)
-    mockBusyHistory(
-      subject,
-      (10, 1.milliseconds), //should be ignored
-      (29, 32.milliseconds),
-      (31, 32.milliseconds),
-      (32, 32.milliseconds),
-      (35, 32.milliseconds),
-      (36, 32.milliseconds),
-      (31, 30.milliseconds),
-      (43, 20.milliseconds),
-      (41, 23.milliseconds),
-      (37, 25.milliseconds)
-    )
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 37, numOfIdleWorkers = 0, dispatchDuration = 28.milliseconds)
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      scaleCmd.reason.value shouldBe "optimizing"
+      scaleCmd.numOfWorkers should be > 35
+      scaleCmd.numOfWorkers should be < 40
+    }
 
-    scaleCmd.reason must beSome("optimizing")
-    scaleCmd.numOfWorkers must be_>(35)
-    scaleCmd.numOfWorkers must be_<(43)
-  }
+    "ignore further away sample data when optmizing" in new AutoScalingScope {
+      val subject = autoScalingRef(explorationRatio = 0)
+      mockBusyHistory(
+        subject,
+        (10, 1.milliseconds), //should be ignored
+        (29, 32.milliseconds),
+        (31, 32.milliseconds),
+        (32, 32.milliseconds),
+        (35, 32.milliseconds),
+        (36, 32.milliseconds),
+        (31, 30.milliseconds),
+        (43, 20.milliseconds),
+        (41, 23.milliseconds),
+        (37, 25.milliseconds)
+      )
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 37, numOfIdleWorkers = 0, dispatchDuration = 28.milliseconds)
+      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
 
-  "do nothing if not enough history in general " in new AutoScalingScope {
-    val subject = autoScalingRef(explorationRatio = 1)
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+      scaleCmd.reason.value shouldBe "optimizing"
+      scaleCmd.numOfWorkers should be > 35
+      scaleCmd.numOfWorkers should be < 43
+    }
 
-    tProcessor.expectNoMsg(20.milliseconds)
-    subject ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
+    "do nothing if not enough history in general " in new AutoScalingScope {
+      val subject = autoScalingRef(explorationRatio = 1)
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
 
-    tProcessor.expectNoMsg(50.milliseconds)
-  }
+      tProcessor.expectNoMsg(20.milliseconds)
+      subject ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 3, numOfIdleWorkers = 1)
 
-  "downsize if hasn't maxed out for more than relevant period of hours" in new AutoScalingScope {
-    val moreThan72HoursAgo = LocalDateTime.now.minusHours(73)
-    as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(moreThan72HoursAgo, 40))
+      tProcessor.expectNoMsg(50.milliseconds)
+    }
 
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
-    val scaleCmd = tProcessor.expectMsgType[ScaleTo]
-    scaleCmd === ScaleTo(32, Some("downsizing"))
-  }
+    "downsize if hasn't maxed out for more than relevant period of hours" in new AutoScalingScope {
+      val moreThan72HoursAgo = LocalDateTime.now.minusHours(73)
+      as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(moreThan72HoursAgo, 40))
 
-  "do not thing if hasn't maxed out for shorter than relevant period of hours" in new AutoScalingScope {
-    val lessThan72HoursAgo = LocalDateTime.now.minusHours(71)
-    as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(lessThan72HoursAgo, 40))
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
+      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      scaleCmd shouldBe ScaleTo(32, Some("downsizing"))
+    }
 
-    as ! OptimizeOrExplore
-    replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
-    tProcessor.expectNoMsg(50.millis)
+    "do not thing if hasn't maxed out for shorter than relevant period of hours" in new AutoScalingScope {
+      val lessThan72HoursAgo = LocalDateTime.now.minusHours(71)
+      as.underlyingActor.underUtilizationStreak = Some(UnderUtilizationStreak(lessThan72HoursAgo, 40))
+
+      as ! OptimizeOrExplore
+      replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
+      tProcessor.expectNoMsg(50.millis)
+    }
   }
 }
 
 class AutoScalingScope(implicit system: ActorSystem)
-  extends TestKit(system) with ImplicitSender with Scope {
+  extends TestKit(system) with ImplicitSender {
 
   val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
 

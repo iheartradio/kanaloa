@@ -7,7 +7,6 @@ import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownSuccessfully, ShutdownGr
 import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
-import org.specs2.specification.Scope
 
 import scala.concurrent.Future
 import concurrent.duration._
@@ -98,7 +97,7 @@ class DispatcherSpec extends SpecWithActorSystem {
     "use default settings when nothing is in config" in {
       val (settings, mc) = Dispatcher.readConfig("example", ConfigFactory.empty)
       settings.workRetry === 0
-      settings.autoScaling must beSome
+      settings.autoScaling shouldBe defined
       mc === NoOpMetricsCollector
     }
 
@@ -137,7 +136,7 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.workRetry === 29
-      settings.autoScaling must beSome
+      settings.autoScaling shouldBe defined
     }
 
     "turn off autoScaling if set to off" in {
@@ -154,7 +153,7 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.autoScaling must beNone
+      settings.autoScaling shouldBe None
     }
 
     "turn off backPressure if set to off" in {
@@ -171,7 +170,7 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.backPressure must beNone
+      settings.backPressure shouldBe None
     }
 
     "turn off circuitBreaker if set to off" in {
@@ -188,7 +187,7 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.circuitBreaker must beNone
+      settings.circuitBreaker shouldBe None
     }
 
     "parse settings that match the name" in {
@@ -224,7 +223,7 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      mc must beAnInstanceOf[StatsDMetricsCollector]
+      mc shouldBe a[StatsDMetricsCollector]
       mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.5
     }
 
@@ -258,7 +257,7 @@ class DispatcherSpec extends SpecWithActorSystem {
       mc === NoOpMetricsCollector
 
       val (_, mc2) = Dispatcher.readConfig("example2", strCfg)
-      mc2 must beAnInstanceOf[StatsDMetricsCollector]
+      mc2 shouldBe a[StatsDMetricsCollector]
     }
 
     "override collector settings at the dispatcher level" in {
@@ -287,7 +286,7 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, mc) = Dispatcher.readConfig("example", strCfg)
-      mc must beAnInstanceOf[StatsDMetricsCollector]
+      mc shouldBe a[StatsDMetricsCollector]
       mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.7
 
     }
@@ -322,12 +321,14 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
 
-      Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr)) must throwA[ConfigException]
+      intercept[ConfigException] {
+        Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      }
     }
   }
 }
 
-class ScopeWithActor(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender with Scope {
+class ScopeWithActor(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
   case object Success
 
   val delegatee = TestProbe()
