@@ -9,4 +9,7 @@ abstract class SpecWithActorSystem(_sys: ActorSystem) extends TestKit(_sys)
 
   def this() = this(ActorSystem("Spec"))
 
+  override protected def afterAll(): Unit = {
+    system.terminate()
+  }
 }
