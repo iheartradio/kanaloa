@@ -2,7 +2,7 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkRejected}
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, WorkEnqueued, _}
@@ -221,15 +221,9 @@ class DefaultQueueSpec extends SpecWithActorSystem {
       delegatee.expectNoMsg(40.milliseconds)
 
       queue ! Enqueue("a", replyTo = Some(self))
-
-      expectMsg(WorkEnqueued)
-
       delegatee.expectMsg("a")
 
       queue ! Enqueue("b", Some(self))
-
-      expectMsg(WorkEnqueued)
-
       delegatee.expectMsg("b")
 
     }
@@ -309,13 +303,12 @@ class QueueMetricsSpec extends SpecWithActorSystem {
       val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
 
       queue ! Enqueue("a", replyTo = Some(self))
-      expectMsg(WorkEnqueued)
 
       queue ! Enqueue("b", replyTo = Some(self))
-      expectMsgType[EnqueueRejected]
+      expectMsgType[WorkRejected]
 
       queue ! Enqueue("c", replyTo = Some(self))
-      expectMsgType[EnqueueRejected]
+      expectMsgType[WorkRejected]
 
       receivedMetrics should contain(Metric.WorkQueueLength(0))
 
