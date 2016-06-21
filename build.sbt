@@ -46,8 +46,9 @@ lazy val cluster = project
   .settings(Format.settings:_*)
   .settings(Publish.settings:_*)
   .settings(Testing.settings:_*)
+  .settings(ClusterTests.settings:_*)
   .settings(
     libraryDependencies ++= Dependencies.akkaCluster
-  )
+  ).configs(MultiJvm)
 
 
