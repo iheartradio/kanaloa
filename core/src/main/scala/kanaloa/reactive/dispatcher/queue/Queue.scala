@@ -1,12 +1,10 @@
 package kanaloa.reactive.dispatcher.queue
 
 import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 import akka.actor._
-import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
-import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.{OverCapacity, Reason}
 import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, _}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.Java8TimeExtensions._
@@ -31,7 +29,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     handleWork(status, processing) orElse {
       case Enqueue(workMessage, replyTo, setting) ⇒
         if (checkOverCapacity(status)) {
-          replyTo.foreach(_ ! EnqueueRejected(workMessage, OverCapacity))
+          log.warning("At capacity, rejecting message [{}]", workMessage)
+          replyTo.foreach(_ ! WorkRejected("Server out of capacity"))
           metricsCollector.send(Metric.EnqueueRejected)
         } else {
           val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
@@ -41,7 +40,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
           metricsCollector.send(Metric.WorkEnqueued)
 
           context become processing(newStatus)
-          replyTo.foreach(_ ! WorkEnqueued)
         }
 
       case Retire(timeout) ⇒
@@ -221,13 +219,6 @@ object Queue {
   case object Unregistered
 
   case class Unregister(worker: WorkerRef)
-
-  case class EnqueueRejected(workMessage: Any, reason: Reason)
-
-  object EnqueueRejected {
-    sealed trait Reason
-    case object OverCapacity extends Reason
-  }
 
   case object Retiring
   case object NoWorkLeft

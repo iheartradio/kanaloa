@@ -2,12 +2,11 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
-import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
+import kanaloa.reactive.dispatcher.ApiProtocol.ShutdownGracefully
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
-import kanaloa.reactive.dispatcher.queue.Queue.EnqueueRejected.OverCapacity
-import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected, WorkEnqueued}
+import kanaloa.reactive.dispatcher.queue.Queue.Enqueue
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -127,33 +126,11 @@ case class PushingDispatcher(
   }
 
   override def extraReceive: Receive = {
-    case m ⇒ context.actorOf(PushingDispatcher.handlerProps(settings, queue)) forward m
+    case m ⇒ queue ! Enqueue(m, Some(sender), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
   }
 }
 
 object PushingDispatcher {
-  private class Handler(settings: Settings, queue: ActorRef) extends Actor with ActorLogging {
-    def receive: Receive = {
-      case msg ⇒
-        queue ! Enqueue(msg, Some(self), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
-        context become waitingForQueueConfirmation(sender)
-    }
-
-    def waitingForQueueConfirmation(replyTo: ActorRef): Receive = {
-      case WorkEnqueued ⇒
-        context stop self //mission accomplished
-      case EnqueueRejected(_, OverCapacity) ⇒
-        replyTo ! WorkRejected("Server out of capacity")
-        context stop self
-      case m ⇒
-        replyTo ! WorkRejected(s"unexpected response $m")
-        context stop self
-    }
-  }
-
-  private def handlerProps(settings: Settings, queue: QueueRef) = {
-    Props(new Handler(settings, queue))
-  }
 
   def props[T: BackendAdaptor](
     name:       String,
