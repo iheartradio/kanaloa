@@ -16,7 +16,7 @@ cache:
   - $HOME/.sbt/boot/
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test
+  - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test multi-jvm:test
 
   # Tricks to avoid unnecessary cache updates
   - find $HOME/.sbt -name "*.lock" | xargs rm

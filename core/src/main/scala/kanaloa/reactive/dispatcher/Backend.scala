@@ -29,7 +29,7 @@ object Backend {
       def apply(t: T): Backend = f(t)
     }
 
-    implicit val backendBackend = apply[Backend](identity)
+    implicit def backendBackendAdaptor[T <: Backend] = apply[T](identity)
 
     // accepting subtypes of ActorRef to also support TestActorRef
     implicit def actorRefBackend[T <: ActorRef]: BackendAdaptor[T] = apply[T](ref ⇒ Backend(_ ⇒ ref))
