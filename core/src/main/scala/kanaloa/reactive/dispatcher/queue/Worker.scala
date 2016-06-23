@@ -20,53 +20,74 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
 
-  def receive = starting
+  def receive = starting(None, true)
 
   context watch queue
 
   private var routee: ActorRef = null
 
-  override def preStart(): Unit = {
+  var delayBeforeNextWork: Option[FiniteDuration] = None
+
+  def getRoutee: ActorRef = routee
+
+  override def preStart(): Unit = retrieveRoutee()
+
+  def retrieveRoutee(): Unit = {
     import context.dispatcher
     backend(context).foreach { ref ⇒
       self ! RouteeReceived(ref)
     }
   }
 
-  def starting: Receive = whileWaiting(Starting) orElse {
+  def starting(work: Option[Work], askWorkImmediately: Boolean): Receive = whileWaiting(Starting) orElse {
     case RouteeReceived(r) ⇒
       routee = r
-      context become idle()
       context watch r
-      askMoreWork(None)
+      context become waitingForWork
+      if (askWorkImmediately && work.isEmpty) askMoreWork(None)
+      work.foreach(self ! _)
+
+    case work: Work ⇒ context become starting(Some(work), false)
   }
 
-  def idle(delayBeforeNextWork: Option[FiniteDuration] = None): Receive =
+  val waitingForWork: Receive =
     whileWaiting(Idle) orElse {
 
-      case Hold(period) ⇒ context become idle(Some(period))
+      case work: Work ⇒ sendWorkToDelegatee(work, 0)
 
-      case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
+      case Terminated(r) if r == routee ⇒
+        context become starting(None, false)
+        retrieveRoutee()
     }
 
   def whileWaiting(currentStatus: WorkerStatus): Receive = {
     case NoWorkLeft ⇒ finish()
 
+    case Hold(period) ⇒
+      delayBeforeNextWork = Some(period)
+
     case Worker.Retire ⇒
       queue ! Unregister(self)
       context become retiring(None)
 
-    case qs: QueryStatus ⇒ qs reply currentStatus
+    case qs: QueryStatus     ⇒ qs reply currentStatus
 
-    case Terminated(_)   ⇒ finish()
+    case Terminated(`queue`) ⇒ finish()
+
   }
 
   def finish(): Unit = context stop self
 
-  def working(outstanding: Outstanding, delayBeforeNextWork: Option[FiniteDuration] = None): Receive = ({
-    case Hold(period)    ⇒ context become working(outstanding, Some(period))
+  def working(outstanding: Outstanding): Receive = ({
+    case Hold(period) ⇒
+      delayBeforeNextWork = Some(period)
 
-    case Terminated(_)   ⇒ context become retiring(Some(outstanding))
+    case Terminated(`queue`) ⇒ context become retiring(Some(outstanding))
+
+    case Terminated(r) if r == routee ⇒
+      outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
+      context become starting(None, false)
+      retrieveRoutee()
 
     case qs: QueryStatus ⇒ qs reply Working
 
@@ -134,7 +155,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
       log.debug(s"Retry work $outstanding")
-      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1, None)
+      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
         val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
@@ -148,9 +169,9 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     }
   }
 
-  private def sendWorkToDelegatee(work: Work, retried: Int, delay: Option[FiniteDuration]): Unit = {
-    val timeoutHandle: Cancellable = delayedMsg(delay.fold(work.settings.timeout)(_ + work.settings.timeout), RouteeTimeout)
-    delay match {
+  private def sendWorkToDelegatee(work: Work, retried: Int): Unit = {
+    val timeoutHandle: Cancellable = delayedMsg(delayBeforeNextWork.fold(work.settings.timeout)(_ + work.settings.timeout), RouteeTimeout)
+    delayBeforeNextWork match {
       case Some(d) ⇒
         import context.dispatcher
         context.system.scheduler.scheduleOnce(d, routee, work.messageToDelegatee)
@@ -162,7 +183,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   private def askMoreWork(delay: Option[FiniteDuration]): Unit = {
     maybeDelayedMsg(delay, RequestWork(self), queue)
-    context become idle()
+    context become waitingForWork
   }
 
   protected def resultChecker: ResultChecker
@@ -228,11 +249,7 @@ object Worker {
     protected val queue:         QueueRef,
     protected val backend:       Backend,
     protected val resultChecker: ResultChecker
-  ) extends Worker {
-
-    val resultHistoryLength = 0
-
-  }
+  ) extends Worker
 
   def default(
     queue:   QueueRef,
