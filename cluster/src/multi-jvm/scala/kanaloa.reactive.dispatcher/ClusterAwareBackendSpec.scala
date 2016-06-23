@@ -1,27 +1,17 @@
 package kanaloa.reactive.dispatcher
 
 
+import akka.actor._
+import akka.cluster.ClusterSpec
+import akka.pattern.ask
+import akka.remote.testkit.MultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
+import akka.testkit._
 import akka.util.Timeout
-import org.scalatest.{Matchers, BeforeAndAfterAll}
 
-import language.postfixOps
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import com.typesafe.config.ConfigFactory
-import akka.actor.Actor
-import akka.actor.ActorRef
-import akka.actor.PoisonPill
-import akka.actor.Props
-import akka.cluster.{ClusterSpec, Cluster}
-import akka.cluster.ClusterEvent._
-import akka.remote.testconductor.RoleName
-import akka.remote.testkit.{MultiNodeSpecCallbacks, MultiNodeConfig, MultiNodeSpec}
-import akka.testkit._
-import akka.actor.ActorLogging
-import org.scalatest.{ BeforeAndAfterAll, WordSpecLike }
-import org.scalatest.Matchers
-import akka.pattern.ask
+import scala.language.postfixOps
 
 object ClusterAwareBackendSpec extends ClusterConfig {
 
@@ -39,6 +29,7 @@ class ClusterAwareBackendSpecMultiJvmNode2 extends ClusterAwareBackendSpec
 class ClusterAwareBackendSpecMultiJvmNode3 extends ClusterAwareBackendSpec
 
 case class EchoMessage(i: Int)
+
 class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) with ClusterSpec with ImplicitSender {
   import ClusterAwareBackendSpec._
 

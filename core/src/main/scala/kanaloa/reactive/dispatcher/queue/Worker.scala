@@ -24,7 +24,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   context watch queue
 
-  private var routee: Routee = null
+  private var routee: ActorRef = null
 
   override def preStart(): Unit = {
     import context.dispatcher
@@ -37,6 +37,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case RouteeReceived(r) ⇒
       routee = r
       context become idle()
+      context watch r
       askMoreWork(None)
   }
 
@@ -55,29 +56,29 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       queue ! Unregister(self)
       context become retiring(None)
 
-    case qs: QueryStatus     ⇒ qs reply currentStatus
+    case qs: QueryStatus ⇒ qs reply currentStatus
 
-    case Terminated(`queue`) ⇒ finish()
+    case Terminated(_)   ⇒ finish()
   }
 
   def finish(): Unit = context stop self
 
   def working(outstanding: Outstanding, delayBeforeNextWork: Option[FiniteDuration] = None): Receive = ({
-    case Hold(period)        ⇒ context become working(outstanding, Some(period))
+    case Hold(period)    ⇒ context become working(outstanding, Some(period))
 
-    case Terminated(`queue`) ⇒ context become retiring(Some(outstanding))
+    case Terminated(_)   ⇒ context become retiring(Some(outstanding))
 
-    case qs: QueryStatus     ⇒ qs reply Working
+    case qs: QueryStatus ⇒ qs reply Working
 
-    case Worker.Retire       ⇒ context become retiring(Some(outstanding))
+    case Worker.Retire   ⇒ context become retiring(Some(outstanding))
 
   }: Receive).orElse(waitingResult(outstanding, false, delayBeforeNextWork))
 
   def retiring(outstanding: Option[Outstanding]): Receive = ({
-    case Terminated(`queue`) ⇒ //ignore when retiring
-    case qs: QueryStatus     ⇒ qs reply Retiring
-    case Unregistered        ⇒ finish()
-    case Retire              ⇒ //already retiring
+    case Terminated(_)   ⇒ //ignore when retiring
+    case qs: QueryStatus ⇒ qs reply Retiring
+    case Unregistered    ⇒ finish()
+    case Retire          ⇒ //already retiring
   }: Receive) orElse (
     if (outstanding.isDefined)
       waitingResult(outstanding.get, true, None)
@@ -112,7 +113,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     ({
       case RouteeTimeout ⇒
-        log.warning(s"Routee timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+        log.warning(s"Routee ${routee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
         outstanding.timeout()
 
         if (isRetiring) finish() else {
@@ -152,11 +153,9 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     delay match {
       case Some(d) ⇒
         import context.dispatcher
-        context.system.scheduler.scheduleOnce(d) {
-          routee.send(work.messageToDelegatee, self)
-        }
+        context.system.scheduler.scheduleOnce(d, routee, work.messageToDelegatee)
       case None ⇒
-        routee.send(work.messageToDelegatee, self)
+        routee ! work.messageToDelegatee
     }
     context become working(Outstanding(work, timeoutHandle, retried))
   }
@@ -214,7 +213,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 object Worker {
 
   private case object RouteeTimeout
-  private case class RouteeReceived(delegatee: Routee)
+  private case class RouteeReceived(routee: ActorRef)
   case object Retire
 
   sealed trait WorkerStatus

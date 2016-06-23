@@ -52,3 +52,5 @@ lazy val cluster = project
   ).configs(MultiJvm)
 
 
+addCommandAlias("validate", ";root;clean;compile;test;integration:test;multi-jvm:test")
+addCommandAlias("root", ";project root")

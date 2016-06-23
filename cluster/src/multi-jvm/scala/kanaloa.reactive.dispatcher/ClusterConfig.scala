@@ -31,7 +31,7 @@ trait ClusterConfig extends MultiNodeConfig {
       publish-stats-interval              = 0 s # always, when it happens
       failure-detector.heartbeat-interval = 500 ms
     }
-    akka.loglevel = INFO
+    akka.loglevel = ERROR
     akka.log-dead-letters = off
     akka.log-dead-letters-during-shutdown = off
     akka.remote.log-remote-lifecycle-events = off

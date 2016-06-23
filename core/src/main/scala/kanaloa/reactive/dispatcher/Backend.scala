@@ -7,13 +7,13 @@ import scala.concurrent.Future
 import scala.language.implicitConversions
 
 trait Backend {
-  def apply(f: ActorRefFactory): Future[Routee]
+  def apply(f: ActorRefFactory): Future[ActorRef]
 }
 
 object Backend {
 
   def apply(f: ActorRefFactory ⇒ ActorRef): Backend = new Backend {
-    def apply(factory: ActorRefFactory): Future[Routee] = Future.successful(ActorRefRoutee(f(factory)))
+    def apply(factory: ActorRefFactory): Future[ActorRef] = Future.successful(f(factory))
   }
 
   trait BackendAdaptor[T] {

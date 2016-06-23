@@ -2,7 +2,8 @@ package akka.cluster
 
 import java.util.concurrent.ConcurrentHashMap
 
-import akka.actor.{ActorSystem, Address}
+import akka.actor.{ActorIdentity, ActorSystem, Address}
+import akka.remote.testconductor.Controller.ClientDisconnected
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeSpec
 import akka.testkit.EventFilter
@@ -33,6 +34,8 @@ trait ClusterSpec extends  STMultiNodeSpec { self: MultiNodeSpec =>
       }
 
       muteDeadLetters(
+        classOf[ActorIdentity],
+        classOf[ClientDisconnected],
         classOf[ClusterHeartbeatSender.Heartbeat],
         classOf[ClusterHeartbeatSender.HeartbeatRsp],
         classOf[GossipEnvelope],

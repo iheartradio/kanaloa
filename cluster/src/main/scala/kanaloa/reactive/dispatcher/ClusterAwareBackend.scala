@@ -7,6 +7,7 @@ import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
 import akka.routing._
 import akka.pattern.ask
 import akka.util.Timeout
+import kanaloa.reactive.dispatcher.ClusterAwareBackend.RouteeRef
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
@@ -14,7 +15,9 @@ class ClusterAwareBackend(
   actorRefPath: String,
   role:         String,
   routingLogic: RoutingLogic = RoundRobinRoutingLogic()
-)(implicit system: ActorSystem) extends Backend {
+)(implicit
+  system: ActorSystem,
+  timeout: Timeout = 1.seconds) extends Backend {
 
   private[dispatcher] lazy val router: ActorRef = {
     val routerProps: Props = ClusterRouterGroup(
@@ -25,13 +28,13 @@ class ClusterAwareBackend(
         allowLocalRoutees = false, useRole = Some(role)
       )
     ).props()
-    system.actorOf(routerProps, "clusterAwareBackendInternalRouter-$path-$role-" + UUID.randomUUID().toString)
+    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-$actorRefPath-$role-" + UUID.randomUUID().toString)
   }
 
-  override def apply(f: ActorRefFactory): Future[Routee] = {
-    implicit val to: Timeout = 1.seconds //this should be instant according to the implementation
+  override def apply(f: ActorRefFactory): Future[ActorRef] = {
     val retriever = f.actorOf(ClusterAwareBackend.retrieverProps(router, routingLogic))
-    (retriever ? ClusterAwareBackend.GetRoutee).mapTo[Routee]
+    import system.dispatcher
+    (retriever ? ClusterAwareBackend.GetRoutee).mapTo[RouteeRef].map(_.actorRef)
   }
 
 }
@@ -51,8 +54,18 @@ object ClusterAwareBackend {
 
     def waitForRoutees(replyTo: ActorRef, timeoutCancellable: Cancellable, retryWait: FiniteDuration = 50.milliseconds): Receive = {
       case Routees(routees) if routees.length > 0 ⇒
-        replyTo ! routingLogic.select((), routees)
-        context stop self
+
+        val routee = routingLogic.select((), routees)
+        val actorRefF = routee match {
+          case ActorSelectionRoutee(as) ⇒ as.resolveOne(timeout.duration)
+          case ActorRefRoutee(ar)       ⇒ Future.successful(ar)
+        }
+        actorRefF.foreach { ref ⇒
+          replyTo ! RouteeRef(ref)
+          timeoutCancellable.cancel()
+          context stop self
+        }
+
       case Routees(empty) ⇒
         context.system.scheduler.scheduleOnce(retryWait, router, GetRoutees)
         context become waitForRoutees(replyTo, timeoutCancellable, retryWait * 2)
@@ -64,6 +77,7 @@ object ClusterAwareBackend {
   }
 
   private case object GetRoutee
+  private case class RouteeRef(actorRef: ActorRef)
   private case object TimedOut
 
   private def retrieverProps(router: ActorRef, routingLogic: RoutingLogic)(implicit timeout: Timeout) = Props(new RouteeRetriever(router, routingLogic))
