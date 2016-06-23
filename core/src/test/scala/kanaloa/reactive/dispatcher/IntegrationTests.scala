@@ -32,9 +32,9 @@ trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
           tick-duration = 1ms
           ticks-per-wheel = 2
         }
-        stdout-loglevel = ${logLevel}
+        stdout-loglevel = $logLevel
 
-        loglevel = ${logLevel}
+        loglevel = $logLevel
       }
 
       kanaloa.default-dispatcher {
@@ -133,6 +133,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
       "test-pulling",
       iterator,
       backend,
+      None,
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
@@ -222,6 +223,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       "test-pulling",
       iteratorOf(numberOfMessages),
       backend,
+      None,
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pulling {

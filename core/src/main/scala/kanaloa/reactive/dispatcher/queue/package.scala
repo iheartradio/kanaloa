@@ -15,11 +15,11 @@ package kanaloa.reactive.dispatcher {
 
 package kanaloa.reactive.dispatcher.queue {
 
-  private[queue] case class Work(messageToDelegatee: Any, settings: WorkSettings = WorkSettings())
+  private[queue] case class Work(messageToDelegatee: Any, replyTo: Option[ActorRef], settings: WorkSettings = WorkSettings())
 
   private[queue] case class Rejected(work: Work, reason: String)
 
-  case class WorkSettings(retry: Int = 0, timeout: FiniteDuration = 30.seconds, sendResultTo: Option[ActorRef] = None)
+  case class WorkSettings(retry: Int = 0, timeout: FiniteDuration = 30.seconds)
 
   case class CircuitBreakerSettings(
     closeDuration:      FiniteDuration = 3.seconds,

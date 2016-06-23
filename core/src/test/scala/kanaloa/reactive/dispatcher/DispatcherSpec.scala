@@ -3,7 +3,7 @@ package kanaloa.reactive.dispatcher
 import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
-import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownSuccessfully, ShutdownGracefully, WorkFailed}
+import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
 import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
@@ -22,9 +22,10 @@ class DispatcherSpec extends SpecWithActorSystem {
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         backend,
         metricsCollector = NoOpMetricsCollector,
-        ({
+        None,
+        {
           case Success ⇒ Right(())
-        })
+        }
       )))
 
       delegatee.expectMsg(1)
@@ -52,9 +53,10 @@ class DispatcherSpec extends SpecWithActorSystem {
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         echoSuccess,
         metricsCollector = NoOpMetricsCollector,
-        ({
+        None,
+        {
           case Success ⇒ Right(())
-        })
+        }
       )))
 
       expectNoMsg(20.milliseconds)
@@ -90,6 +92,16 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       dispatcher ! "3"
       expectMsgType[WorkFailed]
+    }
+    "receive WorkRejected messages if queue is at capacity" in new ScopeWithActor {
+      val config = ConfigFactory.parseString("kanaloa.default-dispatcher.backPressure.maxBufferSize=0")
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        "test",
+        (i: String) ⇒ Future.successful("A Result"),
+        config
+      )(ResultChecker.simple[MessageProcessed]))
+      dispatcher ! "message"
+      expectMsgType[WorkRejected]
     }
   }
 

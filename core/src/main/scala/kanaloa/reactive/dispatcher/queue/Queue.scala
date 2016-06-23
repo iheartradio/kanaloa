@@ -27,18 +27,19 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
-      case Enqueue(workMessage, replyTo, setting) ⇒
+      case Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
         if (checkOverCapacity(status)) {
           log.warning("At capacity, rejecting message [{}]", workMessage)
-          replyTo.foreach(_ ! WorkRejected("Server out of capacity"))
+          sender() ! EnqueueRejected(workMessage, Queue.EnqueueRejected.OverCapacity, sendResultsTo)
           metricsCollector.send(Metric.EnqueueRejected)
         } else {
-          val newWork = Work(workMessage, setting.getOrElse(defaultWorkSettings))
+          val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
           val newBuffer: ScalaQueue[Work] = status.workBuffer.enqueue(newWork)
           val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
-
           metricsCollector.send(Metric.WorkEnqueued)
-
+          if (sendAcks) {
+            sender() ! WorkEnqueued
+          }
           context become processing(newStatus)
         }
 
@@ -58,9 +59,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       finish(status, s"Queue successfully retired")
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(status, retiring) orElse {
-      case Enqueue(_, replyTo, _) ⇒
-        replyTo.getOrElse(sender) ! Retiring
-
+      case Enqueue         ⇒ sender() ! Retiring
       case RetiringTimeout ⇒ finish(status, "Forcefully retire after timed out")
     }
 
@@ -172,6 +171,7 @@ class QueueOfIterator(
   private val iterator:        Iterator[_],
   val dispatchHistorySettings: DispatchHistorySettings,
   val defaultWorkSettings:     WorkSettings,
+  sendResultsTo:               Option[ActorRef]        = None,
   val metricsCollector:        MetricsCollector        = NoOpMetricsCollector
 ) extends QueueWithoutBackPressure {
   private case object EnqueueMore
@@ -179,7 +179,7 @@ class QueueOfIterator(
     def receive = {
       case EnqueueMore ⇒
         if (iterator.hasNext) {
-          context.parent ! Enqueue(iterator.next)
+          context.parent ! Enqueue(iterator.next, false, sendResultsTo)
         } else {
           log.debug("Iterator queue completes.")
           context.parent ! Retire()
@@ -202,23 +202,36 @@ object QueueOfIterator {
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSettings:     WorkSettings,
+    sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, metricsCollector))
+    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, sendResultsTo, metricsCollector))
 }
 
 object Queue {
 
   case class RequestWork(requester: ActorRef)
 
-  case class Enqueue(workMessage: Any, replyTo: Option[ActorRef] = None, workSettings: Option[WorkSettings] = None)
-  object Enqueue {
-    def apply(workMessage: Any, replyTo: ActorRef): Enqueue = Enqueue(workMessage, Some(replyTo))
-  }
+  /**
+   * Enqueue a message. If the message is enqueued successfully, a [[kanaloa.reactive.dispatcher.queue.Queue.WorkEnqueued]] is sent to the sender if `sendAcks` is true.
+   * Any results will be sent to the `replyTo` actor.  If the work is rejected, a [[WorkRejected]] is sent to the sender, regardless of the value of `sendAcks`.
+   * @param workMessage The message to enqueue
+   * @param sendAcks Send ack messages.  This does not control [[WorkRejected]] messages, which are sent regardless for backpressure.
+   * @param sendResultsTo Actor which can optionally receive responses from downstream backends.
+   */
+  case class Enqueue(workMessage: Any, sendAcks: Boolean = false, sendResultsTo: Option[ActorRef] = None)
+
   case object WorkEnqueued
   case object Unregistered
 
   case class Unregister(worker: WorkerRef)
+
+  case class EnqueueRejected(workMessage: Any, reason: EnqueueRejected.Reason, sendResultsTo: Option[ActorRef])
+
+  object EnqueueRejected {
+    sealed trait Reason
+    case object OverCapacity extends Reason
+  }
 
   case object Retiring
   case object NoWorkLeft
@@ -267,17 +280,19 @@ object Queue {
     iterable:                Iterable[_],
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
+    sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector)
+    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector)
 
   def ofIterator(
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
+    sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector)
+    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector)
 
   def default(
     dispatchHistorySettings: DispatchHistorySettings = DispatchHistorySettings(),

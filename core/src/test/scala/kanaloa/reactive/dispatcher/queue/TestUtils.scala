@@ -1,6 +1,6 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
@@ -20,9 +20,10 @@ object TestUtils {
     iterator:         Iterator[String],
     historySettings:  DispatchHistorySettings = DispatchHistorySettings(),
     workSetting:      WorkSettings            = WorkSettings(),
+    sendResultsTo:    Option[ActorRef]        = None,
     metricsCollector: MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, metricsCollector)
+    Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, sendResultsTo, metricsCollector)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 

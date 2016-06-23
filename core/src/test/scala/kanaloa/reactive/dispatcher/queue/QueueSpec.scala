@@ -5,7 +5,7 @@ import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkRejected}
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
-import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, WorkEnqueued, _}
+import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
 import kanaloa.reactive.dispatcher.SpecWithActorSystem
@@ -106,7 +106,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
       val queueProcessor = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
-          WorkSettings(sendResultTo = Some(self))
+          sendResultsTo = Some(self)
         ),
         numberOfWorkers = 2
       )
@@ -128,7 +128,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
       val queueProcessor = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
-          WorkSettings(sendResultTo = Some(self))
+          sendResultsTo = Some(self)
         ),
         numberOfWorkers = 2
       )
@@ -220,10 +220,10 @@ class DefaultQueueSpec extends SpecWithActorSystem {
 
       delegatee.expectNoMsg(40.milliseconds)
 
-      queue ! Enqueue("a", replyTo = Some(self))
+      queue ! Enqueue("a")
       delegatee.expectMsg("a")
 
-      queue ! Enqueue("b", Some(self))
+      queue ! Enqueue("b")
       delegatee.expectMsg("b")
 
     }
@@ -277,6 +277,28 @@ class DefaultQueueSpec extends SpecWithActorSystem {
       expectMsg(ShutdownSuccessfully)
     }
   }
+
+  "send ack messages when turned on" in new QueueScope {
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+
+    queue ! Enqueue("a", sendAcks = true)
+    expectMsg(WorkEnqueued)
+    delegatee.expectMsg("a")
+  }
+
+  "send results to an actor" in new QueueScope {
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+
+    val sendProbe = TestProbe()
+
+    queue ! Enqueue("a", sendResultsTo = Some(sendProbe.ref))
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("response"))
+    sendProbe.expectMsg("response")
+  }
 }
 
 class QueueMetricsSpec extends SpecWithActorSystem {
@@ -302,25 +324,19 @@ class QueueMetricsSpec extends SpecWithActorSystem {
 
       val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
 
-      queue ! Enqueue("a", replyTo = Some(self))
+      queue ! Enqueue("a")
 
-      queue ! Enqueue("b", replyTo = Some(self))
-      expectMsgType[WorkRejected]
+      queue ! Enqueue("b")
+      expectMsg(EnqueueRejected("b", Queue.EnqueueRejected.OverCapacity, None))
 
-      queue ! Enqueue("c", replyTo = Some(self))
-      expectMsgType[WorkRejected]
+      queue ! Enqueue("c")
+      expectMsg(EnqueueRejected("c", Queue.EnqueueRejected.OverCapacity, None))
 
       receivedMetrics should contain(Metric.WorkQueueLength(0))
 
       //TODO: we might want to make some of our own matchers for lists, the predefined ones in the DSL
       receivedMetrics.filter(_ == Metric.EnqueueRejected) should have size 2
     }
-  }
-}
-
-class QueueWorkMetricsSpec extends SpecWithActorSystem {
-
-  "Queue Work Metrics" should {
 
     "send WorkCompleted, ProcessTime, WorkFailed, and WorkTimedOut metrics" in new MetricCollectorScope() {
 
@@ -379,9 +395,9 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
 
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
+  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), sendResultsTo: Option[ActorRef] = None, historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, historySettings, workSetting, metricsCollector),
+      iteratorQueueProps(iterator, historySettings, workSetting, sendResultsTo, metricsCollector),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
