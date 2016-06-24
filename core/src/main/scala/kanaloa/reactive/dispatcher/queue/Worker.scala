@@ -28,7 +28,8 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
-  def getRoutee: ActorRef = routee
+  //testing purpose only
+  private[queue] def getRoutee: ActorRef = routee
 
   override def preStart(): Unit = retrieveRoutee()
 
