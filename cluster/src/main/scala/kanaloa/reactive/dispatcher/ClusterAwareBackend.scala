@@ -44,15 +44,22 @@ object ClusterAwareBackend {
 
   private class RouteeRetriever(router: ActorRef, routingLogic: RoutingLogic)(implicit timeout: Timeout) extends Actor {
     import context.dispatcher
+
+    var timeoutCancellable: Option[Cancellable] = None
+
+    override def postStop(): Unit = {
+      timeoutCancellable.foreach(_.cancel())
+    }
+
     def receive = {
 
       case GetRoutee ⇒
         router ! GetRoutees
-        val timeoutCancellable = context.system.scheduler.scheduleOnce(timeout.duration, self, TimedOut)
-        context become waitForRoutees(sender, timeoutCancellable)
+        timeoutCancellable = Some(context.system.scheduler.scheduleOnce(timeout.duration, self, TimedOut))
+        context become waitForRoutees(sender)
     }
 
-    def waitForRoutees(replyTo: ActorRef, timeoutCancellable: Cancellable, retryWait: FiniteDuration = 50.milliseconds): Receive = {
+    def waitForRoutees(replyTo: ActorRef, retryWait: FiniteDuration = 50.milliseconds): Receive = {
       case Routees(routees) if routees.length > 0 ⇒
 
         val routee = routingLogic.select((), routees)
@@ -62,13 +69,12 @@ object ClusterAwareBackend {
         }
         actorRefF.foreach { ref ⇒
           replyTo ! RouteeRef(ref)
-          timeoutCancellable.cancel()
           context stop self
         }
 
       case Routees(empty) ⇒
         context.system.scheduler.scheduleOnce(retryWait, router, GetRoutees)
-        context become waitForRoutees(replyTo, timeoutCancellable, retryWait * 2)
+        context become waitForRoutees(replyTo, retryWait * 2)
 
       case TimedOut ⇒
         replyTo ! TimedOut

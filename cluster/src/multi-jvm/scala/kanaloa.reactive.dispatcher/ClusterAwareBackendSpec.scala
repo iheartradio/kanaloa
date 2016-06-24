@@ -8,6 +8,7 @@ import akka.remote.testkit.MultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
 import akka.testkit._
 import akka.util.Timeout
+import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -21,6 +22,7 @@ object ClusterAwareBackendSpec extends ClusterConfig {
 
   commonConfig(clusterConfig)
   testTransport(on = true)
+
 }
 
 
@@ -35,6 +37,17 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
 
   override def initialParticipants = roles.size
   implicit val timeout: Timeout = 30.seconds
+
+
+  val kanaloaConfig = ConfigFactory.parseString(
+    """
+      |kanaloa {
+      |  default-dispatcher {
+      |    workerPool.startingPoolSize = 3
+      |  }
+      |}
+    """.stripMargin)
+
 
   def currentRoutees(router: ActorRef) =
     Await.result(router ? GetRoutees, 30.seconds).asInstanceOf[Routees].routees
@@ -63,7 +76,8 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
         val backend = ClusterAwareBackend("echo", second.name)
         val dispatcher = system.actorOf(PushingDispatcher.props(
           name = "test",
-          backend
+          backend,
+          kanaloaConfig
         )(ResultChecker.simple[EchoMessage]))
 
         dispatcher ! EchoMessage(1)
