@@ -153,7 +153,13 @@ case class PullingDispatcher(
   sendResultsTo:    Option[ActorRef],
   resultChecker:    ResultChecker
 ) extends Dispatcher {
-  protected def queueProps = QueueOfIterator.props(iterator, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), sendResultsTo, metricsCollector)
+  protected def queueProps = QueueOfIterator.props(
+    iterator,
+    settings.dispatchHistory,
+    WorkSettings(settings.workRetry, settings.workTimeout),
+    sendResultsTo,
+    metricsCollector
+  )
 }
 
 object PullingDispatcher {

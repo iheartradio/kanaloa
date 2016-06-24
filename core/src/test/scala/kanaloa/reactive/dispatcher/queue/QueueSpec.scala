@@ -395,7 +395,12 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
 
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), sendResultsTo: Option[ActorRef] = None, historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
+  def iteratorQueue(
+    iterator:        Iterator[String],
+    workSetting:     WorkSettings            = WorkSettings(),
+    sendResultsTo:   Option[ActorRef]        = None,
+    historySettings: DispatchHistorySettings = DispatchHistorySettings()
+  ): QueueRef =
     system.actorOf(
       iteratorQueueProps(iterator, historySettings, workSetting, sendResultsTo, metricsCollector),
       "iterator-queue-" + Random.nextInt(100000)

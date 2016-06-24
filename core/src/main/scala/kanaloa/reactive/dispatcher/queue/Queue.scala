@@ -213,8 +213,10 @@ object Queue {
   case class RequestWork(requester: ActorRef)
 
   /**
-   * Enqueue a message. If the message is enqueued successfully, a [[kanaloa.reactive.dispatcher.queue.Queue.WorkEnqueued]] is sent to the sender if `sendAcks` is true.
-   * Any results will be sent to the `replyTo` actor.  If the work is rejected, a [[WorkRejected]] is sent to the sender, regardless of the value of `sendAcks`.
+   * Enqueue a message. If the message is enqueued successfully, a [[kanaloa.reactive.dispatcher.queue.Queue.WorkEnqueued]]
+   * is sent to the sender if `sendAcks` is true.
+   * Any results will be sent to the `replyTo` actor.  If the work is rejected, a [[WorkRejected]] is sent to the sender,
+   * regardless of the value of `sendAcks`.
    * @param workMessage The message to enqueue
    * @param sendAcks Send ack messages.  This does not control [[WorkRejected]] messages, which are sent regardless for backpressure.
    * @param sendResultsTo Actor which can optionally receive responses from downstream backends.
