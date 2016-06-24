@@ -111,6 +111,8 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒ qs reply Retiring
     case Unregistered    ⇒ finish()
     case Retire          ⇒ //already retiring
+    case Hold(period)    ⇒ //ignore
+
   }: Receive) orElse (
     if (outstanding.isDefined)
       waitingResult(outstanding.get, true, None)
