@@ -7,9 +7,11 @@ import com.typesafe.config.{Config, ConfigFactory}
 //adapted from akka cluster test code
 trait ClusterConfig extends MultiNodeConfig {
 
-  def clusterNode(roleName: String): RoleName = {
+  def clusterNode(roleName: String, extraClusterRoles: String*): RoleName = {
     val r =  role(roleName)
-    nodeConfig(r)(ConfigFactory.parseString(s"""akka.cluster.roles =["$roleName"]"""))
+    val clusterRoles = (roleName +: extraClusterRoles).map(n => s""" "$n" """).mkString(",")
+
+    nodeConfig(r)(ConfigFactory.parseString(s"""akka.cluster.roles =[$clusterRoles]"""))
     r
   }
 

@@ -9,19 +9,32 @@ import akka.routing.{GetRoutees, Routees}
 import akka.testkit._
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import kanaloa.reactive.dispatcher.ClusterAwareBackendSpec._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
 object ClusterAwareBackendSpec extends ClusterConfig {
-
+  val serviceClusterRole = "service"
   val first = clusterNode("first")
-  val second = clusterNode("second")
-  val third = clusterNode("third")
+  val second = clusterNode("second", serviceClusterRole)
+  val third = clusterNode("third", serviceClusterRole)
 
   commonConfig(clusterConfig)
   testTransport(on = true)
+  implicit val timeout: Timeout = 30.seconds
+
+
+
+  val kanaloaConfig = ConfigFactory.parseString(
+    """
+      |kanaloa {
+      |  default-dispatcher {
+      |    workerPool.startingPoolSize = 2
+      |  }
+      |}
+    """.stripMargin)
 
 }
 
@@ -35,22 +48,6 @@ case class EchoMessage(i: Int)
 class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) with ClusterSpec with ImplicitSender {
   import ClusterAwareBackendSpec._
 
-  override def initialParticipants = roles.size
-  implicit val timeout: Timeout = 30.seconds
-
-
-  val kanaloaConfig = ConfigFactory.parseString(
-    """
-      |kanaloa {
-      |  default-dispatcher {
-      |    workerPool.startingPoolSize = 3
-      |  }
-      |}
-    """.stripMargin)
-
-
-  def currentRoutees(router: ActorRef) =
-    Await.result(router ? GetRoutees, 30.seconds).asInstanceOf[Routees].routees
 
   "A ClusterAwareBackend" must {
 
@@ -67,13 +64,13 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
       }
 
       runOn(second) {
-        system.actorOf(TestActors.echoActorProps, "echo")
+        system.actorOf(TestActors.echoActorProps, "echoService")
         enterBarrier("deployed")
       }
 
       runOn(first) {
         enterBarrier("deployed")
-        val backend = ClusterAwareBackend("echo", second.name)
+        val backend = ClusterAwareBackend("echoService", serviceClusterRole)
         val dispatcher = system.actorOf(PushingDispatcher.props(
           name = "test",
           backend,
@@ -86,6 +83,53 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
       }
 
       enterBarrier("testOne")
+    }
+
+
+    "slow routees doesn't block dispatcher" in within(15 seconds) {
+
+      awaitClusterUp(first, second, third)
+
+      val servicePath = "service2"
+      var prob: TestProbe = null
+
+      runOn(third) {
+        prob = TestProbe()
+        system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
+
+        enterBarrier("service2-deployed")
+        enterBarrier("all-message-replied")
+        prob.expectMsg(EchoMessage(1))
+      }
+
+      runOn(second) {
+        system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
+        enterBarrier("service2-deployed")
+        enterBarrier("all-message-replied")
+
+      }
+
+      runOn(first) {
+        enterBarrier("service2-deployed")
+        val backend = ClusterAwareBackend(servicePath, serviceClusterRole)
+        val dispatcher = system.actorOf(PushingDispatcher.props(
+          name = "test",
+          backend,
+          kanaloaConfig
+        )(ResultChecker.simple[EchoMessage]))
+
+        (1 to 100).foreach { _ =>
+          dispatcher ! EchoMessage(1)
+        }
+
+        receiveN(99).foreach { m =>
+           m should ===(EchoMessage(1))
+        }
+        enterBarrier("all-message-replied")
+
+      }
+
+      enterBarrier("second-finished")
     }
 
   }
