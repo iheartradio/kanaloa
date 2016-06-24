@@ -39,15 +39,25 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     }
   }
 
-  def starting(work: Option[Work], askWorkImmediately: Boolean): Receive = whileWaiting(Starting) orElse {
+  def starting(work: Option[(Work, ActorRef)], askWorkImmediately: Boolean): Receive = whileWaiting(Starting) orElse {
     case RouteeReceived(r) ⇒
       routee = r
       context watch r
       context become waitingForWork
       if (askWorkImmediately && work.isEmpty) askMoreWork(None)
-      work.foreach(self ! _)
+      work.foreach {
+        case (workMsg, workSender) ⇒ self.tell(workMsg, workSender)
+      }
 
-    case work: Work ⇒ context become starting(Some(work), false)
+    case work: Work ⇒ //this only happens on restarting with new routee because the old one died.
+      context become starting(Some(work, sender), false)
+
+    case Worker.Retire ⇒
+      work.foreach {
+        case (workMsg, workSender) ⇒ workSender ! Rejected(workMsg, "retiring") //this happens only when a Retire is sent during a restart with new routee
+      }
+      finish()
+
   }
 
   val waitingForWork: Receive =
@@ -58,6 +68,10 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       case Terminated(r) if r == routee ⇒
         context become starting(None, false)
         retrieveRoutee()
+
+      case Worker.Retire ⇒
+        queue ! Unregister(self)
+        context become retiring(None)
     }
 
   def whileWaiting(currentStatus: WorkerStatus): Receive = {
@@ -65,10 +79,6 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     case Hold(period) ⇒
       delayBeforeNextWork = Some(period)
-
-    case Worker.Retire ⇒
-      queue ! Unregister(self)
-      context become retiring(None)
 
     case qs: QueryStatus     ⇒ qs reply currentStatus
 
