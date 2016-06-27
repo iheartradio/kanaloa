@@ -51,7 +51,7 @@ class WorkerSpec extends SpecWithActorSystem {
 
       awaitAssert(worker.underlyingActor.getRoutee should ===(newBackendProb.ref))
 
-      queueProb.reply(Work("w", WorkSettings(sendResultTo = Some(self))))
+      queueProb.reply(Work("w", replyTo = Some(self)))
 
       newBackendProb.expectMsg("w")
 

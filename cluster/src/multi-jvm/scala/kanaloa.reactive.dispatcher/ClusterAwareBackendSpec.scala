@@ -91,10 +91,10 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
       awaitClusterUp(first, second, third)
 
       val servicePath = "service2"
-      var prob: TestProbe = null
+
 
       runOn(third) {
-        prob = TestProbe()
+        val prob: TestProbe = TestProbe()
         system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
 
         enterBarrier("service2-deployed")

@@ -11,10 +11,20 @@ import kanaloa.reactive.dispatcher.ClusterAwareBackend.RouteeRef
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
+/**
+ * A [[Backend]] that represent actor deployed on remote cluster members.
+ * @param actorRefPath the path with which the actor is deployed
+ * @param role the role of the cluster member on which the actor is deployed.
+ * @param routingLogic routing logic for routing between multiple remote actor deployments
+ * @param maxNumberOfBackendNodes the maximum number of deployments
+ * @param system
+ * @param timeout timeout before the backend fails to retrieve an actual remote actorRef for kanaloa worker to work with
+ */
 class ClusterAwareBackend(
-  actorRefPath: String,
-  role:         String,
-  routingLogic: RoutingLogic = RoundRobinRoutingLogic()
+  actorRefPath:            String,
+  role:                    String,
+  routingLogic:            RoutingLogic = RoundRobinRoutingLogic(),
+  maxNumberOfBackendNodes: Int          = 100
 )(implicit
   system: ActorSystem,
   timeout: Timeout = 1.seconds) extends Backend {
@@ -23,7 +33,7 @@ class ClusterAwareBackend(
     val routerProps: Props = ClusterRouterGroup(
       RoundRobinGroup(List("/user/" + actorRefPath)),
       ClusterRouterGroupSettings(
-        totalInstances = 100,
+        totalInstances = maxNumberOfBackendNodes,
         routeesPaths = List("/user/" + actorRefPath),
         allowLocalRoutees = false, useRole = Some(role)
       )
