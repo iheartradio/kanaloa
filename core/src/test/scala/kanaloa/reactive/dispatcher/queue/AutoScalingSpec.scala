@@ -2,7 +2,7 @@ package kanaloa.reactive.dispatcher.queue
 
 import java.time.LocalDateTime
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
@@ -197,9 +197,24 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
       watch(processor)
       val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings()))
       watch(a)
-      processor ! Shutdown(None, 1.millisecond, false)
+      processor ! PoisonPill
       expectTerminated(processor)
       expectTerminated(a)
+    }
+
+    "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
+      val queue = TestProbe()
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings())(ResultChecker.simple))
+      watch(processor)
+      //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
+      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings(actionFrequency = 10.minutes)))
+      watch(a)
+      //let this thing take its sweet time shutting down
+      processor ! Shutdown(None, 100.milliseconds, false)
+      a ! OptimizeOrExplore
+      a ! kanaloa.reactive.dispatcher.queue.Queue.QueueStatus()
+      expectTerminated(a)
+      expectTerminated(processor)
     }
   }
 }

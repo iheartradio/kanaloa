@@ -36,7 +36,9 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def watchingQueueAndProcessor: Receive = {
-    case Terminated(`queue`) | Terminated(`processor`) ⇒ context stop self
+    case Terminated(`queue`) | Terminated(`processor`) | QueueProcessor.ShuttingDown ⇒ {
+      context stop self
+    }
   }
 
   private def idle: Receive = watchingQueueAndProcessor orElse {
