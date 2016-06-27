@@ -27,10 +27,10 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
-      case Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
+      case e @ Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
         if (checkOverCapacity(status)) {
           log.warning("At capacity, rejecting message [{}]", workMessage)
-          sender() ! EnqueueRejected(workMessage, Queue.EnqueueRejected.OverCapacity, sendResultsTo)
+          sender() ! EnqueueRejected(e, Queue.EnqueueRejected.OverCapacity)
           metricsCollector.send(Metric.EnqueueRejected)
         } else {
           val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
@@ -59,8 +59,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       finish(status, s"Queue successfully retired")
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(status, retiring) orElse {
-      case Enqueue         ⇒ sender() ! Retiring
-      case RetiringTimeout ⇒ finish(status, "Forcefully retire after timed out")
+      case Enqueue(_, _, _) ⇒ sender() ! Retiring
+      case RetiringTimeout  ⇒ finish(status, "Forcefully retire after timed out")
     }
 
   private def finish(status: QueueStatus, withMessage: String): Unit = {
@@ -228,7 +228,12 @@ object Queue {
 
   case class Unregister(worker: WorkerRef)
 
-  case class EnqueueRejected(workMessage: Any, reason: EnqueueRejected.Reason, sendResultsTo: Option[ActorRef])
+  /**
+   * Sent back to a sender of an [[Enqueue]] message if a [[Queue]] rejected the [[Enqueue]] message
+   * @param message  Rejected [[Enqueue]] message
+   * @param reason  Reason for rejection
+   */
+  case class EnqueueRejected(message: Enqueue, reason: EnqueueRejected.Reason)
 
   object EnqueueRejected {
     sealed trait Reason

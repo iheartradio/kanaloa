@@ -125,9 +125,15 @@ case class PushingDispatcher(
     case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
   }
 
+  /**
+   * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying [[Queue]] and the
+   * sender will be set as the receiver of any results of the downstream [[Backend]].  This receive will disable any acks, and in the event of an [[EnqueueRejected]],
+   * notify the original sender of the rejection.
+   * @return
+   */
   override def extraReceive: Receive = {
-    case EnqueueRejected(msg, reason, sendResultsTo) ⇒ sendResultsTo.foreach(_ ! WorkRejected("Server is at capacity"))
-    case m ⇒ queue ! Enqueue(m, false, Some(sender()))
+    case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected("Server is at capacity"))
+    case m                                 ⇒ queue ! Enqueue(m, false, Some(sender()))
   }
 }
 

@@ -2,13 +2,13 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkRejected}
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
-import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.{Backend, SpecWithActorSystem}
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -299,6 +299,25 @@ class DefaultQueueSpec extends SpecWithActorSystem {
     delegatee.reply(MessageProcessed("response"))
     sendProbe.expectMsg("response")
   }
+
+  "reject work when retiring" in new QueueScope {
+    val queue = defaultQueue()
+    watch(queue)
+    val queueProcessor = initQueue(queue, numberOfWorkers = 1)
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
+    queue ! Enqueue("b")
+    delegatee.expectNoMsg()
+    //"b" shoud get buffered, since there is only one worker, who is
+    //has not "finished" with "a" (we didn't have the probe send back the finished message to the Worker)
+    queue ! Retire(50.milliseconds) //give this some time to kill itself
+    queue ! Enqueue("c")
+    expectMsg(Retiring)
+    //after the the Retiring state is expired, the Queue goes away
+    expectTerminated(queue, 75.milliseconds)
+    //TODO: need to have more tests for Queue <=> Worker messaging
+
+  }
 }
 
 class QueueMetricsSpec extends SpecWithActorSystem {
@@ -327,10 +346,10 @@ class QueueMetricsSpec extends SpecWithActorSystem {
       queue ! Enqueue("a")
 
       queue ! Enqueue("b")
-      expectMsg(EnqueueRejected("b", Queue.EnqueueRejected.OverCapacity, None))
+      expectMsg(EnqueueRejected(Enqueue("b"), Queue.EnqueueRejected.OverCapacity))
 
       queue ! Enqueue("c")
-      expectMsg(EnqueueRejected("c", Queue.EnqueueRejected.OverCapacity, None))
+      expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.OverCapacity))
 
       receivedMetrics should contain(Metric.WorkQueueLength(0))
 
