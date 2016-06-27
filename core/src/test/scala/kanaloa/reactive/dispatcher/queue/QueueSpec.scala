@@ -312,7 +312,7 @@ class DefaultQueueSpec extends SpecWithActorSystem {
     //has not "finished" with "a" (we didn't have the probe send back the finished message to the Worker)
     queue ! Retire(50.milliseconds) //give this some time to kill itself
     queue ! Enqueue("c")
-    expectMsg(Retiring)
+    expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.Retiring))
     //after the the Retiring state is expired, the Queue goes away
     expectTerminated(queue, 75.milliseconds)
     //TODO: need to have more tests for Queue <=> Worker messaging
