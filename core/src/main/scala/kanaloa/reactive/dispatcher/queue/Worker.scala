@@ -189,8 +189,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     lazy val workDescription = descriptionOf(work.messageToDelegatee)
 
-    def reportResult(result: Any): Unit = work.settings.sendResultTo.foreach(_ ! result)
-
+    def reportResult(result: Any): Unit = work.replyTo.foreach(_ ! result)
   }
 
 }

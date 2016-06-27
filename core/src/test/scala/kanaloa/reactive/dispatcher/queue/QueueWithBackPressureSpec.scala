@@ -22,14 +22,14 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
 
       waitForWorkerRegistration(q, 2)
 
-      q ! Enqueue("a", self)
+      q ! Enqueue("a")
       q ! QueryStatus()
       val qs = expectMsgType[QueueStatus]
       qs.queuedWorkers.size === 1
       qs.dispatchHistory.last.queueLength === 0
       qs.dispatchHistory.map(_.dispatched).sum === 1
 
-      q ! Enqueue("b", self)
+      q ! Enqueue("b")
       q ! QueryStatus()
       val qs2 = expectMsgType[QueueStatus]
       qs2.queuedWorkers.size === 0
@@ -37,7 +37,7 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       qs2.dispatchHistory.last.queueLength === 0
       qs2.dispatchHistory.map(_.dispatched).sum === 2
 
-      q ! Enqueue("c", self)
+      q ! Enqueue("c")
       q ! QueryStatus()
       val qs3 = expectMsgType[QueueStatus]
 

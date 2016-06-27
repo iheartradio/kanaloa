@@ -2,11 +2,11 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
-import kanaloa.reactive.dispatcher.ApiProtocol.ShutdownGracefully
+import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
-import kanaloa.reactive.dispatcher.queue.Queue.Enqueue
+import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -121,12 +121,19 @@ case class PushingDispatcher(
   extends Dispatcher {
 
   protected lazy val queueProps = settings.backPressure match {
-    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, WorkSettings(), metricsCollector)
-    case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(), metricsCollector)
+    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+    case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
   }
 
+  /**
+   * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying [[Queue]] and the
+   * sender will be set as the receiver of any results of the downstream [[Backend]].  This receive will disable any acks, and in the event of an [[EnqueueRejected]],
+   * notify the original sender of the rejection.
+   * @return
+   */
   override def extraReceive: Receive = {
-    case m ⇒ queue ! Enqueue(m, Some(sender), Some(WorkSettings(settings.workRetry, settings.workTimeout, Some(sender))))
+    case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected("Server is at capacity"))
+    case m                                 ⇒ queue ! Enqueue(m, false, Some(sender()))
   }
 }
 
@@ -141,7 +148,6 @@ object PushingDispatcher {
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker))
   }
-
 }
 
 case class PullingDispatcher(
@@ -150,21 +156,29 @@ case class PullingDispatcher(
   settings:         Settings,
   backend:          Backend,
   metricsCollector: MetricsCollector = NoOpMetricsCollector,
+  sendResultsTo:    Option[ActorRef],
   resultChecker:    ResultChecker
 ) extends Dispatcher {
-  protected def queueProps = QueueOfIterator.props(iterator, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+  protected def queueProps = QueueOfIterator.props(
+    iterator,
+    settings.dispatchHistory,
+    WorkSettings(settings.workRetry, settings.workTimeout),
+    sendResultsTo,
+    metricsCollector
+  )
 }
 
 object PullingDispatcher {
   def props[T: BackendAdaptor](
-    name:       String,
-    iterator:   Iterator[_],
-    backend:    T,
-    rootConfig: Config      = ConfigFactory.load()
+    name:          String,
+    iterator:      Iterator[_],
+    backend:       T,
+    sendResultsTo: Option[ActorRef],
+    rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
     val toBackend = implicitly[BackendAdaptor[T]]
-    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, resultChecker))
+    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker))
   }
 }
 

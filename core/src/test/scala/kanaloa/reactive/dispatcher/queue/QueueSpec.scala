@@ -2,13 +2,13 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkRejected}
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
-import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, WorkEnqueued, _}
+import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
-import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.{Backend, SpecWithActorSystem}
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -106,7 +106,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
       val queueProcessor = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
-          WorkSettings(sendResultTo = Some(self))
+          sendResultsTo = Some(self)
         ),
         numberOfWorkers = 2
       )
@@ -128,7 +128,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem {
       val queueProcessor = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
-          WorkSettings(sendResultTo = Some(self))
+          sendResultsTo = Some(self)
         ),
         numberOfWorkers = 2
       )
@@ -220,10 +220,10 @@ class DefaultQueueSpec extends SpecWithActorSystem {
 
       delegatee.expectNoMsg(40.milliseconds)
 
-      queue ! Enqueue("a", replyTo = Some(self))
+      queue ! Enqueue("a")
       delegatee.expectMsg("a")
 
-      queue ! Enqueue("b", Some(self))
+      queue ! Enqueue("b")
       delegatee.expectMsg("b")
 
     }
@@ -277,6 +277,47 @@ class DefaultQueueSpec extends SpecWithActorSystem {
       expectMsg(ShutdownSuccessfully)
     }
   }
+
+  "send ack messages when turned on" in new QueueScope {
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+
+    queue ! Enqueue("a", sendAcks = true)
+    expectMsg(WorkEnqueued)
+    delegatee.expectMsg("a")
+  }
+
+  "send results to an actor" in new QueueScope {
+    val queue = defaultQueue()
+    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+
+    val sendProbe = TestProbe()
+
+    queue ! Enqueue("a", sendResultsTo = Some(sendProbe.ref))
+
+    delegatee.expectMsg("a")
+    delegatee.reply(MessageProcessed("response"))
+    sendProbe.expectMsg("response")
+  }
+
+  "reject work when retiring" in new QueueScope {
+    val queue = defaultQueue()
+    watch(queue)
+    val queueProcessor = initQueue(queue, numberOfWorkers = 1)
+    queue ! Enqueue("a")
+    delegatee.expectMsg("a")
+    queue ! Enqueue("b")
+    delegatee.expectNoMsg()
+    //"b" shoud get buffered, since there is only one worker, who is
+    //has not "finished" with "a" (we didn't have the probe send back the finished message to the Worker)
+    queue ! Retire(50.milliseconds) //give this some time to kill itself
+    queue ! Enqueue("c")
+    expectMsg(Retiring)
+    //after the the Retiring state is expired, the Queue goes away
+    expectTerminated(queue, 75.milliseconds)
+    //TODO: need to have more tests for Queue <=> Worker messaging
+
+  }
 }
 
 class QueueMetricsSpec extends SpecWithActorSystem {
@@ -302,25 +343,19 @@ class QueueMetricsSpec extends SpecWithActorSystem {
 
       val queue = withBackPressure(BackPressureSettings(maxBufferSize = 1))
 
-      queue ! Enqueue("a", replyTo = Some(self))
+      queue ! Enqueue("a")
 
-      queue ! Enqueue("b", replyTo = Some(self))
-      expectMsgType[WorkRejected]
+      queue ! Enqueue("b")
+      expectMsg(EnqueueRejected(Enqueue("b"), Queue.EnqueueRejected.OverCapacity))
 
-      queue ! Enqueue("c", replyTo = Some(self))
-      expectMsgType[WorkRejected]
+      queue ! Enqueue("c")
+      expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.OverCapacity))
 
       receivedMetrics should contain(Metric.WorkQueueLength(0))
 
       //TODO: we might want to make some of our own matchers for lists, the predefined ones in the DSL
       receivedMetrics.filter(_ == Metric.EnqueueRejected) should have size 2
     }
-  }
-}
-
-class QueueWorkMetricsSpec extends SpecWithActorSystem {
-
-  "Queue Work Metrics" should {
 
     "send WorkCompleted, ProcessTime, WorkFailed, and WorkTimedOut metrics" in new MetricCollectorScope() {
 
@@ -379,9 +414,14 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     }
   }
 
-  def iteratorQueue(iterator: Iterator[String], workSetting: WorkSettings = WorkSettings(), historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
+  def iteratorQueue(
+    iterator:        Iterator[String],
+    workSetting:     WorkSettings            = WorkSettings(),
+    sendResultsTo:   Option[ActorRef]        = None,
+    historySettings: DispatchHistorySettings = DispatchHistorySettings()
+  ): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, historySettings, workSetting, metricsCollector),
+      iteratorQueueProps(iterator, historySettings, workSetting, sendResultsTo, metricsCollector),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
