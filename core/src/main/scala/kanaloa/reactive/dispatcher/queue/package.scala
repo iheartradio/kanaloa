@@ -15,7 +15,7 @@ package kanaloa.reactive.dispatcher {
 
 package kanaloa.reactive.dispatcher.queue {
 
-  private[queue] case class Work(messageToDelegatee: Any, replyTo: Option[ActorRef], settings: WorkSettings = WorkSettings())
+  private[queue] case class Work(messageToDelegatee: Any, replyTo: Option[ActorRef] = None, settings: WorkSettings = WorkSettings())
 
   private[queue] case class Rejected(work: Work, reason: String)
 

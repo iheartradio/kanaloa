@@ -3,6 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import java.time.LocalDateTime
 
 import akka.actor._
+import akka.routing.Routee
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
@@ -19,56 +20,99 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   protected val queue: ActorRef
   protected def monitor: ActorRef = context.parent
 
-  def receive = idle()
+  def receive = starting(None, true)
 
   context watch queue
 
-  override def preStart(): Unit = {
-    askMoreWork(None)
+  private var routee: ActorRef = null
+
+  var delayBeforeNextWork: Option[FiniteDuration] = None
+
+  //testing purpose only
+  private[queue] def getRoutee: ActorRef = routee
+
+  override def preStart(): Unit = retrieveRoutee()
+
+  def retrieveRoutee(): Unit = {
+    import context.dispatcher
+    backend(context).foreach { ref ⇒
+      self ! RouteeReceived(ref)
+    }
   }
 
-  private lazy val delegatee: ActorRef = {
-    val ref = backend(context)
-    context watch ref
-    ref
-  }
+  def starting(work: Option[(Work, ActorRef)], askWorkImmediately: Boolean): Receive = whileWaiting(Starting) orElse {
+    case RouteeReceived(r) ⇒
+      routee = r
+      context watch r
+      context become waitingForWork
+      if (askWorkImmediately && work.isEmpty) askMoreWork(None)
+      work.foreach {
+        case (workMsg, workSender) ⇒ self.tell(workMsg, workSender)
+      }
 
-  def idle(delayBeforeNextWork: Option[FiniteDuration] = None): Receive = {
-
-    case Hold(period) ⇒ context become idle(Some(period))
-
-    case work: Work   ⇒ sendWorkToDelegatee(work, 0, delayBeforeNextWork)
-
-    case NoWorkLeft ⇒
-      finish()
+    case work: Work ⇒ //this only happens on restarting with new routee because the old one died.
+      context become starting(Some(work, sender), false)
 
     case Worker.Retire ⇒
-      queue ! Unregister(self)
-      context become retiring(None)
+      work.foreach {
+        case (workMsg, workSender) ⇒ workSender ! Rejected(workMsg, "retiring") //this happens only when a Retire is sent during a restart with new routee
+      }
+      finish()
 
-    case qs: QueryStatus     ⇒ qs reply Idle
+  }
+
+  val waitingForWork: Receive =
+    whileWaiting(Idle) orElse {
+
+      case work: Work ⇒ sendWorkToDelegatee(work, 0)
+
+      case Terminated(r) if r == routee ⇒
+        context become starting(None, false)
+        retrieveRoutee()
+
+      case Worker.Retire ⇒
+        queue ! Unregister(self)
+        context become retiring(None)
+    }
+
+  def whileWaiting(currentStatus: WorkerStatus): Receive = {
+    case NoWorkLeft ⇒ finish()
+
+    case Hold(period) ⇒
+      delayBeforeNextWork = Some(period)
+
+    case qs: QueryStatus     ⇒ qs reply currentStatus
 
     case Terminated(`queue`) ⇒ finish()
+
   }
 
   def finish(): Unit = context stop self
 
-  def working(outstanding: Outstanding, delayBeforeNextWork: Option[FiniteDuration] = None): Receive = ({
-    case Hold(period)        ⇒ context become working(outstanding, Some(period))
+  def working(outstanding: Outstanding): Receive = ({
+    case Hold(period) ⇒
+      delayBeforeNextWork = Some(period)
 
     case Terminated(`queue`) ⇒ context become retiring(Some(outstanding))
 
-    case qs: QueryStatus     ⇒ qs reply Working
+    case Terminated(r) if r == routee ⇒
+      outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
+      context become starting(None, false)
+      retrieveRoutee()
 
-    case Worker.Retire       ⇒ context become retiring(Some(outstanding))
+    case qs: QueryStatus ⇒ qs reply Working
+
+    case Worker.Retire   ⇒ context become retiring(Some(outstanding))
 
   }: Receive).orElse(waitingResult(outstanding, false, delayBeforeNextWork))
 
   def retiring(outstanding: Option[Outstanding]): Receive = ({
-    case Terminated(`queue`) ⇒ //ignore when retiring
-    case qs: QueryStatus     ⇒ qs reply Retiring
-    case Unregistered        ⇒ finish()
-    case Retire              ⇒ //already retiring
+    case Terminated(_)   ⇒ //ignore when retiring
+    case qs: QueryStatus ⇒ qs reply Retiring
+    case Unregistered    ⇒ finish()
+    case Retire          ⇒ //already retiring
+    case Hold(period)    ⇒ //ignore
+
   }: Receive) orElse (
     if (outstanding.isDefined)
       waitingResult(outstanding.get, true, None)
@@ -97,13 +141,13 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
             askMoreWork(delayBeforeNextWork)
           }
         case Left(e) ⇒
-          log.warning(s"Error $e returned by delegatee in regards to running work $outstanding")
+          log.warning(s"Error $e returned by routee in regards to running work $outstanding")
           retryOrAbandon(outstanding, isRetiring, e, delayBeforeNextWork)
       }
 
     ({
-      case DelegateeTimeout ⇒
-        log.warning(s"${delegatee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+      case RouteeTimeout ⇒
+        log.warning(s"Routee ${routee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
         outstanding.timeout()
 
         if (isRetiring) finish() else {
@@ -124,7 +168,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
       log.debug(s"Retry work $outstanding")
-      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1, None)
+      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
         val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
@@ -138,15 +182,21 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     }
   }
 
-  private def sendWorkToDelegatee(work: Work, retried: Int, delay: Option[FiniteDuration]): Unit = {
-    val timeoutHandle: Cancellable = delayedMsg(delay.fold(work.settings.timeout)(_ + work.settings.timeout), DelegateeTimeout)
-    maybeDelayedMsg(delay, work.messageToDelegatee, delegatee)
+  private def sendWorkToDelegatee(work: Work, retried: Int): Unit = {
+    val timeoutHandle: Cancellable = delayedMsg(delayBeforeNextWork.fold(work.settings.timeout)(_ + work.settings.timeout), RouteeTimeout)
+    delayBeforeNextWork match {
+      case Some(d) ⇒
+        import context.dispatcher
+        context.system.scheduler.scheduleOnce(d, routee, work.messageToDelegatee)
+      case None ⇒
+        routee ! work.messageToDelegatee
+    }
     context become working(Outstanding(work, timeoutHandle, retried))
   }
 
   private def askMoreWork(delay: Option[FiniteDuration]): Unit = {
     maybeDelayedMsg(delay, RequestWork(self), queue)
-    context become idle()
+    context become waitingForWork
   }
 
   protected def resultChecker: ResultChecker
@@ -196,10 +246,12 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
 object Worker {
 
-  private case object DelegateeTimeout
+  private case object RouteeTimeout
+  private case class RouteeReceived(routee: ActorRef)
   case object Retire
 
   sealed trait WorkerStatus
+  case object Starting extends WorkerStatus
   case object Retiring extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
@@ -210,11 +262,7 @@ object Worker {
     protected val queue:         QueueRef,
     protected val backend:       Backend,
     protected val resultChecker: ResultChecker
-  ) extends Worker {
-
-    val resultHistoryLength = 0
-
-  }
+  ) extends Worker
 
   def default(
     queue:   QueueRef,
