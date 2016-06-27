@@ -59,8 +59,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       finish(status, s"Queue successfully retired")
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(status, retiring) orElse {
-      case Enqueue(_, _, _) ⇒ sender() ! Retiring
-      case RetiringTimeout  ⇒ finish(status, "Forcefully retire after timed out")
+      case e @ Enqueue(_, _, _) ⇒ sender() ! EnqueueRejected(e, Queue.EnqueueRejected.Retiring)
+      case RetiringTimeout      ⇒ finish(status, "Forcefully retire after timed out")
     }
 
   private def finish(status: QueueStatus, withMessage: String): Unit = {
@@ -238,9 +238,9 @@ object Queue {
   object EnqueueRejected {
     sealed trait Reason
     case object OverCapacity extends Reason
+    case object Retiring extends Reason
   }
 
-  case object Retiring
   case object NoWorkLeft
   case class Retire(timeout: FiniteDuration = 5.minutes)
 

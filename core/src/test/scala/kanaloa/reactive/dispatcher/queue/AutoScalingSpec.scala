@@ -5,16 +5,15 @@ import java.time.LocalDateTime
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.AutoScaling.{OptimizeOrExplore, PoolSize, UnderUtilizationStreak}
-import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo}
+import kanaloa.reactive.dispatcher.queue.Queue.{QueueDispatchInfo, Retire}
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
-
 import org.mockito.Mockito._
 
 import scala.concurrent.duration._
@@ -179,6 +178,28 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
       as ! OptimizeOrExplore
       replyStatus(numOfBusyWorkers = 34, numOfIdleWorkers = 16)
       tProcessor.expectNoMsg(50.millis)
+    }
+
+    "stop itself if the Queue stops" in new AutoScalingScope {
+      val queue = system.actorOf(Queue.default())
+      watch(queue)
+      val processor = TestProbe()
+      val a = system.actorOf(AutoScaling.default(queue, processor.ref, AutoScalingSettings()))
+      watch(a)
+      queue ! Retire(1.millisecond)
+      expectTerminated(queue)
+      expectTerminated(a)
+    }
+
+    "stop itself if the QueueProcessor stops" in new ScopeWithActor() {
+      val queue = TestProbe()
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings())(ResultChecker.simple))
+      watch(processor)
+      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings()))
+      watch(a)
+      processor ! Shutdown(None, 1.millisecond, false)
+      expectTerminated(processor)
+      expectTerminated(a)
     }
   }
 }
