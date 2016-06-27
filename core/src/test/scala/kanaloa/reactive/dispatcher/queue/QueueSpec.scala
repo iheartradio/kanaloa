@@ -40,7 +40,7 @@ class QueueSpec extends SpecWithActorSystem {
 
       delegatee.reply(MessageProcessed("b"))
 
-      delegatee.expectMsg(DelegateeMessage("c")) // c is already placed in buffer
+      delegatee.expectMsg(5.seconds, DelegateeMessage("c")) // c is already placed in buffer
       delegatee.reply(MessageProcessed("c"))
 
       expectMsg(ShutdownSuccessfully)

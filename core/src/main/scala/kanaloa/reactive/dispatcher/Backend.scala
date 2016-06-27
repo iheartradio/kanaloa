@@ -1,18 +1,19 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor.{ActorRefFactory, Actor, Props, ActorRef}
+import akka.routing.{ActorRefRoutee, Routee}
 import scala.reflect._
 import scala.concurrent.Future
 import scala.language.implicitConversions
 
 trait Backend {
-  def apply(f: ActorRefFactory): ActorRef
+  def apply(f: ActorRefFactory): Future[ActorRef]
 }
 
 object Backend {
 
   def apply(f: ActorRefFactory ⇒ ActorRef): Backend = new Backend {
-    def apply(factory: ActorRefFactory): ActorRef = f(factory)
+    def apply(factory: ActorRefFactory): Future[ActorRef] = Future.successful(f(factory))
   }
 
   trait BackendAdaptor[T] {
@@ -28,7 +29,7 @@ object Backend {
       def apply(t: T): Backend = f(t)
     }
 
-    implicit val backendBackend = apply[Backend](identity)
+    implicit def backendBackendAdaptor[T <: Backend] = apply[T](identity)
 
     // accepting subtypes of ActorRef to also support TestActorRef
     implicit def actorRefBackend[T <: ActorRef]: BackendAdaptor[T] = apply[T](ref ⇒ Backend(_ ⇒ ref))
