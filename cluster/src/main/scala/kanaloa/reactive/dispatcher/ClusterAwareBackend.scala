@@ -96,5 +96,5 @@ object ClusterAwareBackend {
   private case class RouteeRef(actorRef: ActorRef)
   private case object TimedOut
 
-  private def retrieverProps(router: ActorRef, routingLogic: RoutingLogic)(implicit timeout: Timeout) = Props(new RouteeRetriever(router, routingLogic))
+  private def retrieverProps(router: ActorRef, routingLogic: RoutingLogic)(implicit timeout: Timeout) = Props(new RouteeRetriever(router, routingLogic)).withDeploy(Deploy.local)
 }

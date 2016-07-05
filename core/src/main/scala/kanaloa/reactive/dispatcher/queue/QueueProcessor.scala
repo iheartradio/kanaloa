@@ -220,7 +220,7 @@ object QueueProcessor {
       settings,
       metricsCollector,
       resultChecker
-    ))
+    )).withDeploy(Deploy.local)
 
   def withCircuitBreaker(
     queue:                  QueueRef,
@@ -236,6 +236,6 @@ object QueueProcessor {
       circuitBreakerSettings,
       metricsCollector,
       resultChecker
-    ))
+    )).withDeploy(Deploy.local)
 }
 

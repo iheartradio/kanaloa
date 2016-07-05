@@ -268,7 +268,7 @@ object Worker {
     queue:   QueueRef,
     backend: Backend
   )(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, backend, resultChecker))
+    Props(new DefaultWorker(queue, backend, resultChecker)).withDeploy(Deploy.local)
   }
 
 }

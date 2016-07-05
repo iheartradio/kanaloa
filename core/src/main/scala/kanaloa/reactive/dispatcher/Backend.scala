@@ -1,6 +1,6 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ActorRefFactory, Actor, Props, ActorRef}
+import akka.actor._
 import akka.routing.{ActorRefRoutee, Routee}
 import scala.reflect._
 import scala.concurrent.Future
@@ -38,7 +38,7 @@ object Backend {
 
     implicit def delegateeBackend[ReqT: ClassTag, ResT]: BackendAdaptor[ReqT ⇒ Future[ResT]] =
       apply[ReqT ⇒ Future[ResT]] { f ⇒
-        Backend(_.actorOf(Props(new SimpleDelegatee[ReqT, ResT](f))))
+        Backend(_.actorOf(Props(new SimpleDelegatee[ReqT, ResT](f)).withDeploy(Deploy.local)))
       }
 
     case class UnexpectedRequest(request: Any) extends Exception
