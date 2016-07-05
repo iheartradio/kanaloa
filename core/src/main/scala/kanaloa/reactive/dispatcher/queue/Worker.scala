@@ -3,7 +3,6 @@ package kanaloa.reactive.dispatcher.queue
 import java.time.LocalDateTime
 
 import akka.actor._
-import akka.routing.Routee
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
@@ -50,8 +49,13 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
         case (workMsg, workSender) ⇒ self.tell(workMsg, workSender)
       }
 
-    case work: Work ⇒ //this only happens on restarting with new routee because the old one died.
-      context become starting(Some(work, sender), false)
+    //this only happens on restarting with new routee because the old one died.
+    case w: Work ⇒
+      if (work.isDefined) {
+        sender() ! Rejected(w, "Busy")
+      } else {
+        context become starting(Some((w, sender)), false)
+      }
 
     case Worker.Retire ⇒
       work.foreach {
