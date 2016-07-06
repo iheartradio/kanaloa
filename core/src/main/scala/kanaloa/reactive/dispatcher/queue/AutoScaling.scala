@@ -2,7 +2,7 @@ package kanaloa.reactive.dispatcher.queue
 
 import java.time.{Duration ⇒ JDuration, LocalDateTime}
 
-import akka.actor.{Actor, ActorLogging, Props, Terminated}
+import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
@@ -187,6 +187,6 @@ object AutoScaling {
     settings:         AutoScalingSettings,
     metricsCollector: MetricsCollector    = NoOpMetricsCollector
   ) =
-    Props(Default(queue, processor, settings, metricsCollector))
+    Props(Default(queue, processor, settings, metricsCollector)).withDeploy(Deploy.local)
 }
 
