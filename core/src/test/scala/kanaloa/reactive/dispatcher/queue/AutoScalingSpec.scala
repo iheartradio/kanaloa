@@ -19,6 +19,7 @@ import org.mockito.Mockito._
 import scala.concurrent.duration._
 
 class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionValues with Eventually {
+  import AutoScalingScope._
 
   "AutoScaling" should {
     "when no history" in new AutoScalingScope {
@@ -226,15 +227,7 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   val tQueue = TestProbe()
   val tProcessor = TestProbe()
-  import akka.actor.ActorDSL._
-
-  def newWorker(busy: Boolean = true) = actor(new Act {
-    become {
-      case _ ⇒ sender ! (if (busy) Working else Idle)
-    }
-  })
-
-  case class MockQueueInfo(avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
+  import AutoScalingScope._
 
   def autoScalingRef(explorationRatio: Double = 0.5) =
     TestActorRef[AutoScaling](AutoScaling.default(tQueue.ref, tProcessor.ref,
@@ -271,3 +264,13 @@ class AutoScalingScope(implicit system: ActorSystem)
   lazy val as = autoScalingRef()
 }
 
+object AutoScalingScope {
+  import akka.actor.ActorDSL._
+  case class MockQueueInfo(avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
+
+  def newWorker(busy: Boolean = true)(implicit system: ActorSystem) = actor(new Act {
+    become {
+      case _ ⇒ sender ! (if (busy) Working else Idle)
+    }
+  })
+}

@@ -2,6 +2,7 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor._
 import akka.routing.{ActorRefRoutee, Routee}
+import kanaloa.reactive.dispatcher.Backend.BackendAdaptors.UnexpectedRequest
 import scala.reflect._
 import scala.concurrent.Future
 import scala.language.implicitConversions
@@ -36,14 +37,12 @@ object Backend {
 
     implicit val propsBackend = apply[Props](props ⇒ Backend(_.actorOf(props)))
 
-    implicit def delegateeBackend[ReqT: ClassTag, ResT]: BackendAdaptor[ReqT ⇒ Future[ResT]] =
+    implicit def functionBackend[ReqT: ClassTag, ResT]: BackendAdaptor[ReqT ⇒ Future[ResT]] =
       apply[ReqT ⇒ Future[ResT]] { f ⇒
-        Backend(_.actorOf(Props(new SimpleDelegatee[ReqT, ResT](f)).withDeploy(Deploy.local)))
+        Backend(_.actorOf(Props(new SimpleFunctionDelegatee[ReqT, ResT](f)).withDeploy(Deploy.local)))
       }
 
-    case class UnexpectedRequest(request: Any) extends Exception
-
-    private class SimpleDelegatee[ReqT: ClassTag, ResT](f: ReqT ⇒ Future[ResT]) extends Actor {
+    private class SimpleFunctionDelegatee[ReqT: ClassTag, ResT](f: ReqT ⇒ Future[ResT]) extends Actor {
       import context.dispatcher
       def receive: Receive = {
         case t: ReqT if classTag[ReqT].runtimeClass.isInstance(t) ⇒
@@ -56,6 +55,10 @@ object Backend {
       }
     }
 
+  }
+
+  object BackendAdaptors {
+    case class UnexpectedRequest(request: Any) extends Exception
   }
 
   implicit def backendAdaptorToBackend[T](t: T)(implicit adaptor: BackendAdaptor[T]): Backend = adaptor(t)
