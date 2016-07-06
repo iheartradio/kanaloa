@@ -71,6 +71,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   /**
    * Check if currently over capacity
+   *
    * @param qs
    * @return true if over capacity
    */
@@ -174,20 +175,9 @@ class QueueOfIterator(
   sendResultsTo:               Option[ActorRef]        = None,
   val metricsCollector:        MetricsCollector        = NoOpMetricsCollector
 ) extends QueueWithoutBackPressure {
-  private case object EnqueueMore
-  private class Enqueuer extends Actor {
-    def receive = {
-      case EnqueueMore ⇒
-        if (iterator.hasNext) {
-          context.parent ! Enqueue(iterator.next, false, sendResultsTo)
-        } else {
-          log.debug("Iterator queue completes.")
-          context.parent ! Retire()
-        }
-    }
-  }
+  import QueueOfIterator._
 
-  val enqueuer = context.actorOf(Props(new Enqueuer))
+  val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self))
 
   override def preStart(): Unit = {
     super.preStart()
@@ -205,7 +195,23 @@ object QueueOfIterator {
     sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, sendResultsTo, metricsCollector))
+    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, sendResultsTo, metricsCollector)).withDeploy(Deploy.local)
+
+  private case object EnqueueMore
+
+  private class Enqueuer(iterator: Iterator[_], sendResultsTo: Option[ActorRef], queue: ActorRef) extends Actor with ActorLogging {
+    def receive = {
+      case EnqueueMore ⇒
+        if (iterator.hasNext) {
+          queue ! Enqueue(iterator.next, false, sendResultsTo)
+        } else {
+          log.debug("Iterator queue completes.")
+          queue ! Retire()
+        }
+    }
+  }
+
+  private def enqueueerProps(iterator: Iterator[_], sendResultsTo: Option[ActorRef], queue: ActorRef): Props = Props(new Enqueuer(iterator, sendResultsTo, queue)).withDeploy(Deploy.local)
 }
 
 object Queue {
@@ -217,6 +223,7 @@ object Queue {
    * is sent to the sender if `sendAcks` is true.
    * Any results will be sent to the `replyTo` actor.  If the work is rejected, a [[WorkRejected]] is sent to the sender,
    * regardless of the value of `sendAcks`.
+   *
    * @param workMessage The message to enqueue
    * @param sendAcks Send ack messages.  This does not control [[WorkRejected]] messages, which are sent regardless for backpressure.
    * @param sendResultsTo Actor which can optionally receive responses from downstream backends.
@@ -230,6 +237,7 @@ object Queue {
 
   /**
    * Sent back to a sender of an [[Enqueue]] message if a [[Queue]] rejected the [[Enqueue]] message
+   *
    * @param message  Rejected [[Enqueue]] message
    * @param reason  Reason for rejection
    */
@@ -290,7 +298,7 @@ object Queue {
     sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector)
+    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
 
   def ofIterator(
     iterator:                Iterator[_],
@@ -299,14 +307,14 @@ object Queue {
     sendResultsTo:           Option[ActorRef]        = None,
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector)
+    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
 
   def default(
     dispatchHistorySettings: DispatchHistorySettings = DispatchHistorySettings(),
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    Props(new DefaultQueue(dispatchHistorySettings, defaultWorkSetting, metricsCollector))
+    Props(new DefaultQueue(dispatchHistorySettings, defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
 
   def withBackPressure(
     dispatchHistorySettings: DispatchHistorySettings,
@@ -314,7 +322,7 @@ object Queue {
     defaultWorkSettings:     WorkSettings            = WorkSettings(),
     metricsCollector:        MetricsCollector        = NoOpMetricsCollector
   ): Props =
-    Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, defaultWorkSettings, metricsCollector))
+    Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, defaultWorkSettings, metricsCollector)).withDeploy(Deploy.local)
 
 }
 

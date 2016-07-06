@@ -75,7 +75,7 @@ class StatsDClient(
       ))
     }
 
-    system.actorOf(Props(new StatsDActor(host, port, multiMetrics, packetBufferSize)).withDispatcher(dispatcherId))
+    system.actorOf(Props(new StatsDActor(host, port, multiMetrics, packetBufferSize)).withDispatcher(dispatcherId).withDeploy(Deploy.local))
   }
 
   /**
