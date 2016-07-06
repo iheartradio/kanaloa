@@ -47,15 +47,12 @@ class WorkerSpec extends SpecWithActorSystem {
   }
 
   "worker starting" should {
-    "accept work" in {
-      val queueProb = TestProbe("queue")
-      val backend = new TestBackend(delay = 100.milliseconds)
-      val worker = newWorker(queueProb.ref, backend)
-
+    "accept work" in new ControlledBackendScope {
+      val backendProbe = TestProbe()
+      backend.fillActor(backendProbe.ref)
       queueProb.expectMsgType[RequestWork]
       queueProb.reply(Work("w"))
-
-      backend.prob.expectMsg("w")
+      backendProbe.expectMsg("w")
     }
 
     "reject Work if Work is already accepted" in new ControlledBackendScope {
