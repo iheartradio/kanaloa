@@ -1,11 +1,11 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.{PoisonPill, ActorSystem, ActorRef, ActorRefFactory}
+import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, PoisonPill}
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.queue.Queue.RequestWork
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker, SpecWithActorSystem}
 
-import scala.concurrent.Future
+import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
 
 case class Result(value: Any)
@@ -21,6 +21,17 @@ class TestBackend(delay: FiniteDuration = Duration.Zero)(implicit system: ActorS
   }
 }
 
+class ControlledBackend()(implicit system: ActorSystem) extends Backend {
+  var p = Promise[ActorRef]
+  override def apply(f: ActorRefFactory): Future[ActorRef] = {
+    p.future
+  }
+
+  def fillActor(actorRef: ActorRef) {
+    p.success(actorRef)
+  }
+}
+
 class WorkerSpec extends SpecWithActorSystem {
   def newWorker(queueRef: ActorRef, b: Backend): TestActorRef[Worker] = TestActorRef[Worker](Worker.default(queueRef, b)(ResultChecker.simple[Result]))
 
@@ -29,17 +40,47 @@ class WorkerSpec extends SpecWithActorSystem {
     val backend = new TestBackend()
     val worker = newWorker(queueProb.ref, backend)
   }
+  trait ControlledBackendScope {
+    val queueProb = TestProbe("queue")
+    val backend = new ControlledBackend()
+    val worker = newWorker(queueProb.ref, backend)
+  }
 
-  "worker" should {
-
-    "retrieve work from queue and send to backend" in new WorkerScope {
+  "worker starting" should {
+    "accept work" in new ControlledBackendScope {
+      val backendProbe = TestProbe()
+      backend.fillActor(backendProbe.ref)
       queueProb.expectMsgType[RequestWork]
-      queueProb.reply(Work("work"))
-      backend.prob.expectMsg("work")
-      worker.stop()
+      queueProb.reply(Work("w"))
+      backendProbe.expectMsg("w")
     }
 
-    "recover from dead routee while waiting" in new WorkerScope {
+    "reject Work if Work is already accepted" in new ControlledBackendScope {
+      queueProb.send(worker, Work("work"))
+      queueProb.send(worker, Work("work2"))
+      queueProb.expectMsgType[Rejected]
+    }
+
+    "shutdown when retiring" in new ControlledBackendScope {
+      watch(worker)
+      worker ! Worker.Retire
+      expectTerminated(worker)
+    }
+
+    "reject work when retiring" in new ControlledBackendScope {
+      worker ! Work("w")
+      watch(worker)
+
+      worker ! Worker.Retire
+
+      expectMsgType[Rejected]
+
+      expectTerminated(worker)
+    }
+  }
+
+  "worker waiting" should {
+    "recover from dead routee" in new WorkerScope {
       queueProb.expectMsgType[RequestWork]
 
       val oldBackendRef = backend.prob.ref
@@ -50,20 +91,18 @@ class WorkerSpec extends SpecWithActorSystem {
       oldBackendRef ! PoisonPill
 
       awaitAssert(worker.underlyingActor.getRoutee should ===(newBackendProb.ref))
-
       queueProb.reply(Work("w", replyTo = Some(self)))
 
       newBackendProb.expectMsg("w")
-
       newBackendProb.reply(Result(1))
-
       expectMsg(Result(1))
 
       worker.stop()
     }
+  }
 
-    "recover from dead routee while working" in new WorkerScope {
-
+  "worker working" should {
+    "recover from dead routee" in new WorkerScope {
       queueProb.expectMsgType[RequestWork]
       queueProb.reply(Work("w"))
 
@@ -82,42 +121,19 @@ class WorkerSpec extends SpecWithActorSystem {
 
       worker.stop()
     }
+  }
 
-    "accept work during restarting" in {
-      val queueProb = TestProbe("queue")
-      val backend = new TestBackend(delay = 100.milliseconds)
-      val worker = newWorker(queueProb.ref, backend)
-
-      queueProb.expectMsgType[RequestWork]
-      queueProb.reply(Work("w"))
-
-      backend.prob.expectMsg("w")
-    }
-
-    "shutdown when retiring during starting" in {
-      val queueProb = TestProbe("queue")
-      val backend = new TestBackend(delay = 5.seconds)
-      val worker = newWorker(queueProb.ref, backend)
-      watch(worker)
-      worker ! Worker.Retire
-      expectTerminated(worker)
-    }
-
-    "reject work when retiring during starting" in {
-      val queueProb = TestProbe("queue")
-      val backend = new TestBackend(delay = 5.seconds)
-      val worker = newWorker(queueProb.ref, backend)
-
-      worker ! Work("w")
-      watch(worker)
-
-      worker ! Worker.Retire
-
-      expectMsgType[Rejected]
-
-      expectTerminated(worker)
-    }
+  "worker retiring" should {
 
   }
 
+  "worker" should {
+
+    "retrieve work from queue and send to backend" in new WorkerScope {
+      queueProb.expectMsgType[RequestWork]
+      queueProb.reply(Work("work"))
+      backend.prob.expectMsg("work")
+      worker.stop()
+    }
+  }
 }
