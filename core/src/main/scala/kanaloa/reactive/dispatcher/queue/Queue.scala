@@ -174,7 +174,8 @@ class QueueOfIterator(
   sendResultsTo:               Option[ActorRef]        = None,
   val metricsCollector:        MetricsCollector        = NoOpMetricsCollector
 ) extends QueueWithoutBackPressure {
-  private case object EnqueueMore
+  import QueueOfIterator.EnqueueMore
+
   private class Enqueuer extends Actor {
     def receive = {
       case EnqueueMore ⇒
@@ -198,6 +199,8 @@ class QueueOfIterator(
 }
 
 object QueueOfIterator {
+  case object EnqueueMore
+
   def props(
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
