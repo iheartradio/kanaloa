@@ -2,8 +2,11 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, PoisonPill}
 import akka.testkit.{TestActorRef, TestProbe}
+import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
 import kanaloa.reactive.dispatcher.queue.Queue.RequestWork
+import kanaloa.reactive.dispatcher.queue.Worker.Hold
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker, SpecWithActorSystem}
+import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
@@ -23,16 +26,21 @@ class TestBackend(delay: FiniteDuration = Duration.Zero)(implicit system: ActorS
 
 class ControlledBackend()(implicit system: ActorSystem) extends Backend {
   var p = Promise[ActorRef]
+
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
+    p = Promise[ActorRef]
     p.future
   }
 
   def fillActor(actorRef: ActorRef) {
+    if (p.isCompleted) {
+      throw new IllegalStateException("attempting to complete an already completed Backend..was the constructor called?")
+    }
     p.success(actorRef)
   }
 }
 
-class WorkerSpec extends SpecWithActorSystem {
+class WorkerSpec extends SpecWithActorSystem with Eventually {
   def newWorker(queueRef: ActorRef, b: Backend): TestActorRef[Worker] = TestActorRef[Worker](Worker.default(queueRef, b)(ResultChecker.simple[Result]))
 
   trait WorkerScope {
@@ -46,94 +54,141 @@ class WorkerSpec extends SpecWithActorSystem {
     val worker = newWorker(queueProb.ref, backend)
   }
 
-  "worker starting" should {
-    "accept work" in new ControlledBackendScope {
+  "worker waitingForRoutee" should {
+    "accept Work if Work is not already queued" in new ControlledBackendScope {
       val backendProbe = TestProbe()
       backend.fillActor(backendProbe.ref)
       queueProb.expectMsgType[RequestWork]
       queueProb.reply(Work("w"))
       backendProbe.expectMsg("w")
+      worker.stop()
     }
 
-    "reject Work if Work is already accepted" in new ControlledBackendScope {
+    "reject Work if Work is already queued" in new ControlledBackendScope {
       queueProb.send(worker, Work("work"))
       queueProb.send(worker, Work("work2"))
       queueProb.expectMsgType[Rejected]
+      worker.stop()
     }
 
-    "shutdown when retiring" in new ControlledBackendScope {
+    "shutdown when told to retire if there is no queued Work" in new ControlledBackendScope {
       watch(worker)
       worker ! Worker.Retire
       expectTerminated(worker)
     }
 
-    "reject work when retiring" in new ControlledBackendScope {
+    "reject queued Work when told to retire" in new ControlledBackendScope {
       worker ! Work("w")
       watch(worker)
 
       worker ! Worker.Retire
 
-      expectMsgType[Rejected]
-
+      expectMsg(Rejected(Work("w"), "retiring"))
       expectTerminated(worker)
     }
   }
 
   "worker waiting" should {
-    "recover from dead routee" in new WorkerScope {
+    "recover from dead routee" in new ControlledBackendScope {
+      val firstBackendRef = TestProbe("first")
+      val newBackEndRef = TestProbe("new")
+
+      backend.fillActor(firstBackendRef.ref)
       queueProb.expectMsgType[RequestWork]
 
-      val oldBackendRef = backend.prob.ref
+      firstBackendRef.ref ! PoisonPill
 
-      val newBackendProb = TestProbe("newBackend")
-      backend.prob = newBackendProb
+      //a little gross, but short of redoing bits of Worker to make this more deterministic, this is the
+      //easiest way i can think of ensuring that the Backend constructor was called
+      //ideally we would be resetting the Worker.Routee to null..OR changing it to an Option and setting it to None
+      eventually {
+        backend.p.isCompleted shouldBe false
+      }
 
-      oldBackendRef ! PoisonPill
+      //new ref returned to Actor
+      backend.fillActor(newBackEndRef.ref)
 
-      awaitAssert(worker.underlyingActor.getRoutee should ===(newBackendProb.ref))
+      eventually {
+        worker.underlyingActor.routee shouldBe newBackEndRef.ref
+      }
+
       queueProb.reply(Work("w", replyTo = Some(self)))
 
-      newBackendProb.expectMsg("w")
-      newBackendProb.reply(Result(1))
+      newBackEndRef.expectMsg("w")
+      newBackEndRef.reply(Result(1))
       expectMsg(Result(1))
 
+      worker.stop()
+    }
+
+    "apply a Hold duration when sending Work to a Routee" in new ControlledBackendScope {
+      val backendProbe = TestProbe()
+      queueProb.send(worker, Work("work"))
+      queueProb.send(worker, Hold(10.milliseconds))
+
+      eventually {
+        worker.underlyingActor.delayBeforeNextWork shouldBe Some(10.milliseconds)
+      }
+
+      backend.fillActor(backendProbe.ref)
+      //i was having trouble using 'expectNoMessage(minimumDuration)', so seeing the value get reset will have to suffice for now
+      backendProbe.expectMsg("work")
+      worker.underlyingActor.delayBeforeNextWork shouldBe None
       worker.stop()
     }
   }
 
   "worker working" should {
-    "recover from dead routee" in new WorkerScope {
+    "recover from dead routee" in new ControlledBackendScope {
+      val firstBackendRef = TestProbe("first")
+      val newBackEndRef = TestProbe("new")
+      backend.fillActor(firstBackendRef.ref)
       queueProb.expectMsgType[RequestWork]
-      queueProb.reply(Work("w"))
+      queueProb.reply(Work("w", replyTo = Some(self)))
 
-      backend.prob.expectMsg("w")
+      firstBackendRef.expectMsg("w")
+      firstBackendRef.ref ! PoisonPill
+      //once the Worker detects the death, the work should be terminated
+      expectMsgType[WorkFailed]
 
-      val oldBackendRef = backend.prob.ref
+      //a little gross, but short of redoing bits of Worker to make this more deterministic, this is the
+      //easiest way i can think of ensuring that the Backend constructor was called
+      //ideally we would be resetting the Worker.Routee to null..OR changing it to an Option and setting it to None
+      eventually {
+        backend.p.isCompleted shouldBe false
+      }
 
-      val newBackendProb = TestProbe("newBackend")
-      backend.prob = newBackendProb
+      //new ref returned to Actor
+      backend.fillActor(newBackEndRef.ref)
 
-      oldBackendRef ! PoisonPill
+      eventually {
+        worker.underlyingActor.routee shouldBe newBackEndRef.ref
+      }
 
-      awaitAssert(worker.underlyingActor.getRoutee should ===(newBackendProb.ref))
+      newBackEndRef.expectNoMsg() //should not get any new work yet
+      worker.stop()
+    }
 
-      newBackendProb.expectNoMsg()
-
+    "apply a Hold duration to a subsequent askForWork when Work is finished" in new ControlledBackendScope {
+      val backendProbe = TestProbe()
+      backend.fillActor(backendProbe.ref)
+      queueProb.send(worker, Work("work"))
+      backendProbe.expectMsg("work")
+      //while the backend is "working", lets send a hold
+      queueProb.send(worker, Hold(10.milliseconds))
+      eventually {
+        worker.underlyingActor.delayBeforeNextWork shouldBe Some(10.milliseconds)
+      }
+      //let's now finish the work.
+      backendProbe.reply(Result(1))
+      //i was having trouble using 'expectNoMessage(minimumDuration)', so seeing the value get reset will have to suffice for now
+      queueProb.expectMsgType[RequestWork]
+      worker.underlyingActor.delayBeforeNextWork shouldBe None
       worker.stop()
     }
   }
 
   "worker retiring" should {
 
-  }
-
-  "worker" should {
-
-    "retrieve work from queue and send to backend" in new WorkerScope {
-      queueProb.expectMsgType[RequestWork]
-      queueProb.reply(Work("work"))
-      backend.prob.expectMsg("work")
-      worker.stop()
-    }
   }
 }
