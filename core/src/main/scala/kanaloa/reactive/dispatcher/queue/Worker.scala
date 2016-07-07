@@ -17,6 +17,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   protected def backend: Backend //actor who really does the work
   protected val queue: ActorRef
+  protected def resultChecker: ResultChecker
   protected def monitor: ActorRef = context.parent
 
   def receive = waitingForRoutee(None)
@@ -205,8 +206,6 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     delayBeforeNextWork = None
     context become waitingForWork
   }
-
-  protected def resultChecker: ResultChecker
 
   protected def descriptionOf(any: Any, maxLength: Int = 100): String = {
     val msgString = any.toString
