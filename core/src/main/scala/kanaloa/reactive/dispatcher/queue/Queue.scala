@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
-import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, _}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.Java8TimeExtensions._
@@ -140,7 +140,7 @@ case class QueueWithBackPressure(
   dispatchHistorySettings: DispatchHistorySettings,
   backPressureSettings:    BackPressureSettings,
   defaultWorkSettings:     WorkSettings            = WorkSettings(),
-  metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+  metricsCollector:        MetricsCollector        = new MetricsCollector(None)
 ) extends Queue {
 
   def checkOverCapacity(qs: QueueStatus): Boolean =
@@ -165,7 +165,7 @@ trait QueueWithoutBackPressure extends Queue {
 case class DefaultQueue(
   dispatchHistorySettings: DispatchHistorySettings,
   defaultWorkSettings:     WorkSettings,
-  metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+  metricsCollector:        MetricsCollector        = new MetricsCollector(None)
 ) extends QueueWithoutBackPressure
 
 class QueueOfIterator(
@@ -173,7 +173,7 @@ class QueueOfIterator(
   val dispatchHistorySettings: DispatchHistorySettings,
   val defaultWorkSettings:     WorkSettings,
   sendResultsTo:               Option[ActorRef]        = None,
-  val metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+  val metricsCollector:        MetricsCollector        = new MetricsCollector(None)
 ) extends QueueWithoutBackPressure {
   import QueueOfIterator._
 
@@ -193,7 +193,7 @@ object QueueOfIterator {
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSettings:     WorkSettings,
     sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
   ): Props =
     Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, sendResultsTo, metricsCollector)).withDeploy(Deploy.local)
 
@@ -296,7 +296,7 @@ object Queue {
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
   ): Props =
     QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
 
@@ -305,14 +305,14 @@ object Queue {
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
   ): Props =
     QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
 
   def default(
     dispatchHistorySettings: DispatchHistorySettings = DispatchHistorySettings(),
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
-    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
   ): Props =
     Props(new DefaultQueue(dispatchHistorySettings, defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
 
@@ -320,7 +320,7 @@ object Queue {
     dispatchHistorySettings: DispatchHistorySettings,
     backPressureSetting:     BackPressureSettings,
     defaultWorkSettings:     WorkSettings            = WorkSettings(),
-    metricsCollector:        MetricsCollector        = NoOpMetricsCollector
+    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
   ): Props =
     Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, defaultWorkSettings, metricsCollector)).withDeploy(Deploy.local)
 

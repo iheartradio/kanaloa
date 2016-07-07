@@ -357,7 +357,7 @@ object IntegrationTests {
       case msg ⇒
         concurrent += 1
         val overCap = Math.max(concurrent - optimalSize, 0)
-        val wait = baseWait * (1 + Math.pow(overCap, 1.7))
+        val wait = baseWait * (1.0 + Math.pow(overCap, 1.7))
 
         context.actorOf(Props(classOf[Delay])) ! Reply(sender, wait)
     }

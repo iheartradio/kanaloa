@@ -3,7 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa.reactive.dispatcher._
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.MetricsCollector
 
 object TestUtils {
 
@@ -21,7 +21,7 @@ object TestUtils {
     historySettings:  DispatchHistorySettings = DispatchHistorySettings(),
     workSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:    Option[ActorRef]        = None,
-    metricsCollector: MetricsCollector        = NoOpMetricsCollector
+    metricsCollector: MetricsCollector        = new MetricsCollector(None)
   ): Props =
     Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, workSetting, sendResultsTo, metricsCollector)
 
@@ -34,7 +34,7 @@ object TestUtils {
     def defaultProcessorProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: MetricsCollector             = NoOpMetricsCollector
+      metricsCollector: MetricsCollector             = new MetricsCollector(None)
     ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
   }
 }

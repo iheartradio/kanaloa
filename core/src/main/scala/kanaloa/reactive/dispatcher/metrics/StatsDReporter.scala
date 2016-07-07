@@ -10,12 +10,12 @@ import akka.actor._
  * @param eventSampleRate sample rate for countable events (WorkEnqueued, WorkCompleted, etc)
  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
  */
-class StatsDMetricsCollector(
+class StatsDReporter(
   statsd:               StatsDClient,
   val eventSampleRate:  Double,
   val statusSampleRate: Double
 )(implicit system: ActorSystem)
-  extends MetricsCollector {
+  extends Reporter {
 
   /**
    * Auxilliary constructor that creates a StatsDClient from params
@@ -42,7 +42,7 @@ class StatsDMetricsCollector(
    */
   val failureSampleRate: Double = 1.0
 
-  def send(metric: Metric): Unit = metric match {
+  def report(metric: Metric): Unit = metric match {
     case WorkEnqueued         ⇒ increment("queue.enqueued")
     case EnqueueRejected      ⇒ increment("queue.enqueueRejected")
     case WorkCompleted        ⇒ increment("work.completed")
@@ -68,17 +68,17 @@ class StatsDMetricsCollector(
   }
 }
 
-object StatsDMetricsCollector {
+object StatsDReporter {
   /**
    * Create a StatsDMetricsCollector from typesafe Config object
    *
    * @param dispatcherName used to determine the metrics prefix (`namespace.dispatcherName`)
    * @param settings
    */
-  def apply(dispatcherName: String, settings: StatsDMetricsCollectorSettings)(implicit system: ActorSystem): StatsDMetricsCollector = {
+  def apply(dispatcherName: String, settings: StatsDMetricsCollectorSettings)(implicit system: ActorSystem): StatsDReporter = {
     val prefix: String = List(settings.namespace, dispatcherName).filter(_.nonEmpty).mkString(".")
 
-    new StatsDMetricsCollector(prefix, settings)
+    new StatsDReporter(prefix, settings)
   }
 }
 

@@ -4,7 +4,7 @@ import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
-import kanaloa.reactive.dispatcher.metrics.{NoOpMetricsCollector, StatsDMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 
@@ -21,7 +21,7 @@ class DispatcherSpec extends SpecWithActorSystem {
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         backend,
-        metricsCollector = NoOpMetricsCollector,
+        metricsCollector = new MetricsCollector(None),
         None,
         {
           case Success ⇒ Right(())
@@ -52,7 +52,7 @@ class DispatcherSpec extends SpecWithActorSystem {
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         echoSuccess,
-        metricsCollector = NoOpMetricsCollector,
+        metricsCollector = new MetricsCollector(None),
         None,
         {
           case Success ⇒ Right(())
@@ -110,7 +110,7 @@ class DispatcherSpec extends SpecWithActorSystem {
       val (settings, mc) = Dispatcher.readConfig("example", ConfigFactory.empty)
       settings.workRetry === 0
       settings.autoScaling shouldBe defined
-      mc === NoOpMetricsCollector
+      mc.reporter shouldBe empty
     }
 
     "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
@@ -235,8 +235,8 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      mc shouldBe a[StatsDMetricsCollector]
-      mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.5
+      mc.reporter shouldBe a[Some[StatsDReporter]]
+      mc.reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.5
     }
 
     "turn off metrics collector when disabled at the dispatcher level" in {
@@ -266,10 +266,10 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, mc) = Dispatcher.readConfig("example", strCfg)
-      mc === NoOpMetricsCollector
+      mc.reporter shouldBe empty
 
       val (_, mc2) = Dispatcher.readConfig("example2", strCfg)
-      mc2 shouldBe a[StatsDMetricsCollector]
+      mc2.reporter shouldBe a[Some[StatsDReporter]]
     }
 
     "override collector settings at the dispatcher level" in {
@@ -298,8 +298,8 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, mc) = Dispatcher.readConfig("example", strCfg)
-      mc shouldBe a[StatsDMetricsCollector]
-      mc.asInstanceOf[StatsDMetricsCollector].eventSampleRate === 0.7
+      mc.reporter shouldBe a[Some[StatsDReporter]]
+      mc.reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.7
 
     }
 
@@ -318,7 +318,7 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      mc === NoOpMetricsCollector
+      mc.reporter shouldBe empty
 
     }
 

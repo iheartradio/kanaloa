@@ -4,7 +4,7 @@ import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
 import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
-import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{Reporter, Metric, MetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
@@ -391,7 +391,7 @@ class QueueMetricsSpec extends SpecWithActorSystem {
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
-  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
+  val metricsCollector: MetricsCollector = new MetricsCollector(None) // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
     QueueProcessor.withCircuitBreaker(queue, backend, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
@@ -445,9 +445,9 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: MetricsCollector = new MetricsCollector {
-    def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-  }
+  override val metricsCollector: MetricsCollector = new MetricsCollector(Some(new Reporter {
+    def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
+  }))
 
 }
 
