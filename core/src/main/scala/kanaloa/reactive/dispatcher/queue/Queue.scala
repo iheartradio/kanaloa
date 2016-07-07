@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler
+import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, _}
 import kanaloa.util.FiniteCollection._
@@ -128,7 +129,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! PerformanceSampler.DispatchResult(status.queuedWorkers.length, status.workBuffer.length)
+        metricsCollector ! PerformanceSampler.DispatchResult(status.queuedWorkers.length, QueueLength(status.workBuffer.length))
         if (dispatchHistoryLength > 0)
           status.copy(dispatchHistory = updatedHistory)
         else status
@@ -150,7 +151,7 @@ case class QueueWithBackPressure(
       log.warning("buffer overflowed " + backPressureSettings.maxBufferSize)
       true
     } else {
-      val expectedWaitTime = qs.avgDequeueDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength
+      val expectedWaitTime = qs.avgDequeueDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength.toDouble
       metricsCollector ! Metric.WorkQueueExpectedWaitTime(expectedWaitTime)
 
       val ret = expectedWaitTime > backPressureSettings.thresholdForExpectedWaitTime
@@ -280,7 +281,7 @@ object Queue {
       if (relevantHistory.length >= 2) {
         val duration = relevantHistory.head.time.until(relevantHistory.last.time)
         val totalDispatched = relevantHistory.map(_.dispatched).sum
-        Some(duration / Math.max(1, totalDispatched))
+        Some(duration / Math.max(1d, totalDispatched.toDouble))
       } else None
     }
 

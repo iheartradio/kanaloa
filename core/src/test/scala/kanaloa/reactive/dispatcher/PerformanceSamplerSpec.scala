@@ -2,6 +2,7 @@ package kanaloa.reactive.dispatcher
 
 import akka.actor.{ActorRef, ActorSystem}
 import kanaloa.reactive.dispatcher.PerformanceSampler._
+import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.Metric._
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Reporter}
 import org.mockito.Mockito._
@@ -20,8 +21,8 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
     ps ! Subscribe(self)
     ps
   }
-  val partialUtilizedResult: DispatchResult = DispatchResult(1, 0)
-  val fullyUtilizedResult: DispatchResult = DispatchResult(0, 2)
+  val partialUtilizedResult: DispatchResult = DispatchResult(1, QueueLength(0))
+  val fullyUtilizedResult: DispatchResult = DispatchResult(0, QueueLength(2))
 
   "PerformanceSampler" should {
     "send Samples periodically" in {
@@ -94,6 +95,20 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
 
     }
 
+    "remember queue length when pool size changed" in {
+      val ps = initPerformanceSampler()
+
+      ps ! DispatchResult(0, QueueLength(11))
+      ps ! WorkCompleted(1.millisecond)
+
+      expectMsgType[Sample].queueLength.value should be(11)
+
+      ps ! PoolSize(12)
+      ps ! WorkCompleted(1.millisecond)
+
+      expectMsgType[Sample].queueLength.value should be(11)
+    }
+
     "register pool size when resting" in {
       val ps = initPerformanceSampler()
 
@@ -104,6 +119,16 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       ps ! fullyUtilizedResult
       ps ! WorkCompleted(1.millisecond)
       expectMsgType[Sample].poolSize should be(15)
+
+    }
+
+    "register queue length" in {
+      val ps = initPerformanceSampler()
+
+      ps ! DispatchResult(0, QueueLength(21))
+      ps ! WorkCompleted(1.millisecond)
+
+      expectMsgType[Sample].queueLength shouldBe QueueLength(21)
 
     }
 

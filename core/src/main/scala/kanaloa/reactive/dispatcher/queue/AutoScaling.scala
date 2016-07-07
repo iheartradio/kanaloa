@@ -92,14 +92,12 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
-    case Sample(workDone, start, end, poolSize) ⇒
-
-      val speed: Double = workDone.toDouble / start.until(end).toMillis.toDouble
-      val toUpdate = perfLog.get(poolSize).fold(speed) { oldSpeed ⇒
-        oldSpeed * (1d - weightOfLatestMetric) + (speed * weightOfLatestMetric)
+    case s: Sample ⇒
+      val toUpdate = perfLog.get(s.poolSize).fold(s.speed.value) { oldSpeed ⇒
+        oldSpeed * (1d - weightOfLatestMetric) + (s.speed.value * weightOfLatestMetric)
       }
-      perfLog += (poolSize → toUpdate)
-      context become fullyUtilized(poolSize)
+      perfLog += (s.poolSize → toUpdate)
+      context become fullyUtilized(s.poolSize)
 
     case PartialUtilization(u) ⇒
       context become underUtilized(u)
