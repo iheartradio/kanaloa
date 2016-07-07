@@ -53,7 +53,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   private def collectingStatus(status: SystemStatus): Receive = watchingQueueAndProcessor orElse {
     case qdi: QueueDispatchInfo ⇒
       processor ! QueryStatus()
-      continueCollectingStatus(status.copy(dispatchWaitWhenFullyUtilized = qdi.avgDispatchDurationLowerBoundWhenFullyUtilized))
+      continueCollectingStatus(status.copy(dispatchWaitWhenFullyUtilized = qdi.avgDequeueDurationLowerBoundWhenFullyUtilized))
 
     case RunningStatus(pool) ⇒
       pool.foreach(_ ! QueryStatus())

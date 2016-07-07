@@ -148,7 +148,7 @@ case class QueueWithBackPressure(
       log.warning("buffer overflowed " + backPressureSettings.maxBufferSize)
       true
     } else {
-      val expectedWaitTime = qs.avgDispatchDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength
+      val expectedWaitTime = qs.avgDequeueDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength
       metricsCollector.send(Metric.WorkQueueExpectedWaitTime(expectedWaitTime))
 
       val ret = expectedWaitTime > backPressureSettings.thresholdForExpectedWaitTime
@@ -259,7 +259,7 @@ object Queue {
      * The average duration it takes to dispatch a message, this is a lower bound (actual could be slower than this).
      * Also it only measures when the all the workers are fully utilized.
      */
-    def avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration]
+    def avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration]
   }
 
   protected[queue] case class QueueStatus(
@@ -272,9 +272,9 @@ object Queue {
     lazy val relevantHistory: Vector[DispatchHistoryEntry] = dispatchHistory.takeRightWhile(_.allWorkerOccupied) //only take into account latest busy queue history
 
     /**
-     * The lower bound of average duration it takes to dispatch one request， The reciprocal of it is the upper bound of dispatch speed.
+     * The lower bound of average duration it takes to dequeue one request， The reciprocal of it is the upper bound of dispatch speed.
      */
-    lazy val avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration] = {
+    lazy val avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration] = {
       if (relevantHistory.length >= 2) {
         val duration = relevantHistory.head.time.until(relevantHistory.last.time)
         val totalDispatched = relevantHistory.map(_.dispatched).sum

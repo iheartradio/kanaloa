@@ -266,7 +266,7 @@ class AutoScalingScope(implicit system: ActorSystem)
 
 object AutoScalingScope {
   import akka.actor.ActorDSL._
-  case class MockQueueInfo(avgDispatchDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
+  case class MockQueueInfo(avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
 
   def newWorker(busy: Boolean = true)(implicit system: ActorSystem) = actor(new Act {
     become {
