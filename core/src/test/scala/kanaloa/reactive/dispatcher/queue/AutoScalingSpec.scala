@@ -182,10 +182,10 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
     }
 
     "stop itself if the Queue stops" in new AutoScalingScope {
-      val queue = system.actorOf(Queue.default())
+      val queue = system.actorOf(Queue.default(metricsCollector))
       watch(queue)
       val processor = TestProbe()
-      val a = system.actorOf(AutoScaling.default(queue, processor.ref, AutoScalingSettings()))
+      val a = system.actorOf(AutoScaling.default(queue, processor.ref, AutoScalingSettings(), metricsCollector))
       watch(a)
       queue ! Retire(1.millisecond)
       expectTerminated(queue)
@@ -194,9 +194,17 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
 
     "stop itself if the QueueProcessor stops" in new ScopeWithActor() {
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings())(ResultChecker.simple))
+      val processor = system.actorOf(QueueProcessor.default(
+        queue.ref,
+        backend,
+        ProcessingWorkerPoolSettings(),
+        MetricsCollector(None)
+      )(
+          ResultChecker.simple
+        ))
+
       watch(processor)
-      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings()))
+      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings(), MetricsCollector(None)))
       watch(a)
       processor ! PoisonPill
       expectTerminated(processor)
@@ -204,11 +212,12 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
+      val mc = MetricsCollector(None)
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings())(ResultChecker.simple))
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.simple))
       watch(processor)
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
-      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings(actionFrequency = 10.minutes)))
+      val a = system.actorOf(AutoScaling.default(queue.ref, processor, AutoScalingSettings(actionFrequency = 10.minutes), mc))
       watch(a)
       //let this thing take its sweet time shutting down
       processor ! Shutdown(None, 100.milliseconds, false)
@@ -223,7 +232,7 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
 class AutoScalingScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender {
 
-  val metricsCollector: MetricsCollector = new MetricsCollector(None) // To be overridden
+  val metricsCollector: MetricsCollector = MetricsCollector(None) // To be overridden
 
   val tQueue = TestProbe()
   val tProcessor = TestProbe()

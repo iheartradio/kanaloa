@@ -104,7 +104,7 @@ object Dispatcher {
 
     val settings = toDispatcherSettings(dispatcherCfg)
 
-    val metricsCollector = new MetricsCollector(Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
+    val metricsCollector = MetricsCollector(Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
 
     (settings, metricsCollector)
   }
@@ -115,14 +115,14 @@ case class PushingDispatcher(
   name:             String,
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector = new MetricsCollector(None),
+  metricsCollector: MetricsCollector,
   resultChecker:    ResultChecker
 )
   extends Dispatcher {
 
   protected lazy val queueProps = settings.backPressure match {
-    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
-    case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
+    case None     ⇒ Queue.default(metricsCollector, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout))
   }
 
   /**
@@ -156,7 +156,7 @@ case class PullingDispatcher(
   iterator:         Iterator[_],
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector = new MetricsCollector(None),
+  metricsCollector: MetricsCollector,
   sendResultsTo:    Option[ActorRef],
   resultChecker:    ResultChecker
 ) extends Dispatcher {
@@ -164,8 +164,8 @@ case class PullingDispatcher(
     iterator,
     settings.dispatchHistory,
     WorkSettings(settings.workRetry, settings.workTimeout),
-    sendResultsTo,
-    metricsCollector
+    metricsCollector,
+    sendResultsTo
   )
 }
 

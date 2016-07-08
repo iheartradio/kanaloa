@@ -142,7 +142,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     }
 
     val optimalSize = adjacentDispatchWaits.minBy(_._2)._1
-    val scaleStep = Math.ceil((optimalSize - currentSize) / 2).toInt
+    val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2.0).toInt
     ScaleTo(currentSize + scaleStep, Some("optimizing"))
   }
 
@@ -178,14 +178,14 @@ object AutoScaling {
     queue:            QueueRef,
     processor:        QueueProcessorRef,
     settings:         AutoScalingSettings,
-    metricsCollector: MetricsCollector    = new MetricsCollector(None)
+    metricsCollector: MetricsCollector
   ) extends AutoScaling
 
   def default(
     queue:            QueueRef,
     processor:        QueueProcessorRef,
     settings:         AutoScalingSettings,
-    metricsCollector: MetricsCollector    = new MetricsCollector(None)
+    metricsCollector: MetricsCollector
   ) = Props(Default(queue, processor, settings, metricsCollector)).withDeploy(Deploy.local)
 }
 

@@ -166,7 +166,7 @@ case class DefaultQueueProcessor(
   queue:            QueueRef,
   backend:          Backend,
   settings:         ProcessingWorkerPoolSettings,
-  metricsCollector: MetricsCollector             = new MetricsCollector(None),
+  metricsCollector: MetricsCollector,
   resultChecker:    ResultChecker
 ) extends QueueProcessor {
 
@@ -180,7 +180,7 @@ case class QueueProcessorWithCircuitBreaker(
   backend:                Backend,
   settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: CircuitBreakerSettings,
-  metricsCollector:       MetricsCollector             = new MetricsCollector(None),
+  metricsCollector:       MetricsCollector,
   resultChecker:          ResultChecker
 ) extends QueueProcessor {
 
@@ -214,7 +214,7 @@ object QueueProcessor {
     queue:            QueueRef,
     backend:          Backend,
     settings:         ProcessingWorkerPoolSettings,
-    metricsCollector: MetricsCollector             = new MetricsCollector(None)
+    metricsCollector: MetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new DefaultQueueProcessor(
       queue,
@@ -229,7 +229,7 @@ object QueueProcessor {
     backend:                Backend,
     settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector:       MetricsCollector             = new MetricsCollector(None)
+    metricsCollector:       MetricsCollector
   )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,

@@ -7,6 +7,7 @@ import akka.actor._
 import akka.testkit.TestActorRef
 import kanaloa.reactive.dispatcher.ApiProtocol._
 import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.metrics.MetricsCollector
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils._
 
@@ -69,7 +70,8 @@ class QueueWithBackPressureSpec extends SpecWithActorSystem {
       BackPressureSettings(
         maxBufferSize = 10,
         thresholdForExpectedWaitTime = 5.minutes
-      )
+      ),
+      MetricsCollector(None)
     )).underlyingActor
 
     def status(stats: (Int, Int, Int, LocalDateTime)*): QueueStatus =

@@ -21,7 +21,7 @@ class DispatcherSpec extends SpecWithActorSystem {
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         backend,
-        metricsCollector = new MetricsCollector(None),
+        metricsCollector = MetricsCollector(None),
         None,
         {
           case Success ⇒ Right(())
@@ -52,7 +52,7 @@ class DispatcherSpec extends SpecWithActorSystem {
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
         echoSuccess,
-        metricsCollector = new MetricsCollector(None),
+        metricsCollector = MetricsCollector(None),
         None,
         {
           case Success ⇒ Right(())

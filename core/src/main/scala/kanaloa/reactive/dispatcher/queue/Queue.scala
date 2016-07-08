@@ -139,8 +139,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 case class QueueWithBackPressure(
   dispatchHistorySettings: DispatchHistorySettings,
   backPressureSettings:    BackPressureSettings,
-  defaultWorkSettings:     WorkSettings            = WorkSettings(),
-  metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+  metricsCollector:        MetricsCollector,
+  defaultWorkSettings:     WorkSettings            = WorkSettings()
 ) extends Queue {
 
   def checkOverCapacity(qs: QueueStatus): Boolean =
@@ -165,15 +165,15 @@ trait QueueWithoutBackPressure extends Queue {
 case class DefaultQueue(
   dispatchHistorySettings: DispatchHistorySettings,
   defaultWorkSettings:     WorkSettings,
-  metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+  metricsCollector:        MetricsCollector
 ) extends QueueWithoutBackPressure
 
 class QueueOfIterator(
   private val iterator:        Iterator[_],
   val dispatchHistorySettings: DispatchHistorySettings,
   val defaultWorkSettings:     WorkSettings,
-  sendResultsTo:               Option[ActorRef]        = None,
-  val metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+  val metricsCollector:        MetricsCollector,
+  sendResultsTo:               Option[ActorRef]        = None
 ) extends QueueWithoutBackPressure {
   import QueueOfIterator._
 
@@ -192,10 +192,10 @@ object QueueOfIterator {
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSettings:     WorkSettings,
-    sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+    metricsCollector:        MetricsCollector,
+    sendResultsTo:           Option[ActorRef]        = None
   ): Props =
-    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, sendResultsTo, metricsCollector)).withDeploy(Deploy.local)
+    Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, metricsCollector, sendResultsTo)).withDeploy(Deploy.local)
 
   private case object EnqueueMore
 
@@ -294,35 +294,35 @@ object Queue {
   def ofIterable(
     iterable:                Iterable[_],
     dispatchHistorySettings: DispatchHistorySettings,
+    metricsCollector:        MetricsCollector,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
-    sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+    sendResultsTo:           Option[ActorRef]        = None
   ): Props =
-    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
+    QueueOfIterator.props(iterable.iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector, sendResultsTo).withDeploy(Deploy.local)
 
   def ofIterator(
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
+    metricsCollector:        MetricsCollector,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
-    sendResultsTo:           Option[ActorRef]        = None,
-    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+    sendResultsTo:           Option[ActorRef]        = None
   ): Props =
-    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, sendResultsTo, metricsCollector).withDeploy(Deploy.local)
+    QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector, sendResultsTo).withDeploy(Deploy.local)
 
   def default(
+    metricsCollector:        MetricsCollector,
     dispatchHistorySettings: DispatchHistorySettings = DispatchHistorySettings(),
-    defaultWorkSetting:      WorkSettings            = WorkSettings(),
-    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+    defaultWorkSetting:      WorkSettings            = WorkSettings()
   ): Props =
     Props(new DefaultQueue(dispatchHistorySettings, defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
 
   def withBackPressure(
     dispatchHistorySettings: DispatchHistorySettings,
     backPressureSetting:     BackPressureSettings,
-    defaultWorkSettings:     WorkSettings            = WorkSettings(),
-    metricsCollector:        MetricsCollector        = new MetricsCollector(None)
+    metricsCollector:        MetricsCollector,
+    defaultWorkSettings:     WorkSettings            = WorkSettings()
   ): Props =
-    Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, defaultWorkSettings, metricsCollector)).withDeploy(Deploy.local)
+    Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, metricsCollector, defaultWorkSettings)).withDeploy(Deploy.local)
 
 }
 
