@@ -19,7 +19,7 @@ trait Dispatcher extends Actor {
   def settings: Dispatcher.Settings
   def backend: Backend
   def resultChecker: ResultChecker
-  def metricsCollector: MetricsCollector
+  def metricsCollector: ActorRef
 
   protected def queueProps: Props
 
@@ -98,15 +98,13 @@ object Dispatcher {
       settings ← componentCfg.atPath("root").as[Option[SettingT]]("root") if enabled
     } yield settings
 
-  def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
+  def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, Option[Reporter]) = {
     val cfg = kanaloaConfig(rootConfig)
     val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg))
 
     val settings = toDispatcherSettings(dispatcherCfg)
 
-    val metricsCollector = MetricsCollector(Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
-
-    (settings, metricsCollector)
+    (settings, Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
   }
 
 }
@@ -115,7 +113,7 @@ case class PushingDispatcher(
   name:             String,
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector,
+  metricsCollector: ActorRef,
   resultChecker:    ResultChecker
 )
   extends Dispatcher {
@@ -145,7 +143,8 @@ object PushingDispatcher {
     backend:    T,
     rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
+    val metricsCollector = MetricsCollector(reporter) //todo: add metrics collector settings here
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker)).withDeploy(Deploy.local)
   }
@@ -156,7 +155,7 @@ case class PullingDispatcher(
   iterator:         Iterator[_],
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector,
+  metricsCollector: ActorRef,
   sendResultsTo:    Option[ActorRef],
   resultChecker:    ResultChecker
 ) extends Dispatcher {
@@ -177,7 +176,8 @@ object PullingDispatcher {
     sendResultsTo: Option[ActorRef],
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
+    val metricsCollector = MetricsCollector(reporter) //todo: parse metrics collector settings
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }

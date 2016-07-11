@@ -65,6 +65,8 @@ class StatsDReporter(
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
 
+    case PoolIdle(_) ⇒ //ignore this metric, it is mostly for metrics control
+
   }
 }
 

@@ -17,13 +17,13 @@ import scala.concurrent.duration._
 trait Queue extends Actor with ActorLogging with MessageScheduler {
   def dispatchHistorySettings: DispatchHistorySettings
   def defaultWorkSettings: WorkSettings
-  def metricsCollector: MetricsCollector
+  def metricsCollector: ActorRef
   val dispatchHistoryLength = (dispatchHistorySettings.maxHistoryLength / dispatchHistorySettings.historySampleRate).toInt
   assert(dispatchHistoryLength > 5, s"max history length should be at least ${dispatchHistorySettings.historySampleRate * 5}")
 
   final def receive = processing(QueueStatus())
 
-  metricsCollector.send(Metric.WorkQueueLength(0))
+  metricsCollector ! Metric.WorkQueueLength(0)
 
   final def processing(status: QueueStatus): Receive =
     handleWork(status, processing) orElse {
@@ -31,12 +31,12 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         if (checkOverCapacity(status)) {
           log.warning("At capacity, rejecting message [{}]", workMessage)
           sender() ! EnqueueRejected(e, Queue.EnqueueRejected.OverCapacity)
-          metricsCollector.send(Metric.EnqueueRejected)
+          metricsCollector ! Metric.EnqueueRejected
         } else {
           val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
           val newBuffer: ScalaQueue[Work] = status.workBuffer.enqueue(newWork)
           val newStatus: QueueStatus = dispatchWork(status.copy(workBuffer = newBuffer))
-          metricsCollector.send(Metric.WorkEnqueued)
+          metricsCollector ! Metric.WorkEnqueued
           if (sendAcks) {
             sender() ! WorkEnqueued
           }
@@ -126,7 +126,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector.send(Metric.WorkQueueLength(status.workBuffer.length))
+        metricsCollector ! Metric.WorkQueueLength(status.workBuffer.length)
+        metricsCollector ! Metric.PoolIdle(status.queuedWorkers.length)
         if (dispatchHistoryLength > 0)
           status.copy(dispatchHistory = updatedHistory)
         else status
@@ -139,7 +140,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 case class QueueWithBackPressure(
   dispatchHistorySettings: DispatchHistorySettings,
   backPressureSettings:    BackPressureSettings,
-  metricsCollector:        MetricsCollector,
+  metricsCollector:        ActorRef,
   defaultWorkSettings:     WorkSettings            = WorkSettings()
 ) extends Queue {
 
@@ -149,7 +150,7 @@ case class QueueWithBackPressure(
       true
     } else {
       val expectedWaitTime = qs.avgDequeueDurationLowerBoundWhenFullyUtilized.getOrElse(Duration.Zero) * qs.currentQueueLength
-      metricsCollector.send(Metric.WorkQueueExpectedWaitTime(expectedWaitTime))
+      metricsCollector ! Metric.WorkQueueExpectedWaitTime(expectedWaitTime)
 
       val ret = expectedWaitTime > backPressureSettings.thresholdForExpectedWaitTime
       if (ret) log.warning(s"expected wait time ${expectedWaitTime.toMillis} ms is over threshold ${backPressureSettings.thresholdForExpectedWaitTime}. queue size ${qs.currentQueueLength}")
@@ -165,14 +166,14 @@ trait QueueWithoutBackPressure extends Queue {
 case class DefaultQueue(
   dispatchHistorySettings: DispatchHistorySettings,
   defaultWorkSettings:     WorkSettings,
-  metricsCollector:        MetricsCollector
+  metricsCollector:        ActorRef
 ) extends QueueWithoutBackPressure
 
 class QueueOfIterator(
   private val iterator:        Iterator[_],
   val dispatchHistorySettings: DispatchHistorySettings,
   val defaultWorkSettings:     WorkSettings,
-  val metricsCollector:        MetricsCollector,
+  val metricsCollector:        ActorRef,
   sendResultsTo:               Option[ActorRef]        = None
 ) extends QueueWithoutBackPressure {
   import QueueOfIterator._
@@ -192,7 +193,7 @@ object QueueOfIterator {
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
     defaultWorkSettings:     WorkSettings,
-    metricsCollector:        MetricsCollector,
+    metricsCollector:        ActorRef,
     sendResultsTo:           Option[ActorRef]        = None
   ): Props =
     Props(new QueueOfIterator(iterator, dispatchHistorySettings, defaultWorkSettings, metricsCollector, sendResultsTo)).withDeploy(Deploy.local)
@@ -294,7 +295,7 @@ object Queue {
   def ofIterable(
     iterable:                Iterable[_],
     dispatchHistorySettings: DispatchHistorySettings,
-    metricsCollector:        MetricsCollector,
+    metricsCollector:        ActorRef,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:           Option[ActorRef]        = None
   ): Props =
@@ -303,14 +304,14 @@ object Queue {
   def ofIterator(
     iterator:                Iterator[_],
     dispatchHistorySettings: DispatchHistorySettings,
-    metricsCollector:        MetricsCollector,
+    metricsCollector:        ActorRef,
     defaultWorkSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:           Option[ActorRef]        = None
   ): Props =
     QueueOfIterator.props(iterator, dispatchHistorySettings, defaultWorkSetting, metricsCollector, sendResultsTo).withDeploy(Deploy.local)
 
   def default(
-    metricsCollector:        MetricsCollector,
+    metricsCollector:        ActorRef,
     dispatchHistorySettings: DispatchHistorySettings = DispatchHistorySettings(),
     defaultWorkSetting:      WorkSettings            = WorkSettings()
   ): Props =
@@ -319,7 +320,7 @@ object Queue {
   def withBackPressure(
     dispatchHistorySettings: DispatchHistorySettings,
     backPressureSetting:     BackPressureSettings,
-    metricsCollector:        MetricsCollector,
+    metricsCollector:        ActorRef,
     defaultWorkSettings:     WorkSettings            = WorkSettings()
   ): Props =
     Props(QueueWithBackPressure(dispatchHistorySettings, backPressureSetting, metricsCollector, defaultWorkSettings)).withDeploy(Deploy.local)

@@ -22,13 +22,13 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def backend: Backend
   def settings: ProcessingWorkerPoolSettings
   def resultChecker: ResultChecker
-  val metricsCollector: MetricsCollector
+  val metricsCollector: ActorRef
   type ResultHistory = Vector[Boolean]
   val resultHistoryLength: Int
   val workerCount = new AtomicInteger(1)
   protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool)
 
-  metricsCollector.send(Metric.PoolSize(settings.startingPoolSize))
+  metricsCollector ! Metric.PoolSize(settings.startingPoolSize)
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
@@ -55,7 +55,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     {
       case ScaleTo(newPoolSize, reason) ⇒
         log.debug(s"Command to scale to $newPoolSize, currently at ${pool.size} due to ${reason.getOrElse("no reason given")}")
-        metricsCollector.send(Metric.PoolSize(newPoolSize))
+        metricsCollector ! Metric.PoolSize(newPoolSize)
         val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
         val diff = toPoolSize - pool.size
         if (diff > 0)
@@ -65,16 +65,16 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
       case WorkCompleted(worker, duration) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
-        metricsCollector.send(Metric.ProcessTime(duration))
-        metricsCollector.send(Metric.WorkCompleted)
+        metricsCollector ! Metric.ProcessTime(duration)
+        metricsCollector ! Metric.WorkCompleted
 
       case WorkFailed(_) ⇒
         workError()
-        metricsCollector.send(Metric.WorkFailed)
+        metricsCollector ! Metric.WorkFailed
 
       case WorkTimedOut(_) ⇒
         workError()
-        metricsCollector.send(Metric.WorkTimedOut)
+        metricsCollector ! Metric.WorkTimedOut
 
       case Terminated(worker) if pool.contains(worker) ⇒
         removeWorker(pool, worker, monitoring(resultHistory), "Worker removed")
@@ -136,6 +136,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   ): Unit = {
     context unwatch worker
     val newPool = pool - worker
+    metricsCollector ! Metric.PoolSize(newPool.size)
     if (!finishIfPoolIsEmpty(newPool, finishWithMessage, reportToOnFinish))
       context become nextContext(newPool)
 
@@ -166,7 +167,7 @@ case class DefaultQueueProcessor(
   queue:            QueueRef,
   backend:          Backend,
   settings:         ProcessingWorkerPoolSettings,
-  metricsCollector: MetricsCollector,
+  metricsCollector: ActorRef,
   resultChecker:    ResultChecker
 ) extends QueueProcessor {
 
@@ -180,7 +181,7 @@ case class QueueProcessorWithCircuitBreaker(
   backend:                Backend,
   settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: CircuitBreakerSettings,
-  metricsCollector:       MetricsCollector,
+  metricsCollector:       ActorRef,
   resultChecker:          ResultChecker
 ) extends QueueProcessor {
 
@@ -188,7 +189,7 @@ case class QueueProcessorWithCircuitBreaker(
 
   override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = {
     if ((resultHistory.count(r ⇒ !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
-      metricsCollector.send(Metric.CircuitBreakerOpened)
+      metricsCollector ! Metric.CircuitBreakerOpened
       pool.foreach(_ ! Hold(circuitBreakerSettings.closeDuration))
     }
   }
@@ -214,7 +215,7 @@ object QueueProcessor {
     queue:            QueueRef,
     backend:          Backend,
     settings:         ProcessingWorkerPoolSettings,
-    metricsCollector: MetricsCollector
+    metricsCollector: ActorRef
   )(resultChecker: ResultChecker): Props =
     Props(new DefaultQueueProcessor(
       queue,
@@ -229,7 +230,7 @@ object QueueProcessor {
     backend:                Backend,
     settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector:       MetricsCollector
+    metricsCollector:       ActorRef
   )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,

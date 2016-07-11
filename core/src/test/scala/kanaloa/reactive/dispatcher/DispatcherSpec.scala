@@ -107,10 +107,10 @@ class DispatcherSpec extends SpecWithActorSystem {
 
   "readConfig" should {
     "use default settings when nothing is in config" in {
-      val (settings, mc) = Dispatcher.readConfig("example", ConfigFactory.empty)
+      val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty)
       settings.workRetry === 0
       settings.autoScaling shouldBe defined
-      mc.reporter shouldBe empty
+      reporter shouldBe empty
     }
 
     "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
@@ -234,9 +234,9 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
 
-      val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      mc.reporter shouldBe a[Some[StatsDReporter]]
-      mc.reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.5
+      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      reporter shouldBe a[Some[StatsDReporter]]
+      reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.5
     }
 
     "turn off metrics collector when disabled at the dispatcher level" in {
@@ -265,11 +265,11 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
-      val (_, mc) = Dispatcher.readConfig("example", strCfg)
-      mc.reporter shouldBe empty
+      val (_, reporter) = Dispatcher.readConfig("example", strCfg)
+      reporter shouldBe empty
 
-      val (_, mc2) = Dispatcher.readConfig("example2", strCfg)
-      mc2.reporter shouldBe a[Some[StatsDReporter]]
+      val (_, reporter2) = Dispatcher.readConfig("example2", strCfg)
+      reporter2 shouldBe a[Some[StatsDReporter]]
     }
 
     "override collector settings at the dispatcher level" in {
@@ -297,9 +297,9 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
-      val (_, mc) = Dispatcher.readConfig("example", strCfg)
-      mc.reporter shouldBe a[Some[StatsDReporter]]
-      mc.reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.7
+      val (_, reporter) = Dispatcher.readConfig("example", strCfg)
+      reporter shouldBe a[Some[StatsDReporter]]
+      reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.7
 
     }
 
@@ -317,8 +317,8 @@ class DispatcherSpec extends SpecWithActorSystem {
             }
           """
 
-      val (_, mc) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      mc.reporter shouldBe empty
+      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      reporter shouldBe empty
 
     }
 

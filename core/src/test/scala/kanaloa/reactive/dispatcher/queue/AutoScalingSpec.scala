@@ -30,7 +30,8 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
     }
 
     "send metrics to metricsCollector" in new AutoScalingScope {
-      override val metricsCollector: MetricsCollector = mock[MetricsCollector]
+      val mcProbe = TestProbe()
+      override val metricsCollector: ActorRef = mcProbe.ref
       val mc = metricsCollector
 
       as ! OptimizeOrExplore
@@ -39,12 +40,9 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
         numOfBusyWorkers = 3,
         numOfIdleWorkers = 1
       )
-
-      eventually {
-        verify(mc).send(Metric.PoolSize(4))
-        verify(mc).send(Metric.PoolUtilized(3))
-        verifyNoMoreInteractions(mc)
-      }
+      mcProbe.expectMsg(Metric.PoolSize(4))
+      mcProbe.expectMsg(Metric.PoolUtilized(3))
+      mcProbe.expectNoMsg()
     }
 
     "record perfLog" in new AutoScalingScope {
@@ -232,7 +230,7 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
 class AutoScalingScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender {
 
-  val metricsCollector: MetricsCollector = MetricsCollector(None) // To be overridden
+  val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
 
   val tQueue = TestProbe()
   val tProcessor = TestProbe()

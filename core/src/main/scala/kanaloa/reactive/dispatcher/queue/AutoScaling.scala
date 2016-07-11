@@ -18,7 +18,7 @@ import scala.util.Random
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val queue: QueueRef
   val processor: QueueProcessorRef
-  val metricsCollector: MetricsCollector
+  val metricsCollector: ActorRef
 
   //accessible only for testing purpose
   private[queue] var perfLog: PerformanceLog = Map.empty
@@ -94,8 +94,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     val currentSize: PoolSize = workerPool.size
 
     // Send metrics
-    metricsCollector.send(Metric.PoolSize(currentSize))
-    metricsCollector.send(Metric.PoolUtilized(utilization))
+    metricsCollector ! Metric.PoolSize(currentSize)
+    metricsCollector ! Metric.PoolUtilized(utilization)
 
     underUtilizationStreak = if (dispatchWaitWhenFullyUtilized.isEmpty)
       underUtilizationStreak.map(s ⇒ s.copy(highestUtilization = Math.max(s.highestUtilization, utilization))) orElse Some(UnderUtilizationStreak(LocalDateTime.now, utilization))
@@ -178,14 +178,14 @@ object AutoScaling {
     queue:            QueueRef,
     processor:        QueueProcessorRef,
     settings:         AutoScalingSettings,
-    metricsCollector: MetricsCollector
+    metricsCollector: ActorRef
   ) extends AutoScaling
 
   def default(
     queue:            QueueRef,
     processor:        QueueProcessorRef,
     settings:         AutoScalingSettings,
-    metricsCollector: MetricsCollector
+    metricsCollector: ActorRef
   ) = Props(Default(queue, processor, settings, metricsCollector)).withDeploy(Deploy.local)
 }
 

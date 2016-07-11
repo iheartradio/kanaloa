@@ -18,7 +18,7 @@ object TestUtils {
 
   def iteratorQueueProps(
     iterator:         Iterator[String],
-    metricsCollector: MetricsCollector,
+    metricsCollector: ActorRef,
     historySettings:  DispatchHistorySettings = DispatchHistorySettings(),
     workSetting:      WorkSettings            = WorkSettings(),
     sendResultsTo:    Option[ActorRef]        = None
@@ -34,7 +34,7 @@ object TestUtils {
     def defaultProcessorProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: MetricsCollector             = MetricsCollector(None)
+      metricsCollector: ActorRef                     = MetricsCollector(None)
     ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
   }
 }

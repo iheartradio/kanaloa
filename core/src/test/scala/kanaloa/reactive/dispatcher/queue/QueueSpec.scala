@@ -391,7 +391,7 @@ class QueueMetricsSpec extends SpecWithActorSystem {
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
-  val metricsCollector: MetricsCollector = MetricsCollector(None) // To be overridden
+  val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
     QueueProcessor.withCircuitBreaker(queue, backend, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
@@ -445,7 +445,7 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: MetricsCollector = MetricsCollector(Some(new Reporter {
+  override val metricsCollector: ActorRef = MetricsCollector(Some(new Reporter {
     def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
   }))
 
