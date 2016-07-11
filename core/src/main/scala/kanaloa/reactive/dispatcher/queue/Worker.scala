@@ -7,7 +7,7 @@ import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTim
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
-import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
+import kanaloa.reactive.dispatcher.ResultChecker
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
@@ -15,164 +15,150 @@ import scala.concurrent.duration._
 
 trait Worker extends Actor with ActorLogging with MessageScheduler {
 
-  protected def backend: Backend //actor who really does the work
-  protected val queue: ActorRef
-  protected def resultChecker: ResultChecker
-  protected def monitor: ActorRef = context.parent
+  val queue: ActorRef
+  val resultChecker: ResultChecker
+  val monitor: ActorRef = context.parent //this should be explicitly passed in
 
-  def receive = waitingForRoutee(None)
+  val routee: ActorRef
 
-  context watch queue
-
-  var routee: ActorRef = null
+  def receive = waitingForWork
 
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
-  override def preStart(): Unit = retrieveRoutee()
-
-  def retrieveRoutee(): Unit = {
-    import context.dispatcher
-    backend(context).foreach { ref ⇒
-      self ! RouteeReceived(ref)
-    }
-  }
-
-  def waitingForRoutee(work: Option[(Work, ActorRef)]): Receive = whileWaiting(Starting) orElse {
-    case RouteeReceived(r) ⇒
-      routee = r
-      context watch r
-      context become waitingForWork
-      work match {
-        case Some((workMsg, workSender)) ⇒ self.tell(workMsg, workSender)
-        case None                        ⇒ askMoreWork()
-      }
-
-    //this only happens on restarting with new routee because the old one died.
-    case w: Work ⇒
-      if (work.isDefined) {
-        sender() ! Rejected(w, "Busy")
-      } else {
-        context become waitingForRoutee(Some((w, sender)))
-      }
-
-    case Worker.Retire ⇒
-      work.foreach {
-        case (workMsg, workSender) ⇒ workSender ! Rejected(workMsg, "retiring") //this happens only when a Retire is sent during a restart with new routee
-      }
-      finish()
-
-  }
-
-  val waitingForWork: Receive =
-    whileWaiting(Idle) orElse {
-
-      case work: Work ⇒ sendWorkToDelegatee(work, 0)
-
-      case Terminated(r) if r == routee ⇒
-        context become waitingForRoutee(None)
-        retrieveRoutee()
-
-      case Worker.Retire ⇒
-        queue ! Unregister(self)
-        context become retiring(None)
-    }
-
-  def whileWaiting(currentStatus: WorkerStatus): Receive = {
-    case NoWorkLeft          ⇒ finish()
-
-    case Hold(period)        ⇒ delayBeforeNextWork = Some(period)
-
-    case qs: QueryStatus     ⇒ qs reply currentStatus
-
-    case Terminated(`queue`) ⇒ finish()
-
+  override def preStart(): Unit = {
+    context watch queue
+    context watch routee
+    queue ! RequestWork(self)
   }
 
   def finish(): Unit = context stop self
 
-  def working(outstanding: Outstanding): Receive = ({
+  val waitingForWork: Receive = {
+    case qs: QueryStatus              ⇒ qs reply Idle
+    case Hold(period)                 ⇒ delayBeforeNextWork = Some(period)
+
+    case work: Work                   ⇒ sendWorkToRoutee(work, 0)
+
+    //If there is no work left, or if the Queue dies, the Worker stops as well
+    case NoWorkLeft                   ⇒ finish()
+    case Terminated(`queue`)          ⇒ finish()
+
+    //if the Routee dies or the Worker is told to Retire, it needs to Unregister from the Queue before terminating
+    case Terminated(r) if r == routee ⇒ becomeUnregistering()
+    case Worker.Retire                ⇒ becomeUnregistering()
+  }
+
+  def working(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
+    case qs: QueryStatus     ⇒ qs reply Working
     case Hold(period)        ⇒ delayBeforeNextWork = Some(period)
 
-    case Terminated(`queue`) ⇒ context become retiring(Some(outstanding))
+    //we are done with this Work, ask for more and wait for it
+    case WorkFinished        ⇒ askMoreWork()
+    case w: Work             ⇒ sender() ! Rejected(w, "Busy")
 
-    case Terminated(r) if r == routee ⇒
+    //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
+    case Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
+    case NoWorkLeft          ⇒ context become waitingToTerminate(outstanding)
+
+    //This is a fun state.  The Worker is told to stop, but needs to both wait for Unregister and for Work to complete
+    case Worker.Retire ⇒
+      queue ! Unregister
+      context become unregisteringOutstanding(outstanding)
+  }
+
+  //This state waits for Work to complete, and then stops the Actor
+  def waitingToTerminate(outstanding: Outstanding): Receive = routeeResponse(outstanding, finish) orElse {
+    case qs: QueryStatus     ⇒ qs reply WaitingToTerminate
+
+    //ignore these, since all we care about is the Work completing one way or another
+    case Hold(x)             ⇒
+    case Retire              ⇒
+    case Terminated(`queue`) ⇒
+    case NoWorkLeft          ⇒
+
+    case w: Work             ⇒ sender() ! Rejected(w, "Retiring") //safety first
+
+    case WorkFinished        ⇒ finish() //work is done, terminate
+  }
+
+  //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
+  def unregistering: Receive = {
+    case qs: QueryStatus      ⇒ qs reply Unregistering
+
+    //ignore these
+    case Hold(x)              ⇒
+    case Retire               ⇒
+    case Terminated(`routee`) ⇒
+    case NoWorkLeft           ⇒
+
+    case w: Work              ⇒ sender ! Rejected(w, "Retiring") //safety first
+
+    //Either we Unregistered successfully, or the Queue died.  terminate
+    case Unregistered         ⇒ finish()
+    case Terminated(`queue`)  ⇒ finish()
+
+  }
+
+  //in this state we are we waiting for 2 things to happen, Unregistration and Work completing
+  //the Worker will shift its state based on which one happens first
+  def unregisteringOutstanding(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
+    case qs: QueryStatus     ⇒ qs reply UnregisteringOutstanding
+
+    //ignore these
+    case Hold(x)             ⇒
+    case Retire              ⇒
+    case NoWorkLeft          ⇒
+
+    case w: Work             ⇒ sender ! Rejected(w, "Retiring") //safety first
+
+    //Either Unregistration completed, or the Queue died, in either way, we just need to wait for Work to finish
+    case Unregistered        ⇒ context become waitingToTerminate(outstanding)
+    case Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
+
+    //work completed on way or another, just waiting for the Unregister ack
+    case WorkFinished        ⇒ context become unregistering
+  }
+
+  def becomeUnregistering(): Unit = {
+    queue ! Unregister(self)
+    context become unregistering
+  }
+
+  //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
+  def routeeResponse(outstanding: Outstanding, onRouteeFailure: () ⇒ Unit): Receive = {
+    case Terminated(`routee`) ⇒ {
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
-      context become waitingForRoutee(None)
-      retrieveRoutee()
-
-    case qs: QueryStatus ⇒ qs reply Working
-
-    case Worker.Retire   ⇒ context become retiring(Some(outstanding))
-
-  }: Receive).orElse(waitingResult(outstanding, false))
-
-  def retiring(outstanding: Option[Outstanding]): Receive = ({
-    case Terminated(_)   ⇒ //ignore when retiring
-    case qs: QueryStatus ⇒ qs reply Retiring
-    //TODO: >IF< outstanding was populated, this would drop work, however that doesn't appear to be a valid state, maybe refactor the retiring state a bit
-    case Unregistered    ⇒ finish()
-    case Retire          ⇒ //already retiring
-    case Hold(period)    ⇒ //ignore
-
-  }: Receive) orElse (
-    if (outstanding.isDefined)
-      waitingResult(outstanding.get, true)
-    else {
-      case w: Work ⇒
-        sender ! Rejected(w, "Retiring")
-        finish()
+      onRouteeFailure()
     }
-  )
-
-  def waitingResult(
-    outstanding: Outstanding,
-    isRetiring:  Boolean
-  ): Receive = {
-    val handleResult: Receive =
-      (resultChecker orElse ({
-
-        case m ⇒ Left(s"Unmatched Result '${descriptionOf(m)}' from the backend service, update your ResultChecker if you want to prevent it from being treated as an error.")
-
-      }: ResultChecker)).andThen[Unit] {
-
-        case Right(result) ⇒
-          outstanding.success(result)
-          workFinished(isRetiring)
+    case x if sender() == routee ⇒ {
+      val result: Either[String, Any] = resultChecker.applyOrElse(x, failedResultMatch)
+      result match {
+        case Right(res) ⇒
+          outstanding.success(res)
+          self ! WorkFinished
 
         case Left(e) ⇒
           log.warning(s"Error $e returned by routee in regards to running work $outstanding")
-          retryOrAbandon(outstanding, isRetiring, e)
+          retryOrAbandon(outstanding, e)
       }
-
-    ({
-      case RouteeTimeout ⇒
-        log.warning(s"Routee ${routee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
-        outstanding.timeout()
-        workFinished(isRetiring)
-
-      case w: Work ⇒ sender ! Rejected(w, "busy") //just in case
-
-    }: Receive) orElse handleResult
-  }
-
-  def workFinished(isRetiring: Boolean): Unit = {
-    if (isRetiring) {
-      finish()
-    } else {
-      askMoreWork()
     }
+    case RouteeTimeout ⇒
+      log.warning(s"Routee ${routee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+      outstanding.timeout()
+      self ! WorkFinished
+
   }
 
-  private def retryOrAbandon(
-    outstanding: Outstanding,
-    isRetiring:  Boolean,
-    error:       Any
-  ): Unit = {
+  def failedResultMatch(x: Any): Either[String, Any] = {
+    Left(s"Unmatched Result '${descriptionOf(x)}' from the backend service, update your ResultChecker if you want to prevent it from being treated as an error.")
+  }
+
+  private def retryOrAbandon(outstanding: Outstanding, error: Any): Unit = {
     outstanding.cancel()
-    //why do we fail if there is a delayBeforeNextWork? Is this because of the subsequent 'sendWorkToDelegatee' call?
+    //why do we fail if there is a delayBeforeNextWork? Is this because of the subsequent 'sendWorkToRoutee' call?
     if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
       log.debug(s"Retry work $outstanding")
-      sendWorkToDelegatee(outstanding.work, outstanding.retried + 1)
+      sendWorkToRoutee(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
         val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
@@ -180,13 +166,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       }
       log.warning(s"$message, work abandoned")
       outstanding.fail(WorkFailed(message + s" due to ${descriptionOf(error)}"))
-      if (isRetiring) finish()
-      else
-        askMoreWork()
+      self ! WorkFinished
     }
   }
 
-  private def sendWorkToDelegatee(work: Work, retried: Int): Unit = {
+  private def sendWorkToRoutee(work: Work, retried: Int): Unit = {
     val timeoutHandle: Cancellable =
       delayBeforeNextWork match {
         case Some(d) ⇒
@@ -253,29 +237,25 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 object Worker {
 
   private case object RouteeTimeout
-  private case class RouteeReceived(routee: ActorRef)
   case object Retire
 
   sealed trait WorkerStatus
-  case object Starting extends WorkerStatus
-  case object Retiring extends WorkerStatus
+  case object Unregistering extends WorkerStatus
+  case object UnregisteringOutstanding extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
+  case object WaitingToTerminate extends WorkerStatus
 
   case class Hold(period: FiniteDuration)
+  private[queue] case object WorkFinished
 
   class DefaultWorker(
-    protected val queue:         QueueRef,
-    protected val backend:       Backend,
-    protected val resultChecker: ResultChecker
+    val queue:         QueueRef,
+    val routee:        ActorRef,
+    val resultChecker: ResultChecker
   ) extends Worker
 
-  def default(
-    queue:   QueueRef,
-    backend: Backend
-  )(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, backend, resultChecker)).withDeploy(Deploy.local)
+  def default(queue: QueueRef, routee: ActorRef)(resultChecker: ResultChecker): Props = {
+    Props(new DefaultWorker(queue, routee, resultChecker)).withDeploy(Deploy.local)
   }
-
 }
-

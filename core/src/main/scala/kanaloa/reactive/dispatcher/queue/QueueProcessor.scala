@@ -14,6 +14,7 @@ import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.MessageScheduler
 
+import util.{Failure, Success}
 import scala.concurrent.duration._
 
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
@@ -35,14 +36,13 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       case _: Exception ⇒ Restart
     }
 
-  protected def workerProp(queueRef: QueueRef): Props = Worker.default(queue, backend)(resultChecker)
+  protected def workerProp(queueRef: QueueRef, routee: ActorRef): Props = Worker.default(queue, routee)(resultChecker)
 
   def receive: Receive = {
-    val workers = (1 to settings.startingPoolSize).map(_ ⇒ createWorker()).toSet
+    (1 to settings.startingPoolSize).foreach(x ⇒ createRoutee())
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
-
-    monitoring()(workers)
+    monitoring()(Set())
   }
 
   def monitoring(resultHistory: ResultHistory = Vector.empty)(pool: WorkerPool): Receive = {
@@ -59,9 +59,14 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         val diff = toPoolSize - pool.size
         if (diff > 0) {
           metricsCollector ! Metric.PoolSize(newPoolSize)
-          context become monitoring(resultHistory)(pool ++ (1 to diff).map(_ ⇒ createWorker()))
+          (1 to diff).foreach { x ⇒
+            createRoutee()
+          }
         } else if (diff < 0)
           pool.take(-diff).foreach(_ ! Worker.Retire)
+
+      case RouteeCreated(routee) ⇒
+        context become monitoring(resultHistory)(pool + createWorker(routee))
 
       case WorkCompleted(worker, duration) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
@@ -117,9 +122,21 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     case _ ⇒ //Ignore
   }
 
-  private def createWorker(): WorkerRef = {
+  private def createRoutee(): Unit = {
+    import context.dispatcher //do we want to pass this in?
+    backend(this.context).onComplete {
+      case Success(routee) ⇒ self ! RouteeCreated(routee)
+      case Failure(ex) ⇒ {
+        log.error(ex, s"could not create new Routee")
+        //?
+      }
+    }
+  }
+
+  private def createWorker(routee: ActorRef): WorkerRef = {
+    val timestamp = System.nanoTime()
     val worker = context.actorOf(
-      workerProp(queue),
+      workerProp(queue, routee),
       s"worker-$workerCount"
     )
     workerCount += 1
@@ -208,6 +225,7 @@ object QueueProcessor {
   case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
+  private[queue] case class RouteeCreated(routee: ActorRef)
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes, retireQueue: Boolean = true)
   private case object ShutdownTimeout
 
