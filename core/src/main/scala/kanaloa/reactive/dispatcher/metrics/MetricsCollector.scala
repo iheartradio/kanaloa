@@ -12,7 +12,13 @@ import kanaloa.util.Java8TimeExtensions._
 import akka.agent.Agent
 
 /**
- *
+ * A metrics collector to which all [[Metric]] are sent to.
+  *  It forwards incoming [[Metric]]s to [[reporter]].
+  *  It collects performance [[Sample]] from [[WorkCompleted]] and [[WorkFailed]]
+  *  when the system is in fullyUtilized state, namely when number of idle workers is less than [[MetricsCollectorSettings]]
+  *  It can be subscribed using [[Subscribe]] message.
+  *  It publishes [[Sample]]s collected to subscribers.\
+  *  It also publishes [[PartialUtilization]] number to subscribers.
  * @param reporter
  * @param settings
  */
@@ -60,11 +66,6 @@ class MetricsCollector(
     }
   }
 
-  /**
-   *
-   * @param s
-   * @return
-   */
   def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
     case PoolIdle(size) if size > thresholdOfIdleWorkers ⇒
       tryComplete(s)
@@ -89,9 +90,7 @@ class MetricsCollector(
 
   }
 
-  /**
-   * keep it low when the pool isn't fully occupied.
-   */
+
   def partialUtilized(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
     case PoolIdle(size) if size <= thresholdOfIdleWorkers ⇒
       context become fullyUtilized(QueueStatus(poolSize = poolSize))
