@@ -11,18 +11,24 @@ import kanaloa.util.FiniteCollection._
 import kanaloa.util.Java8TimeExtensions._
 import akka.agent.Agent
 
+/**
+ *
+ * @param reporter
+ * @param settings
+ */
 class MetricsCollector(
   reporter: Option[Reporter],
-  settings: Settings
-) extends Actor {
+  settings: MetricsCollectorSettings
 
+) extends Actor {
+  import settings._
   var subscribers: Set[ActorRef] = Set.empty
 
   val scheduledSampling = {
     import context.dispatcher
     context.system.scheduler.schedule(
-      settings.sampleRate,
-      settings.sampleRate,
+      sampleRate,
+      sampleRate,
       self,
       AddSample
     )
@@ -33,7 +39,7 @@ class MetricsCollector(
     super.postStop()
   }
 
-  def receive = casual(None)
+  def receive = partialUtilized(None)
 
   def handleSubscriptions: Receive = {
     case Subscribe(s) ⇒
@@ -48,7 +54,9 @@ class MetricsCollector(
 
   def publishUtilization(idle: Int, poolSizeO: Option[Int]): Unit = {
     poolSizeO.foreach { poolSize ⇒
-      publish(PartialUtilization(poolSize - idle))
+      val utilization = poolSize - idle
+      publish(PartialUtilization(utilization))
+      reporter.foreach(_.report(PoolUtilized(utilization)))
     }
   }
 
@@ -57,11 +65,11 @@ class MetricsCollector(
    * @param s
    * @return
    */
-  def busy(s: QueueStatus): Receive = handleSubscriptions orElse {
-    case PoolIdle(size) if size > 0 ⇒
+  def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
+    case PoolIdle(size) if size > thresholdOfIdleWorkers ⇒
       tryComplete(s)
       publishUtilization(size, s.poolSize)
-      context become casual(s.poolSize)
+      context become partialUtilized(s.poolSize)
 
     case metric: Metric ⇒
       handle(metric) {
@@ -84,19 +92,20 @@ class MetricsCollector(
   /**
    * keep it low when the pool isn't fully occupied.
    */
-  def casual(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
-    case PoolIdle(size) if size == 0 ⇒
-      context become busy(QueueStatus(poolSize = poolSize))
+  def partialUtilized(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
+    case PoolIdle(size) if size <= thresholdOfIdleWorkers ⇒
+      context become fullyUtilized(QueueStatus(poolSize = poolSize))
     case PoolIdle(idle) ⇒
       publishUtilization(idle, poolSize)
     case metric: Metric ⇒
       handle(metric) {
-        case PoolSize(s) ⇒ context become casual(Some(s))
+        case PoolSize(s) ⇒
+          context become partialUtilized(Some(s))
       }
     case AddSample ⇒
   }
 
-  private def continue(qs: QueueStatus): Unit = context become busy(qs)
+  private def continue(qs: QueueStatus): Unit = context become fullyUtilized(qs)
 
   /**
    *
@@ -104,7 +113,7 @@ class MetricsCollector(
    * @return a reset status if completes, the original status if not.
    */
   private def tryComplete(status: QueueStatus): QueueStatus = {
-    status.toSample(settings.minSampleDuration).fold(status) { sample ⇒
+    status.toSample(minSampleDuration).fold(status) { sample ⇒
       publish(sample)
       status.copy(workDone = 0, start = Time.now)
     }
@@ -124,12 +133,12 @@ object MetricsCollector {
 
   def props(
     reporter: Option[Reporter],
-    settings: Settings         = Settings()
+    settings: MetricsCollectorSettings = MetricsCollectorSettings()
   ): Props = Props(new MetricsCollector(reporter, settings))
 
   def apply(
     reporter: Option[Reporter],
-    settings: Settings         = Settings()
+    settings: MetricsCollectorSettings = MetricsCollectorSettings()
   )(implicit system: ActorSystem): ActorRef = system.actorOf(props(reporter, settings))
 
   case object AddSample
@@ -141,10 +150,12 @@ object MetricsCollector {
    *
    * @param sampleRate
    * @param minSampleDurationRatio minimum sample duration ratio to sample rate. Sample duration less than this will be abandoned.
+   * @param thresholdOfIdleWorkers The maximum number of idle workers that is allowed for the system to be considered as fully utilized
    */
-  case class Settings(
+  case class MetricsCollectorSettings(
     sampleRate:             FiniteDuration = 1.second,
-    minSampleDurationRatio: Double         = 0.3
+    minSampleDurationRatio: Double         = 0.3,
+    thresholdOfIdleWorkers: Int            = 0
   ) {
     val minSampleDuration: Duration = sampleRate * minSampleDurationRatio
   }

@@ -13,7 +13,7 @@ object Reporter {
     import net.ceedubs.ficus.Ficus._
     import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 
-    val defaultSettings = config.as[Option[StatsDMetricsCollectorSettings]]("metrics.statsd").filter(_ ⇒ config.getOrElse("metrics.enabled", true))
+    val defaultSettings = config.as[Option[StatsDMetricsReporterSettings]]("metrics.statsd").filter(_ ⇒ config.getOrElse("metrics.enabled", true))
 
     defaultSettings.map(StatsDReporter(dispatcherName, _))
   }

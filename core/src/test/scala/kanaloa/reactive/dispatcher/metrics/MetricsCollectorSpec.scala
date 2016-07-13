@@ -11,7 +11,7 @@ import org.scalatest.concurrent.Eventually._
 class MetricsCollectorSpec extends SpecWithActorSystem {
   val waitDuration = 30.milliseconds
   def initMetricsCollector(minSampleDurationRatio: Double = 0)(implicit system: ActorSystem): ActorRef = {
-    val mc = system.actorOf(MetricsCollector.props(None, Settings(sampleRate = waitDuration / 2, minSampleDurationRatio = minSampleDurationRatio)))
+    val mc = system.actorOf(MetricsCollector.props(None, MetricsCollectorSettings(sampleRate = waitDuration / 2, minSampleDurationRatio = minSampleDurationRatio)))
     mc ! PoolIdle(0)
     mc ! PoolSize(10)
     mc ! Subscribe(self)

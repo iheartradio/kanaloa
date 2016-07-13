@@ -39,7 +39,7 @@ trait Dispatcher extends Actor {
   context watch processor
 
   private val autoScaler = settings.autoScaling.foreach { s ⇒
-    context.actorOf(AutoScaling.default(queue, processor, s, metricsCollector), name + "-auto-scaler")
+    context.actorOf(AutoScaling.default(processor, s, metricsCollector), name + "-auto-scaler")
   }
 
   def receive: Receive = ({
@@ -55,12 +55,15 @@ object Dispatcher {
   case class Settings(
     workTimeout:     FiniteDuration                 = 1.minute,
     workRetry:       Int                            = 0,
+    updateInterval:  FiniteDuration                 = 1.second,
     dispatchHistory: DispatchHistorySettings,
     workerPool:      ProcessingWorkerPoolSettings,
     circuitBreaker:  Option[CircuitBreakerSettings],
     backPressure:    Option[BackPressureSettings],
     autoScaling:     Option[AutoScalingSettings]
-  )
+  ) {
+    val metricsCollectorSettings = MetricsCollector.MetricsCollectorSettings(updateInterval)
+  }
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
@@ -144,7 +147,7 @@ object PushingDispatcher {
     rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
-    val metricsCollector = MetricsCollector(reporter) //todo: add metrics collector settings here
+    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings)
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker)).withDeploy(Deploy.local)
   }
@@ -177,7 +180,7 @@ object PullingDispatcher {
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
-    val metricsCollector = MetricsCollector(reporter) //todo: parse metrics collector settings
+    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings.copy(thresholdOfIdleWorkers = 2)) //for pulling Dispatchers because only a new idle worker triggers a pull of work the threshold should be set as 2
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }

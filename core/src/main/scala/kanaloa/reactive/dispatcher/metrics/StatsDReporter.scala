@@ -25,7 +25,7 @@ class StatsDReporter(
    */
   def this(
     prefix:   String,
-    settings: StatsDMetricsCollectorSettings
+    settings: StatsDMetricsReporterSettings
   )(implicit system: ActorSystem) =
     this(new StatsDClient(system, settings.host, settings.port, prefix = prefix), settings.eventSampleRate, settings.statusSampleRate)
 
@@ -77,7 +77,7 @@ object StatsDReporter {
    * @param dispatcherName used to determine the metrics prefix (`namespace.dispatcherName`)
    * @param settings
    */
-  def apply(dispatcherName: String, settings: StatsDMetricsCollectorSettings)(implicit system: ActorSystem): StatsDReporter = {
+  def apply(dispatcherName: String, settings: StatsDMetricsReporterSettings)(implicit system: ActorSystem): StatsDReporter = {
     val prefix: String = List(settings.namespace, dispatcherName).filter(_.nonEmpty).mkString(".")
 
     new StatsDReporter(prefix, settings)

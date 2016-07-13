@@ -180,7 +180,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionFrequency = 100ms
+              actionInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -227,6 +227,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pulling {
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 3
               minPoolSize = 1
@@ -238,7 +239,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionFrequency = 100ms
+              actionInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -288,12 +289,13 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pushing {
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 10
               minPoolSize = 2
             }
             autoScaling {
-              actionFrequency = 10ms
+              actionInterval = 10ms
               downsizeAfterUnderUtilization = 100ms
             }
           }
