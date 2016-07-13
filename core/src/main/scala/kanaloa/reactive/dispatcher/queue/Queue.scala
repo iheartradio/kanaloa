@@ -126,8 +126,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! Metric.WorkQueueLength(status.workBuffer.length)
-        metricsCollector ! Metric.PoolIdle(status.queuedWorkers.length)
+        metricsCollector ! MetricsCollector.DispatchResult(status.queuedWorkers.length, status.workBuffer.length)
         if (dispatchHistoryLength > 0)
           status.copy(dispatchHistory = updatedHistory)
         else status

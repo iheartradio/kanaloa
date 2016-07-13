@@ -180,7 +180,8 @@ object PullingDispatcher {
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
-    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings.copy(thresholdOfIdleWorkers = 2)) //for pulling Dispatchers because only a new idle worker triggers a pull of work the threshold should be set as 2
+    //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
+    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings.copy(fullyUtilized = _ <= 2))
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }

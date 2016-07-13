@@ -43,9 +43,11 @@ class StatsDReporter(
   val failureSampleRate: Double = 1.0
 
   def report(metric: Metric): Unit = metric match {
-    case WorkEnqueued         ⇒ increment("queue.enqueued")
-    case EnqueueRejected      ⇒ increment("queue.enqueueRejected")
-    case WorkCompleted        ⇒ increment("work.completed")
+    case WorkEnqueued    ⇒ increment("queue.enqueued")
+    case EnqueueRejected ⇒ increment("queue.enqueueRejected")
+    case WorkCompleted(processTime) ⇒
+      increment("work.completed")
+      statsd.timing("queue.avgProcessTime", processTime.toMillis.toInt, eventSampleRate)
     case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
     case WorkTimedOut         ⇒ increment("work.timedOut")
     case CircuitBreakerOpened ⇒ increment("queue.circuitBreakerOpened")
@@ -56,16 +58,11 @@ class StatsDReporter(
     case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
-    case ProcessTime(duration) ⇒
-      statsd.timing("queue.avgProcessTime", duration.toMillis.toInt, eventSampleRate)
-
     case WorkQueueExpectedWaitTime(duration) ⇒
       statsd.timing("queue.waitTime", duration.toMillis.toInt, eventSampleRate)
 
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
-
-    case PoolIdle(_) ⇒ //ignore this metric, it is mostly for metrics control
 
   }
 }

@@ -14,12 +14,10 @@ import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo,
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
-import org.mockito.Mockito._
 import kanaloa.reactive.dispatcher.DurationFunctions._
 import scala.concurrent.duration._
 
-class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionValues with Eventually {
+class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventually {
   import AutoScalingScope._
 
   "AutoScaling" should {
@@ -185,7 +183,7 @@ class AutoScalingSpec extends SpecWithActorSystem with MockitoSugar with OptionV
       val queue = TestProbe()
       val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.simple))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
-      val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(actionInterval = 10.minutes), mc))
+      val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(scalingInterval = 10.minutes), mc))
       watch(a)
       a ! PartialUtilization(5)
       processor ! Shutdown(None, 100.milliseconds, false)
@@ -200,7 +198,7 @@ class AutoScalingScope(implicit system: ActorSystem)
   val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
   val defaultSettings: AutoScalingSettings = AutoScalingSettings(
     chanceOfScalingDownWhenFull = 0.3,
-    actionInterval = 1.hour, //manual action only
+    scalingInterval = 1.hour, //manual action only
     explorationRatio = 0.5,
     downsizeRatio = 0.8,
     downsizeAfterUnderUtilization = 72.hours,

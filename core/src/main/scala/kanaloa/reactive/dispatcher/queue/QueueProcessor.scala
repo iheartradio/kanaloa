@@ -25,7 +25,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   val metricsCollector: ActorRef
   type ResultHistory = Vector[Boolean]
   val resultHistoryLength: Int
-  val workerCount = new AtomicInteger(1)
+  var workerCount = 0
   protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool)
 
   metricsCollector ! Metric.PoolSize(settings.startingPoolSize)
@@ -65,8 +65,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
       case WorkCompleted(worker, duration) ⇒
         context become monitoring(resultHistory.enqueueFinite(true, resultHistoryLength))(pool)
-        metricsCollector ! Metric.ProcessTime(duration)
-        metricsCollector ! Metric.WorkCompleted
+        metricsCollector ! Metric.WorkCompleted(duration)
 
       case WorkFailed(_) ⇒
         workError()
@@ -121,8 +120,9 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   private def createWorker(): WorkerRef = {
     val worker = context.actorOf(
       workerProp(queue),
-      s"worker-${workerCount.incrementAndGet()}"
+      s"worker-$workerCount"
     )
+    workerCount += 1
     context watch worker
     worker
   }

@@ -15,28 +15,28 @@ import scala.language.implicitConversions
 import scala.util.Random
 
 /**
-  *  Auto-scales the work pool to an optimal size that provides the highest throughput.
-  *  This auto-scaling works best when you expect the pool size to performance function
-  *  to be a convex function, with which you can find a global optimal by walking towards
-  *  a better size. For example, a CPU bound service may have an optimal worker pool size
-  *  tied to the CPU cores available. When your service is IO bound, the optimal size is
-  *  bound to optimal number of concurrent connections to that IO service - e.g. a 4 node
-  *  Elasticsearch cluster may handle 4-8 concurrent requests at optimal speed.
-  *  The dispatchers keep track of throughput at each pool size and perform the following
-  *  three resizing operations (one at a time) periodically:
-  *  1. Downsize if it hasn't seen all workers ever fully utilized for a period of time.
-  *  2. Explore to a random nearby pool size to try and collect throughput metrics.
-  *  3. Optimize to a nearby pool size with a better (than any other nearby sizes)
-  *     throughput metrics.
-  *  When the pool is fully-utilized (i.e. all workers are busy), it randomly chooses
-  *  between exploring and optimizing. When the pool has not been fully-utilized for a period of
-  *  time, it will downsize the pool to the last seen max utilization multiplied by
-  *  a configurable ratio.
-  *
-  *  By constantly exploring and optimizing, the resizer will eventually walk to the optimal
-  *  size and remain nearby.
-  *  When the optimal size changes it will start walking towards the new one.
-  */
+ *  Auto-scales the work pool to an optimal size that provides the highest throughput.
+ *  This auto-scaling works best when you expect the pool size to performance function
+ *  to be a convex function, with which you can find a global optimal by walking towards
+ *  a better size. For example, a CPU bound service may have an optimal worker pool size
+ *  tied to the CPU cores available. When your service is IO bound, the optimal size is
+ *  bound to optimal number of concurrent connections to that IO service - e.g. a 4 node
+ *  Elasticsearch cluster may handle 4-8 concurrent requests at optimal speed.
+ *  The dispatchers keep track of throughput at each pool size and perform the following
+ *  three resizing operations (one at a time) periodically:
+ *  1. Downsize if it hasn't seen all workers ever fully utilized for a period of time.
+ *  2. Explore to a random nearby pool size to try and collect throughput metrics.
+ *  3. Optimize to a nearby pool size with a better (than any other nearby sizes)
+ *     throughput metrics.
+ *  When the pool is fully-utilized (i.e. all workers are busy), it randomly chooses
+ *  between exploring and optimizing. When the pool has not been fully-utilized for a period of
+ *  time, it will downsize the pool to the last seen max utilization multiplied by
+ *  a configurable ratio.
+ *
+ *  By constantly exploring and optimizing, the resizer will eventually walk to the optimal
+ *  size and remain nearby.
+ *  When the optimal size changes it will start walking towards the new one.
+ */
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val processor: QueueProcessorRef
   val metricsCollector: ActorRef
@@ -53,7 +53,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     super.preStart()
     metricsCollector ! Subscribe(self)
     import context.dispatcher
-    actionScheduler = Some(context.system.scheduler.schedule(actionInterval, actionInterval, self, OptimizeOrExplore))
+    actionScheduler = Some(context.system.scheduler.schedule(scalingInterval, scalingInterval, self, OptimizeOrExplore))
   }
 
   override def postStop(): Unit = {

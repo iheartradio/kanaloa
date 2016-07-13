@@ -9,7 +9,6 @@ object Dependencies {
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
-    "com.typesafe.akka" %% "akka-agent" % Versions.akka,
     "com.typesafe.akka" %% "akka-testkit" % Versions.akka % "test",
     "com.typesafe.akka" %% "akka-multi-node-testkit" % Versions.akka % "test",
     "com.typesafe.akka" %% "akka-slf4j" % Versions.akka

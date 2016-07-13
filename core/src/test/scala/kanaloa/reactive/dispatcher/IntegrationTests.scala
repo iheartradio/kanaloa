@@ -180,7 +180,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionInterval = 100ms
+              scalingInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -239,7 +239,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionInterval = 100ms
+              scalingInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -295,7 +295,7 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
               minPoolSize = 2
             }
             autoScaling {
-              actionInterval = 10ms
+              scalingInterval = 10ms
               downsizeAfterUnderUtilization = 100ms
             }
           }

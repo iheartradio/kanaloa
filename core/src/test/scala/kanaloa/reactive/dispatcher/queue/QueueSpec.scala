@@ -3,7 +3,6 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
-import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
 import kanaloa.reactive.dispatcher.metrics.{Reporter, Metric, MetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
@@ -384,8 +383,8 @@ class QueueMetricsSpec extends SpecWithActorSystem {
       queue ! Enqueue("d")
       delegatee.expectMsg("d")
 
-      receivedMetrics should contain allOf (Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut)
-      receivedMetrics.collect { case x: ProcessTime ⇒ x } should have size 1
+      receivedMetrics should contain allOf (Metric.WorkFailed, Metric.WorkTimedOut)
+      receivedMetrics.collect { case x: Metric.WorkCompleted ⇒ x } should have size 1
     }
   }
 }
