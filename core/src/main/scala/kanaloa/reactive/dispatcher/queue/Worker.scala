@@ -26,6 +26,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
   override def preStart(): Unit = {
+    super.preStart()
     context watch queue
     context watch routee
     queue ! RequestWork(self)

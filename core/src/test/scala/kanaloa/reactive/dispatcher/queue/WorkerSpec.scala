@@ -11,17 +11,24 @@ import org.scalatest.concurrent.Eventually
 case class Result(value: Any)
 case class Fail(value: String)
 
-abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
+object SimpleResultChecker extends ResultChecker {
 
-  def resultChecker: ResultChecker = {
-    case Result(v) ⇒ Right(v)
-    case Fail(v)   ⇒ Left(v)
+  override def apply(v1: Any): Either[String, Any] = {
+    v1 match {
+      case Result(v) ⇒ Right(v): Either[String, Any]
+      case Fail(v)   ⇒ Left(v): Either[String, Any]
+    }
   }
+
+  override def isDefinedAt(x: Any): Boolean = true
+}
+
+abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
 
   def createWorker = {
     val queueProbe = TestProbe("queue")
     val routeeProbe = TestProbe("routee")
-    val worker = TestActorRef[Worker](Worker.default(queueProbe.ref, routeeProbe.ref)(resultChecker))
+    val worker = TestActorRef[Worker](Worker.default(queueProbe.ref, routeeProbe.ref)(SimpleResultChecker))
     (queueProbe, routeeProbe, worker)
   }
 
