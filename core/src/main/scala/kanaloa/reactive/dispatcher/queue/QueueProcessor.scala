@@ -64,7 +64,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     case RouteeCreated(routee) ⇒
       workerPool = workerPool + createWorker(routee)
 
-    case RouteeFailed ⇒ //?
+    case RouteeFailed(ex) ⇒
+      log.error(ex, "Failed to create Routee")
 
       case WorkCompleted(worker, duration) ⇒
         resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
@@ -136,10 +137,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     import context.dispatcher //do we want to pass this in?
     backend(this.context).onComplete {
       case Success(routee) ⇒ self ! RouteeCreated(routee)
-      case Failure(ex) ⇒ {
-        log.error(ex, s"could not create new Routee")
-        self ! RouteeFailed
-      }
+      case Failure(ex)     ⇒ self ! RouteeFailed(ex)
     }
   }
 
@@ -215,7 +213,7 @@ object QueueProcessor {
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   private[queue] case class RouteeCreated(routee: ActorRef)
-  private[queue] case object RouteeFailed
+  private[queue] case class RouteeFailed(ex: Throwable)
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes)
   private case object ShutdownTimeout
 
