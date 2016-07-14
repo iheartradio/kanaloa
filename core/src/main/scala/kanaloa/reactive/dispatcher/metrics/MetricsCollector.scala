@@ -1,24 +1,49 @@
 package kanaloa.reactive.dispatcher.metrics
 
-import akka.actor.ActorSystem
-import com.typesafe.config.{ConfigFactory, Config}
+import java.time.{LocalDateTime ⇒ Time}
 
-trait MetricsCollector {
-  def send(metric: Metric): Unit
-}
+import akka.actor._
+import kanaloa.reactive.dispatcher.PerformanceSampler
+import kanaloa.reactive.dispatcher.PerformanceSampler.PerformanceSamplerSettings
+import kanaloa.reactive.dispatcher.metrics.Metric._
+import kanaloa.reactive.dispatcher.metrics.MetricsCollector._
 
-object NoOpMetricsCollector extends MetricsCollector {
-  def send(metric: Metric): Unit = () // Do nothing
-}
+import scala.concurrent.duration._
+import kanaloa.util.Java8TimeExtensions._
 
-object MetricsCollector {
-  /** If statsd config exists, create StatsD, otherwise NoOp */
-  def fromConfig(dispatcherName: String, config: Config)(implicit system: ActorSystem): MetricsCollector = {
-    import net.ceedubs.ficus.Ficus._
-    import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+/**
+ *  A metrics collector to which all [[Metric]] are sent to.
+ *  This can be mixed in to inject other metrics related behavior, see [[PerformanceSampler]]
+ */
+trait MetricsCollector extends Actor {
 
-    val defaultSettings = config.as[Option[StatsDMetricsCollectorSettings]]("metrics.statsd").filter(_ ⇒ config.getOrElse("metrics.enabled", true))
+  def reporter: Option[Reporter]
 
-    defaultSettings.fold(NoOpMetricsCollector: MetricsCollector)(StatsDMetricsCollector(dispatcherName, _))
+  protected def handle(metric: Metric)(pf: PartialFunction[Metric, Unit]): Unit = {
+    report(metric)
+    pf.applyOrElse(metric, (_: Metric) ⇒ ())
   }
+
+  protected def report(metric: Metric): Unit =
+    if (!reporter.isEmpty) reporter.get.report(metric) //better performance than Option.foreach
+
+}
+
+private[dispatcher] object MetricsCollector {
+
+  class MetricsCollectorImpl(
+    val reporter: Option[Reporter],
+    val settings: PerformanceSamplerSettings
+  ) extends MetricsCollector with PerformanceSampler
+
+  def props(
+    reporter: Option[Reporter],
+    settings: PerformanceSamplerSettings = PerformanceSamplerSettings()
+  ): Props = Props(new MetricsCollectorImpl(reporter, settings))
+
+  def apply(
+    reporter: Option[Reporter],
+    settings: PerformanceSamplerSettings = PerformanceSamplerSettings()
+  )(implicit system: ActorSystem): ActorRef = system.actorOf(props(reporter, settings))
+
 }

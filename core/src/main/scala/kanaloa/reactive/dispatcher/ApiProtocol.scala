@@ -9,6 +9,11 @@ object ApiProtocol {
   sealed trait Response
   sealed trait WorkException extends Response
 
+  /**
+   *
+   * @param replyTo the ref the reply will be sent to, if not set, it will use sender instead
+   * @param sender
+   */
   @SerialVersionUID(1L)
   case class QueryStatus(replyTo: Option[ActorRef] = None)(implicit sender: ActorRef) extends Request {
     def reply(msg: Any)(implicit replier: ActorRef): Unit = {

@@ -10,7 +10,6 @@ object Metric {
   case object WorkEnqueued extends Event
   case object EnqueueRejected extends Event
 
-  case object WorkCompleted extends Event
   case object WorkTimedOut extends Event
   case object WorkFailed extends Event
 
@@ -20,8 +19,9 @@ object Metric {
 
   case class PoolSize(size: Int) extends Status
   case class PoolUtilized(numWorkers: Int) extends Status
-  case class ProcessTime(duration: Duration) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueExpectedWaitTime(duration: Duration) extends Status
+
+  case class WorkCompleted(processTime: Duration) extends Event with Status
 }
 

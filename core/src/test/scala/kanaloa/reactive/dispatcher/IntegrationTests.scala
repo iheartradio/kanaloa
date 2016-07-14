@@ -180,7 +180,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionFrequency = 100ms
+              scalingInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -227,6 +227,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pulling {
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 3
               minPoolSize = 1
@@ -238,7 +239,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
             }
             autoScaling {
               chanceOfScalingDownWhenFull = 0.1
-              actionFrequency = 100ms
+              scalingInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -288,12 +289,13 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pushing {
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 10
               minPoolSize = 2
             }
             autoScaling {
-              actionFrequency = 10ms
+              scalingInterval = 10ms
               downsizeAfterUnderUtilization = 100ms
             }
           }
@@ -357,7 +359,7 @@ object IntegrationTests {
       case msg ⇒
         concurrent += 1
         val overCap = Math.max(concurrent - optimalSize, 0)
-        val wait = baseWait * (1 + Math.pow(overCap, 1.7))
+        val wait = baseWait * (1.0 + Math.pow(overCap, 1.7))
 
         context.actorOf(Props(classOf[Delay])) ! Reply(sender, wait)
     }

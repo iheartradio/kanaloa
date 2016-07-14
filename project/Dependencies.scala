@@ -4,7 +4,7 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val akka = "2.4.7"
+    val akka = "2.4.8"
   }
 
   val akka = Seq(
@@ -30,6 +30,7 @@ object Dependencies {
   val config = Seq(
     "com.iheart" %% "ficus" % "1.2.6"
   )
+
 
   lazy val settings = Seq(
 

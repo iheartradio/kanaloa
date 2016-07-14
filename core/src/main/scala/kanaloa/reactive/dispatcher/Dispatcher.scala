@@ -5,7 +5,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{Reporter, MetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
@@ -19,7 +19,7 @@ trait Dispatcher extends Actor {
   def settings: Dispatcher.Settings
   def backend: Backend
   def resultChecker: ResultChecker
-  def metricsCollector: MetricsCollector
+  def metricsCollector: ActorRef
 
   protected def queueProps: Props
 
@@ -39,7 +39,7 @@ trait Dispatcher extends Actor {
   context watch processor
 
   private val autoScaler = settings.autoScaling.foreach { s ⇒
-    context.actorOf(AutoScaling.default(queue, processor, s, metricsCollector), name + "-auto-scaler")
+    context.actorOf(AutoScaling.default(processor, s, metricsCollector), name + "-auto-scaler")
   }
 
   def receive: Receive = ({
@@ -55,12 +55,15 @@ object Dispatcher {
   case class Settings(
     workTimeout:     FiniteDuration                 = 1.minute,
     workRetry:       Int                            = 0,
+    updateInterval:  FiniteDuration                 = 1.second,
     dispatchHistory: DispatchHistorySettings,
     workerPool:      ProcessingWorkerPoolSettings,
     circuitBreaker:  Option[CircuitBreakerSettings],
     backPressure:    Option[BackPressureSettings],
     autoScaling:     Option[AutoScalingSettings]
-  )
+  ) {
+    val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
+  }
 
   val defaultBackPressureSettings = BackPressureSettings(
     maxBufferSize = 60000,
@@ -98,15 +101,13 @@ object Dispatcher {
       settings ← componentCfg.atPath("root").as[Option[SettingT]]("root") if enabled
     } yield settings
 
-  def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, MetricsCollector) = {
+  def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, Option[Reporter]) = {
     val cfg = kanaloaConfig(rootConfig)
     val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg))
 
     val settings = toDispatcherSettings(dispatcherCfg)
 
-    val metricsCollector = MetricsCollector.fromConfig(dispatcherName: String, dispatcherCfg)
-
-    (settings, metricsCollector)
+    (settings, Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
   }
 
 }
@@ -115,20 +116,21 @@ case class PushingDispatcher(
   name:             String,
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector,
+  metricsCollector: ActorRef,
   resultChecker:    ResultChecker
 )
   extends Dispatcher {
 
   protected lazy val queueProps = settings.backPressure match {
-    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
-    case None     ⇒ Queue.default(settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout), metricsCollector)
+    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
+    case None     ⇒ Queue.default(metricsCollector, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout))
   }
 
   /**
    * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying [[Queue]] and the
    * sender will be set as the receiver of any results of the downstream [[Backend]].  This receive will disable any acks, and in the event of an [[EnqueueRejected]],
    * notify the original sender of the rejection.
+   *
    * @return
    */
   override def extraReceive: Receive = {
@@ -144,7 +146,8 @@ object PushingDispatcher {
     backend:    T,
     rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
+    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings)
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker)).withDeploy(Deploy.local)
   }
@@ -155,7 +158,7 @@ case class PullingDispatcher(
   iterator:         Iterator[_],
   settings:         Settings,
   backend:          Backend,
-  metricsCollector: MetricsCollector = NoOpMetricsCollector,
+  metricsCollector: ActorRef,
   sendResultsTo:    Option[ActorRef],
   resultChecker:    ResultChecker
 ) extends Dispatcher {
@@ -163,8 +166,8 @@ case class PullingDispatcher(
     iterator,
     settings.dispatchHistory,
     WorkSettings(settings.workRetry, settings.workTimeout),
-    sendResultsTo,
-    metricsCollector
+    metricsCollector,
+    sendResultsTo
   )
 }
 
@@ -176,7 +179,9 @@ object PullingDispatcher {
     sendResultsTo: Option[ActorRef],
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, metricsCollector) = Dispatcher.readConfig(name, rootConfig)
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
+    //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
+    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings.copy(fullyUtilized = _ <= 2))
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }

@@ -3,8 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
-import kanaloa.reactive.dispatcher.metrics.Metric.ProcessTime
-import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, NoOpMetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{Reporter, Metric, MetricsCollector}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
@@ -384,14 +383,14 @@ class QueueMetricsSpec extends SpecWithActorSystem {
       queue ! Enqueue("d")
       delegatee.expectMsg("d")
 
-      receivedMetrics should contain allOf (Metric.WorkCompleted, Metric.WorkFailed, Metric.WorkTimedOut)
-      receivedMetrics.collect { case x: ProcessTime ⇒ x } should have size 1
+      receivedMetrics should contain allOf (Metric.WorkFailed, Metric.WorkTimedOut)
+      receivedMetrics.collect { case x: Metric.WorkCompleted ⇒ x } should have size 1
     }
   }
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
-  val metricsCollector: MetricsCollector = NoOpMetricsCollector // To be overridden
+  val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
 
   def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
     QueueProcessor.withCircuitBreaker(queue, backend, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
@@ -421,13 +420,13 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     historySettings: DispatchHistorySettings = DispatchHistorySettings()
   ): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, historySettings, workSetting, sendResultsTo, metricsCollector),
+      iteratorQueueProps(iterator, metricsCollector, historySettings, workSetting, sendResultsTo),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings(), historySettings: DispatchHistorySettings = DispatchHistorySettings()): QueueRef =
     system.actorOf(
-      Queue.default(historySettings, workSetting, metricsCollector),
+      Queue.default(metricsCollector, historySettings, workSetting),
       "default-queue-" + Random.nextInt(100000)
     )
 
@@ -436,7 +435,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     defaultWorkSetting:  WorkSettings            = WorkSettings(),
     historySettings:     DispatchHistorySettings = DispatchHistorySettings()
   ) = system.actorOf(
-    Queue.withBackPressure(historySettings, backPressureSetting, defaultWorkSetting, metricsCollector),
+    Queue.withBackPressure(historySettings, backPressureSetting, metricsCollector, defaultWorkSetting),
     "with-back-pressure-queue" + Random.nextInt(500000)
   )
 }
@@ -445,9 +444,9 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: MetricsCollector = new MetricsCollector {
-    def send(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-  }
+  override val metricsCollector: ActorRef = MetricsCollector(Some(new Reporter {
+    def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
+  }))
 
 }
 
