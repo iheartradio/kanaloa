@@ -39,7 +39,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   override def preStart(): Unit = {
     super.preStart()
-    (1 to settings.startingPoolSize).foreach(_ ⇒ createRoutee())
+    (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
   }
@@ -56,9 +56,10 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       val diff = toPoolSize - workerPool.size
       if (diff > 0) {
         metricsCollector ! Metric.PoolSize(newPoolSize)
-        (1 to diff).foreach(_ =>createRoutee())
+        (1 to diff).foreach(_ =>retrieveRoutee())
       }
       else if (diff < 0)
+
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
     case RouteeCreated(routee) ⇒
@@ -81,8 +82,9 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
-
-    //if workers drop below minimum, we have a problem.
+      if (workerPool.size < settings.minPoolSize) {
+        retrieveRoutee() //kick off the creation of a new Worker
+      }
 
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒
@@ -133,7 +135,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     metricsCollector ! Metric.PoolSize(workerPool.size)
   }
 
-  private def createRoutee(): Unit = {
+  private def retrieveRoutee(): Unit = {
     import context.dispatcher //do we want to pass this in?
     backend(this.context).onComplete {
       case Success(routee) ⇒ self ! RouteeCreated(routee)
