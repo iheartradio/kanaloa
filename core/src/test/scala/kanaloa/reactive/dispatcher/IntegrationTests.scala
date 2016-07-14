@@ -260,7 +260,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
       var lastPoolSize = 0
       import system.dispatcher
 
-      fishForMessage(duration * 3) {
+      fishForMessage(duration * 2) {
         case Terminated(`backend`) ⇒ true //it shutdowns itself after all messages are processed.
         case RunningStatus(pool) ⇒
           lastPoolSize = pool.size
