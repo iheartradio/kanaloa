@@ -40,7 +40,6 @@ import scala.util.Random
 trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   val processor: QueueProcessorRef
   val metricsCollector: ActorRef
-  context watch processor
 
   val settings: AutoScalingSettings
 
@@ -52,6 +51,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   override def preStart(): Unit = {
     super.preStart()
     metricsCollector ! Subscribe(self)
+    context watch processor
     import context.dispatcher
     actionScheduler = Some(context.system.scheduler.schedule(scalingInterval, scalingInterval, self, OptimizeOrExplore))
   }
@@ -68,7 +68,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     }
   }
 
-  final def receive: Receive = {
+  final def receive: Receive = watchingQueueAndProcessor orElse {
     case s: Sample ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
