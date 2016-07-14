@@ -88,9 +88,13 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒
       log.debug(s"Queue ${queue.path} is terminated")
-      workerPool.foreach(_ ! Worker.Retire)
-      delayedMsg(3.minutes, ShutdownTimeout) //TODO: hardcoded
-      context become shuttingDown(None)
+      if (workerPool.isEmpty) {
+        context stop self
+      } else {
+        workerPool.foreach(_ ! Worker.Retire)
+        delayedMsg(3.minutes, ShutdownTimeout) //TODO: hardcoded
+        context become shuttingDown(None)
+      }
 
     case qs: QueryStatus ⇒ qs reply RunningStatus(workerPool)
 
