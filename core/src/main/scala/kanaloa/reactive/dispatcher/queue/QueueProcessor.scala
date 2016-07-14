@@ -1,11 +1,8 @@
 package kanaloa.reactive.dispatcher.queue
 
-
-
-import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
-import kanaloa.reactive.dispatcher.metrics.{Metric, Reporter, MetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
 import kanaloa.reactive.dispatcher.queue.Worker.Hold
@@ -13,8 +10,8 @@ import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.MessageScheduler
 
-import util.{Failure, Success}
 import scala.concurrent.duration._
+import scala.util.{Failure, Success}
 
 trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   import QueueProcessor.WorkerPool
@@ -24,7 +21,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   def settings: ProcessingWorkerPoolSettings
   def resultChecker: ResultChecker
   val metricsCollector: ActorRef
-  def workerFactory : WorkerFactory
+  def workerFactory: WorkerFactory
   type ResultHistory = Vector[Boolean]
   val resultHistoryLength: Int
   var workerCount = 0
@@ -56,9 +53,8 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       val diff = toPoolSize - workerPool.size
       if (diff > 0) {
         metricsCollector ! Metric.PoolSize(newPoolSize)
-        (1 to diff).foreach(_ =>retrieveRoutee())
-      }
-      else if (diff < 0)
+        (1 to diff).foreach(_ ⇒ retrieveRoutee())
+      } else if (diff < 0)
 
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
@@ -68,9 +64,9 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     case RouteeFailed(ex) ⇒
       log.error(ex, "Failed to retrieve Routee")
 
-      case WorkCompleted(worker, duration) ⇒
-        resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
-        metricsCollector ! Metric.WorkCompleted(duration)
+    case WorkCompleted(worker, duration) ⇒
+      resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
+      metricsCollector ! Metric.WorkCompleted(duration)
 
     case WorkFailed(_) ⇒
       recordWorkError()
@@ -176,8 +172,8 @@ case class QueueProcessorWithCircuitBreaker(
   backend:                Backend,
   settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: CircuitBreakerSettings,
-  metricsCollector: ActorRef,
-  workerFactory:    WorkerFactory,
+  metricsCollector:       ActorRef,
+  workerFactory:          WorkerFactory,
   resultChecker:          ResultChecker
 ) extends QueueProcessor {
 
@@ -240,9 +236,9 @@ object QueueProcessor {
     backend:                Backend,
     settings:               ProcessingWorkerPoolSettings,
     circuitBreakerSettings: CircuitBreakerSettings,
-    metricsCollector: ActorRef,
-    workerFactory:    WorkerFactory                = DefaultWorkerFactory
-                        )(resultChecker: ResultChecker): Props =
+    metricsCollector:       ActorRef,
+    workerFactory:          WorkerFactory                = DefaultWorkerFactory
+  )(resultChecker: ResultChecker): Props =
     Props(new QueueProcessorWithCircuitBreaker(
       queue,
       backend,

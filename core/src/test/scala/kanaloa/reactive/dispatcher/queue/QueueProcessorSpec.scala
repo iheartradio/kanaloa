@@ -3,29 +3,27 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkFailed, WorkTimedOut}
-import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown, WorkCompleted}
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker, SpecWithActorSystem}
-import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
 
+import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.Try
-import scala.collection.mutable.{Map ⇒ MMap}
 
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually with MockitoSugar {
+class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
-  type QueueCreator = (ActorRef, Backend, ProcessingWorkerPoolSettings, MetricsCollector, WorkerFactory) ⇒ ResultChecker ⇒ Props
-  type QueueTest = (TestActorRef[QueueProcessor], TestProbe, MetricsCollector, TestBackend, TestWorkerFactory) ⇒ Any
+  type QueueCreator = (ActorRef, Backend, ProcessingWorkerPoolSettings, ActorRef, WorkerFactory) ⇒ ResultChecker ⇒ Props
+  type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
   def withQP(poolSettings: ProcessingWorkerPoolSettings, qCreator: QueueCreator, test: QueueTest) {
     val queueProbe = TestProbe("queue")
     val testBackend = new TestBackend()
     val testWorkerFactory = new TestWorkerFactory()
-    val metricsCollector = mock[MetricsCollector]
-    val qp = TestActorRef[QueueProcessor](qCreator(queueProbe.ref, testBackend, poolSettings, metricsCollector, testWorkerFactory)(SimpleResultChecker))
+    val metricsCollector = TestProbe("metrics-collector")
+    val qp = TestActorRef[QueueProcessor](qCreator(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, testWorkerFactory)(SimpleResultChecker))
     watch(qp)
     try {
       test(qp, queueProbe, metricsCollector, testBackend, testWorkerFactory)
@@ -44,7 +42,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Mockit
     circuitBreakerSettings: CircuitBreakerSettings       = CircuitBreakerSettings()
   )(test: QueueTest) {
 
-    val pa: QueueCreator = QueueProcessor.withCircuitBreaker(_: ActorRef, _: Backend, _: ProcessingWorkerPoolSettings, circuitBreakerSettings, _: MetricsCollector, _: WorkerFactory)
+    val pa: QueueCreator = QueueProcessor.withCircuitBreaker(_: ActorRef, _: Backend, _: ProcessingWorkerPoolSettings, circuitBreakerSettings, _: ActorRef, _: WorkerFactory)
     withQP(poolSettings, pa, test)
   }
 
@@ -197,10 +195,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Mockit
         qp.underlyingActor.resultHistory.count(x ⇒ !x) shouldBe 4
       }
 
-      verify(metricsCollector, times(2)).send(Metric.ProcessTime(duration))
-      verify(metricsCollector, times(2)).send(Metric.WorkCompleted)
-      verify(metricsCollector, times(2)).send(Metric.WorkFailed)
-      verify(metricsCollector, times(2)).send(Metric.WorkTimedOut)
+      metricsCollector.expectMsgAllOf(Metric.PoolSize(5), Metric.WorkCompleted(duration), Metric.WorkCompleted(duration), Metric.WorkFailed, Metric.WorkFailed, Metric.WorkTimedOut, Metric.WorkTimedOut)
 
       //no Holds should be set since only 4/6 requests failed, which is not the 100% fail rate
       workerFactory.probeMap.values.foreach { probe ⇒
