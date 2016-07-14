@@ -148,7 +148,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Mockit
     }
 
     //TODO: not sure why this is broken.
-    "force shutdown if timeout" ignore withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "force shutdown if timeout" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       //watch all Workers
       workerFactory.probeMap.values.foreach { probe ⇒

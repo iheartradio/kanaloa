@@ -39,12 +39,12 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   override def preStart(): Unit = {
     super.preStart()
-    (1 to settings.startingPoolSize).foreach(x ⇒ createRoutee())
+    (1 to settings.startingPoolSize).foreach(_ ⇒ createRoutee())
     settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
   }
 
-  def workError(): Unit = {
+  def recordWorkError(): Unit = {
     this.resultHistory = resultHistory.enqueueFinite(false, resultHistoryLength)
     onWorkError(resultHistory, workerPool)
   }
@@ -56,9 +56,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       val diff = toPoolSize - workerPool.size
       if (diff > 0) {
         metricsCollector ! Metric.PoolSize(newPoolSize)
-        (1 to diff).foreach { x ⇒
-          createRoutee()
-        }
+        (1 to diff).foreach(_ =>createRoutee())
       }
       else if (diff < 0)
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
@@ -72,13 +70,13 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
         resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
         metricsCollector ! Metric.WorkCompleted(duration)
 
-      case WorkFailed(_) ⇒
-        workError()
-        metricsCollector ! Metric.WorkFailed
+    case WorkFailed(_) ⇒
+      recordWorkError()
+      metricsCollector ! Metric.WorkFailed
 
-      case WorkTimedOut(_) ⇒
-        workError()
-        metricsCollector ! Metric.WorkTimedOut
+    case WorkTimedOut(_) ⇒
+      recordWorkError()
+      metricsCollector ! Metric.WorkTimedOut
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
