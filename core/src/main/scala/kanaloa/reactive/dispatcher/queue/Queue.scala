@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
+import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{QueueStatus, _}
 import kanaloa.util.FiniteCollection._
@@ -126,7 +127,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! MetricsCollector.DispatchResult(status.queuedWorkers.length, status.workBuffer.length)
+        metricsCollector ! PerformanceSampler.DispatchResult(status.queuedWorkers.length, status.workBuffer.length)
         if (dispatchHistoryLength > 0)
           status.copy(dispatchHistory = updatedHistory)
         else status

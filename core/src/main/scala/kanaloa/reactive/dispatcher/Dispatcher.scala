@@ -62,7 +62,7 @@ object Dispatcher {
     backPressure:    Option[BackPressureSettings],
     autoScaling:     Option[AutoScalingSettings]
   ) {
-    val metricsCollectorSettings = MetricsCollector.MetricsCollectorSettings(updateInterval)
+    val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
   }
 
   val defaultBackPressureSettings = BackPressureSettings(
@@ -147,7 +147,7 @@ object PushingDispatcher {
     rootConfig: Config = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
-    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings)
+    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings)
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker)).withDeploy(Deploy.local)
   }
@@ -181,7 +181,7 @@ object PullingDispatcher {
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
     //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
-    val metricsCollector = MetricsCollector(reporter, settings.metricsCollectorSettings.copy(fullyUtilized = _ <= 2))
+    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings.copy(fullyUtilized = _ <= 2))
     val toBackend = implicitly[BackendAdaptor[T]]
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }

@@ -5,7 +5,7 @@ import java.time.LocalDateTime
 import akka.actor.{ActorRef, ActorSystem, PoisonPill}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.metrics.MetricsCollector.{PartialUtilization, Sample}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.AutoScaling.{AutoScalingStatus, OptimizeOrExplore, PoolSize}

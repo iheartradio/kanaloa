@@ -4,7 +4,7 @@ import java.time.{Duration ⇒ JDuration, LocalDateTime ⇒ Time}
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.metrics.MetricsCollector.{PartialUtilization, Sample, Subscribe, Unsubscribe}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample, Subscribe, Unsubscribe}
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.ScaleTo
 import kanaloa.util.Java8TimeExtensions._
