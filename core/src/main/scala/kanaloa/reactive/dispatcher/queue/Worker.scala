@@ -35,31 +35,29 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   def finish(): Unit = context stop self
 
   val waitingForWork: Receive = {
-    case qs: QueryStatus              ⇒ qs reply Idle
-    case Hold(period)                 ⇒ delayBeforeNextWork = Some(period)
+    case qs: QueryStatus                  ⇒ qs reply Idle
+    case Hold(period)                     ⇒ delayBeforeNextWork = Some(period)
 
-    case work: Work                   ⇒ sendWorkToRoutee(work, 0)
+    case work: Work                       ⇒ sendWorkToRoutee(work, 0)
 
     //If there is no work left, or if the Queue dies, the Worker stops as well
-    case NoWorkLeft                   ⇒ finish()
-    case Terminated(`queue`)          ⇒ finish()
+    case NoWorkLeft | Terminated(`queue`) ⇒ finish()
 
     //if the Routee dies or the Worker is told to Retire, it needs to Unregister from the Queue before terminating
-    case Terminated(r) if r == routee ⇒ becomeUnregistering()
-    case Worker.Retire                ⇒ becomeUnregistering()
+    case Terminated(r) if r == routee     ⇒ becomeUnregistering()
+    case Worker.Retire                    ⇒ becomeUnregistering()
   }
 
   def working(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
-    case qs: QueryStatus     ⇒ qs reply Working
-    case Hold(period)        ⇒ delayBeforeNextWork = Some(period)
+    case qs: QueryStatus                  ⇒ qs reply Working
+    case Hold(period)                     ⇒ delayBeforeNextWork = Some(period)
 
     //we are done with this Work, ask for more and wait for it
-    case WorkFinished        ⇒ askMoreWork()
-    case w: Work             ⇒ sender() ! Rejected(w, "Busy")
+    case WorkFinished                     ⇒ askMoreWork()
+    case w: Work                          ⇒ sender() ! Rejected(w, "Busy")
 
     //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
-    case Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
-    case NoWorkLeft          ⇒ context become waitingToTerminate(outstanding)
+    case Terminated(`queue`) | NoWorkLeft ⇒ context become waitingToTerminate(outstanding)
 
     //This is a fun state.  The Worker is told to stop, but needs to both wait for Unregister and for Work to complete
     case Worker.Retire ⇒
@@ -84,40 +82,38 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
   def unregistering: Receive = {
-    case qs: QueryStatus      ⇒ qs reply Unregistering
+    case qs: QueryStatus                    ⇒ qs reply Unregistering
 
     //ignore these
-    case Hold(x)              ⇒
-    case Retire               ⇒
-    case Terminated(`routee`) ⇒
-    case NoWorkLeft           ⇒
+    case Hold(x)                            ⇒
+    case Retire                             ⇒
+    case Terminated(`routee`)               ⇒
+    case NoWorkLeft                         ⇒
 
-    case w: Work              ⇒ sender ! Rejected(w, "Retiring") //safety first
+    case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
 
     //Either we Unregistered successfully, or the Queue died.  terminate
-    case Unregistered         ⇒ finish()
-    case Terminated(`queue`)  ⇒ finish()
+    case Unregistered | Terminated(`queue`) ⇒ finish()
 
   }
 
   //in this state we are we waiting for 2 things to happen, Unregistration and Work completing
   //the Worker will shift its state based on which one happens first
   def unregisteringOutstanding(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
-    case qs: QueryStatus     ⇒ qs reply UnregisteringOutstanding
+    case qs: QueryStatus                    ⇒ qs reply UnregisteringOutstanding
 
     //ignore these
-    case Hold(x)             ⇒
-    case Retire              ⇒
-    case NoWorkLeft          ⇒
+    case Hold(x)                            ⇒
+    case Retire                             ⇒
+    case NoWorkLeft                         ⇒
 
-    case w: Work             ⇒ sender ! Rejected(w, "Retiring") //safety first
+    case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
 
     //Either Unregistration completed, or the Queue died, in either way, we just need to wait for Work to finish
-    case Unregistered        ⇒ context become waitingToTerminate(outstanding)
-    case Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
+    case Unregistered | Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
 
     //work completed on way or another, just waiting for the Unregister ack
-    case WorkFinished        ⇒ context become unregistering
+    case WorkFinished                       ⇒ context become unregistering
   }
 
   def becomeUnregistering(): Unit = {
