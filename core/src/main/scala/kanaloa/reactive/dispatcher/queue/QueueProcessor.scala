@@ -66,7 +66,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       workerPool = workerPool + createWorker(routee)
 
     case RouteeFailed(ex) ⇒
-      log.error(ex, "Failed to create Routee")
+      log.error(ex, "Failed to retrieve Routee")
 
       case WorkCompleted(worker, duration) ⇒
         resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
