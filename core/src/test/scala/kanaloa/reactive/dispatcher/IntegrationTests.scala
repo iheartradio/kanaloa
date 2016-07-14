@@ -213,7 +213,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
   "pulling dispatcher move to the optimal pool size" in new TestScope {
 
     val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
-    val optimalSize = 8
+    val optimalSize = 10
     val optimalSpeed = optimalSize.toDouble / processTime.toMillis
     val duration = 5.seconds
     val msgPerMilli = optimalSpeed * 0.4
