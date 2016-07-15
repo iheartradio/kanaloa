@@ -1,7 +1,10 @@
 package kanaloa.reactive.dispatcher.queue
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
-import akka.testkit.{TestActorRef, TestProbe}
+import akka.testkit.TestActor.AutoPilot
+import akka.testkit.{TestActor, TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown, WorkCompleted}
@@ -11,7 +14,6 @@ import org.scalatest.concurrent.Eventually
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.util.Try
 
 class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
@@ -46,6 +48,18 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
     withQP(poolSettings, pa, test)
   }
 
+  //very specific for my needs here, but we can def generalize this if need be
+  implicit class HelpedTestProbe(probe: TestProbe) {
+
+    def setAutoPilotPF(pf: PartialFunction[Any, AutoPilot]): Unit = {
+      probe.setAutoPilot(
+        new AutoPilot {
+          override def run(sender: QueueRef, msg: Any): AutoPilot = pf.applyOrElse(msg, (x: Any) ⇒ TestActor.NoAutoPilot)
+        }
+      )
+    }
+  }
+
   "The QueueProcessor" should {
 
     "create Workers on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
@@ -63,33 +77,31 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
     "scale workers down" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
-      qp ! ScaleTo(3) //kill 2 Workers
-
-      //can't think of a better way to do this right now.
-      val retiredProbes = workerFactory.probeMap.values.filter { probe ⇒
-        Try { probe.expectMsg(Worker.Retire) }.toOption.isDefined
-      }
-
-      retiredProbes should have size 2
-
-      //kill the 'Workers' who got the Retire message, so that they signal the QP to remove them
-      retiredProbes.foreach(_.ref ! PoisonPill)
+      qp ! ScaleTo(4) //kill 1 Worker
 
       eventually {
-        qp.underlyingActor.workerPool should have size 3
+        workerFactory.retiredCount.get() shouldBe 1
       }
+
+      //pick any 2 actors, since the QueueProcessor is not currently tracking who got the term signal
+      //kill the 'Workers' who got the Retire message, so that they signal the QP to remove them
+      workerFactory.probeMap.values.take(1).foreach(_.ref ! PoisonPill)
+
+      eventually {
+        qp.underlyingActor.workerPool should have size 4
+      }
+      //just to be safe(to make sure that some other Retire messages didn't sneak by after we reached 2 earlier)
+      workerFactory.retiredCount.get shouldBe 1
     }
 
     "honor minimum pool size during AutoScale" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      qp ! ScaleTo(1) //minimum is 3
+      qp ! ScaleTo(1) //minimum is 3, starts at 5
 
-      //can't think of a better way to do this right now.
-      val retiredProbes = workerFactory.probeMap.values.filter { probe ⇒
-        Try { probe.expectMsg(Worker.Retire) }.toOption.isDefined
+      eventually {
+        workerFactory.retiredCount.get() shouldBe 2
       }
 
-      //kill the 'Workers' who got the Retire message, so that they signal the QP to remove them
-      retiredProbes.foreach(_.ref ! PoisonPill)
+      workerFactory.probeMap.values.take(2).foreach(_.ref ! PoisonPill)
 
       eventually {
         qp.underlyingActor.workerPool should have size 3
@@ -107,16 +119,16 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
       }
 
     "attempt to keep the number of Workers at the minimumWorkers" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      //minimum workers is 3, so killing 4 should result in 2 new recreate attempts
-      val workersToKill = workerFactory.probeMap.keys.take(4)
-      workersToKill.foreach(workerFactory.killWorker)
+      //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
+      workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
       eventually {
         qp.underlyingActor.workerPool should have size 3
         testBackend.timesInvoked shouldBe 7 //2 new invocations should have happened
+        workerFactory.probeMap should have size 3 //should only be 3 workers
       }
     }
 
-    "shutdown Queue and Workers" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown Queue and wait for Workers to terminate" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 30.seconds)
       queueProbe.expectMsg(Queue.Retire(30.seconds))
@@ -140,8 +152,8 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
       queueProbe.ref ! PoisonPill
 
-      workerFactory.probeMap.values.foreach { probe ⇒
-        probe.expectMsg(Worker.Retire)
+      eventually {
+        workerFactory.retiredCount.get() shouldBe 5 //all workers should receive a Retire signal
       }
 
       qp ! QueryStatus()
@@ -156,23 +168,12 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
     }
 
-    //todo still broken, not sure why
-    "force shutdown if timeout" ignore withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-
-      //watch all Workers
-      workerFactory.probeMap.values.foreach { probe ⇒
-        watch(probe.ref)
-      }
+    "force shutdown if timeout" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 25.milliseconds)
       queueProbe.expectMsg(Queue.Retire(25.milliseconds))
-
+      //We wn't kill the Workers, and the timeout should kick in
       expectTerminated(qp) //should force itself to shutdown
-
-      //when it forces itself to shutdown, all the Workers should be terminated
-      workerFactory.probeMap.values.foreach { probe ⇒
-        expectTerminated(probe.ref, 10.milliseconds)
-      }
     }
   }
 
@@ -228,13 +229,22 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
     val probeMap: MMap[ActorRef, TestProbe] = MMap()
 
+    val retiredCount: AtomicInteger = new AtomicInteger(0)
+
+    //create a Worker, and increment a count when its told to Retire.
     override def createWorker(queueRef: QueueRef, routee: QueueRef, resultChecker: ResultChecker, workerName: String)(implicit ac: ActorRefFactory): ActorRef = {
       val probe = TestProbe(workerName)
+      probe.setAutoPilotPF {
+        case Worker.Retire ⇒
+          retiredCount.incrementAndGet()
+          //probe.ref
+          TestActor.NoAutoPilot
+      }
       probeMap += (probe.ref → probe)
       probe.ref
     }
 
-    def killWorker(ref: ActorRef) {
+    def killAndRemoveWorker(ref: ActorRef) {
       probeMap.remove(ref)
       ref ! PoisonPill
     }

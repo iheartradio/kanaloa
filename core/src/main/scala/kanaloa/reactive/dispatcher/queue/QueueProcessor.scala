@@ -119,7 +119,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     case ShutdownTimeout ⇒
       log.warning("Shutdown timed out, forcefully shutting down")
-      workerPool.foreach(_ ! PoisonPill)
       context stop self
 
     case _ ⇒ //Ignore
