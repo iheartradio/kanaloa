@@ -3,7 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor.PoisonPill
 import kanaloa.reactive.dispatcher.ApiProtocol.{WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister}
-import kanaloa.reactive.dispatcher.queue.Worker.{Hold, Unregistering}
+import kanaloa.reactive.dispatcher.queue.Worker.{Hold, UnregisteringIdle}
 
 import scala.concurrent.duration._
 
@@ -64,11 +64,11 @@ class WorkerWorkingSpec extends WorkerSpec {
       assertWorkerStatus(worker, Worker.Idle)
     }
 
-    "fail Work, transitions to 'unregistering' if Terminated(routee)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
+    "fail Work, transitions to 'unregisteringIdle' if Terminated(routee)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
       routeeProbe.ref ! PoisonPill
       expectMsgType[WorkFailed]
       queueProbe.expectMsg(Unregister(worker))
-      assertWorkerStatus(worker, Unregistering)
+      assertWorkerStatus(worker, UnregisteringIdle)
     }
 
     "transition to 'waitingToTerminate' if Terminated(queue)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
@@ -81,9 +81,9 @@ class WorkerWorkingSpec extends WorkerSpec {
       assertWorkerStatus(worker, Worker.WaitingToTerminate)
     }
 
-    "transition to 'unregisteringOutstanding' if Retire'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
+    "transition to 'unregisteringBusy' if Retire'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
       worker ! Worker.Retire
-      assertWorkerStatus(worker, Worker.UnregisteringOutstanding)
+      assertWorkerStatus(worker, Worker.UnregisteringBusy)
     }
   }
 }

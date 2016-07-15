@@ -41,16 +41,16 @@ class WorkerIdleSpec extends WorkerSpec {
       assertWorkerStatus(worker, Worker.Working)
     }
 
-    "transition to 'unregistering' when sent `Retire`" in withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
+    "transition to 'unregisteringIdle' when sent `Retire`" in withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
       worker ! Worker.Retire
       queueProbe.expectMsg(Unregister(worker))
-      assertWorkerStatus(worker, Worker.Unregistering)
+      assertWorkerStatus(worker, Worker.UnregisteringIdle)
     }
 
-    "transition to 'unregistering' when the Routee dies" in withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
+    "transition to 'unregisteringIdle' when the Routee dies" in withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
       routeeProbe.ref ! PoisonPill
       queueProbe.expectMsg(Unregister(worker))
-      assertWorkerStatus(worker, Worker.Unregistering)
+      assertWorkerStatus(worker, Worker.UnregisteringIdle)
     }
   }
 

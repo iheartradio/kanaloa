@@ -58,7 +58,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
-    case RouteeCreated(routee) ⇒
+    case RouteeRetrieved(routee) ⇒
       workerPool = workerPool + createWorker(routee)
 
     case RouteeFailed(ex) ⇒
@@ -134,7 +134,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   private def retrieveRoutee(): Unit = {
     import context.dispatcher //do we want to pass this in?
     backend(this.context).onComplete {
-      case Success(routee) ⇒ self ! RouteeCreated(routee)
+      case Success(routee) ⇒ self ! RouteeRetrieved(routee)
       case Failure(ex)     ⇒ self ! RouteeFailed(ex)
     }
   }
@@ -187,7 +187,7 @@ case class QueueProcessorWithCircuitBreaker(
   }
 }
 
-trait WorkerFactory {
+private[queue] trait WorkerFactory {
   def createWorker(queueRef: ActorRef, routee: ActorRef, resultChecker: ResultChecker, workerName: String)(implicit ac: ActorRefFactory): ActorRef
 }
 
@@ -210,7 +210,7 @@ object QueueProcessor {
   case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
-  private[queue] case class RouteeCreated(routee: ActorRef)
+  private[queue] case class RouteeRetrieved(routee: ActorRef)
   private[queue] case class RouteeFailed(ex: Throwable)
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes)
   private case object ShutdownTimeout

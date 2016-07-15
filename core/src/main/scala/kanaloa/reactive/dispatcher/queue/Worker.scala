@@ -44,11 +44,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case NoWorkLeft | Terminated(`queue`) ⇒ finish()
 
     //if the Routee dies or the Worker is told to Retire, it needs to Unregister from the Queue before terminating
-    case Terminated(r) if r == routee     ⇒ becomeUnregistering()
-    case Worker.Retire                    ⇒ becomeUnregistering()
+    case Terminated(r) if r == routee     ⇒ becomeUnregisteringIdle()
+    case Worker.Retire                    ⇒ becomeUnregisteringIdle()
   }
 
-  def working(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
+  def working(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, becomeUnregisteringIdle) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
     case Hold(period)                     ⇒ delayBeforeNextWork = Some(period)
 
@@ -62,35 +62,29 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     //This is a fun state.  The Worker is told to stop, but needs to both wait for Unregister and for Work to complete
     case Worker.Retire ⇒
       queue ! Unregister
-      context become unregisteringOutstanding(outstanding)
+      context become unregisteringBusy(outstanding)
   }
 
   //This state waits for Work to complete, and then stops the Actor
-  def waitingToTerminate(outstanding: Outstanding): Receive = routeeResponse(outstanding, finish) orElse {
-    case qs: QueryStatus     ⇒ qs reply WaitingToTerminate
+  def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, finish) orElse {
+    case qs: QueryStatus ⇒ qs reply WaitingToTerminate
 
     //ignore these, since all we care about is the Work completing one way or another
-    case Hold(x)             ⇒
-    case Retire              ⇒
-    case Terminated(`queue`) ⇒
-    case NoWorkLeft          ⇒
+    case Hold(_) | Retire | Terminated(`queue`) | NoWorkLeft ⇒
 
-    case w: Work             ⇒ sender() ! Rejected(w, "Retiring") //safety first
+    case w: Work ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
-    case WorkFinished        ⇒ finish() //work is done, terminate
+    case WorkFinished ⇒ finish() //work is done, terminate
   }
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
-  def unregistering: Receive = {
-    case qs: QueryStatus                    ⇒ qs reply Unregistering
+  def unregisteringIdle: Receive = {
+    case qs: QueryStatus ⇒ qs reply UnregisteringIdle
 
     //ignore these
-    case Hold(x)                            ⇒
-    case Retire                             ⇒
-    case Terminated(`routee`)               ⇒
-    case NoWorkLeft                         ⇒
+    case Hold(_) | Retire | Terminated(`routee`) | NoWorkLeft ⇒
 
-    case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
+    case w: Work ⇒ sender ! Rejected(w, "Retiring") //safety first
 
     //Either we Unregistered successfully, or the Queue died.  terminate
     case Unregistered | Terminated(`queue`) ⇒ finish()
@@ -99,13 +93,11 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   //in this state we are we waiting for 2 things to happen, Unregistration and Work completing
   //the Worker will shift its state based on which one happens first
-  def unregisteringOutstanding(outstanding: Outstanding): Receive = routeeResponse(outstanding, becomeUnregistering) orElse {
-    case qs: QueryStatus                    ⇒ qs reply UnregisteringOutstanding
+  def unregisteringBusy(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, becomeUnregisteringIdle) orElse {
+    case qs: QueryStatus                    ⇒ qs reply UnregisteringBusy
 
     //ignore these
-    case Hold(x)                            ⇒
-    case Retire                             ⇒
-    case NoWorkLeft                         ⇒
+    case Hold(_) | Retire | NoWorkLeft      ⇒
 
     case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
 
@@ -113,16 +105,16 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case Unregistered | Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
 
     //work completed on way or another, just waiting for the Unregister ack
-    case WorkFinished                       ⇒ context become unregistering
+    case WorkFinished                       ⇒ context become unregisteringIdle
   }
 
-  def becomeUnregistering(): Unit = {
+  def becomeUnregisteringIdle(): Unit = {
     queue ! Unregister(self)
-    context become unregistering
+    context become unregisteringIdle
   }
 
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
-  def routeeResponse(outstanding: Outstanding, onRouteeFailure: () ⇒ Unit): Receive = {
+  def handleRouteeResponse(outstanding: Outstanding, onRouteeFailure: () ⇒ Unit): Receive = {
     case Terminated(`routee`) ⇒ {
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
       onRouteeFailure()
@@ -237,8 +229,8 @@ object Worker {
   case object Retire
 
   sealed trait WorkerStatus
-  case object Unregistering extends WorkerStatus
-  case object UnregisteringOutstanding extends WorkerStatus
+  case object UnregisteringIdle extends WorkerStatus
+  case object UnregisteringBusy extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
   case object WaitingToTerminate extends WorkerStatus
