@@ -3,11 +3,12 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
-import kanaloa.reactive.dispatcher.metrics.{Reporter, Metric, MetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
 import kanaloa.reactive.dispatcher.{Backend, SpecWithActorSystem}
+import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -320,7 +321,7 @@ class DefaultQueueSpec extends SpecWithActorSystem {
   }
 }
 
-class QueueMetricsSpec extends SpecWithActorSystem {
+class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
   "Queue Metrics" should {
 
@@ -351,10 +352,11 @@ class QueueMetricsSpec extends SpecWithActorSystem {
       queue ! Enqueue("c")
       expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.OverCapacity))
 
-      receivedMetrics should contain(Metric.WorkQueueLength(0))
-
-      //TODO: we might want to make some of our own matchers for lists, the predefined ones in the DSL
-      receivedMetrics.filter(_ == Metric.EnqueueRejected) should have size 2
+      eventually {
+        receivedMetrics should contain(Metric.WorkQueueLength(0))
+        //TODO: we might want to make some of our own matchers for lists, the predefined ones in the DSL
+        receivedMetrics.filter(_ == Metric.EnqueueRejected) should have size 2
+      }
     }
 
     "send WorkCompleted, ProcessTime, WorkFailed, and WorkTimedOut metrics" in new MetricCollectorScope() {
