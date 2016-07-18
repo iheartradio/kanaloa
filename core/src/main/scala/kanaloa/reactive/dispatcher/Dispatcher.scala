@@ -43,7 +43,7 @@ trait Dispatcher extends Actor {
   }
 
   def receive: Receive = ({
-    case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout, true)
+    case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout)
     case Terminated(`processor`)                 ⇒ context stop self
   }: Receive) orElse extraReceive
 

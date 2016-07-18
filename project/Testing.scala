@@ -12,6 +12,7 @@ object Testing {
 
     Seq(
       libraryDependencies ++= Dependencies.test ++ Dependencies.integration,
+      parallelExecution in Test := false,
       scalacOptions in Test ++= Seq("-Yrangepos"),
       testOptions in Test := Seq(
         Tests.Filter(isUnitTest)),

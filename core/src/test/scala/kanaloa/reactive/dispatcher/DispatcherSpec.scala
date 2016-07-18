@@ -7,11 +7,12 @@ import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSucc
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
+import org.scalatest.OptionValues
 
 import scala.concurrent.Future
 import concurrent.duration._
 
-class DispatcherSpec extends SpecWithActorSystem {
+class DispatcherSpec extends SpecWithActorSystem with OptionValues {
   "pulling work dispatcher" should {
 
     "finish a simple list" in new ScopeWithActor {
@@ -235,7 +236,7 @@ class DispatcherSpec extends SpecWithActorSystem {
           """
 
       val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      reporter shouldBe a[Some[StatsDReporter]]
+      reporter.value shouldBe a[StatsDReporter]
       reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.5
     }
 
@@ -269,7 +270,7 @@ class DispatcherSpec extends SpecWithActorSystem {
       reporter shouldBe empty
 
       val (_, reporter2) = Dispatcher.readConfig("example2", strCfg)
-      reporter2 shouldBe a[Some[StatsDReporter]]
+      reporter2.value shouldBe a[StatsDReporter]
     }
 
     "override collector settings at the dispatcher level" in {
@@ -298,7 +299,7 @@ class DispatcherSpec extends SpecWithActorSystem {
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
       val (_, reporter) = Dispatcher.readConfig("example", strCfg)
-      reporter shouldBe a[Some[StatsDReporter]]
+      reporter.value shouldBe a[StatsDReporter]
       reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.7
 
     }

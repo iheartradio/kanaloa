@@ -1,24 +1,22 @@
 package kanaloa.reactive.dispatcher.queue
 
-import java.time.LocalDateTime
-
 import akka.actor.{ActorRef, ActorSystem, PoisonPill}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
+import kanaloa.reactive.dispatcher.DurationFunctions._
 import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
-import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
+import kanaloa.reactive.dispatcher.metrics.MetricsCollector
 import kanaloa.reactive.dispatcher.queue.AutoScaling.{AutoScalingStatus, OptimizeOrExplore, PoolSize}
-import kanaloa.reactive.dispatcher.queue.Queue.{QueueDispatchInfo, Retire}
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ScaleTo, Shutdown}
+import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
+import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
-import kanaloa.reactive.dispatcher.DurationFunctions._
+
 import scala.concurrent.duration._
 
 class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventually {
-  import AutoScalingScope._
 
   "AutoScaling" should {
     "when no history" in new AutoScalingScope {
@@ -186,7 +184,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(scalingInterval = 10.minutes), mc))
       watch(a)
       a ! PartialUtilization(5)
-      processor ! Shutdown(None, 100.milliseconds, false)
+      processor ! Shutdown(None, 100.milliseconds)
       expectTerminated(a)
     }
   }
