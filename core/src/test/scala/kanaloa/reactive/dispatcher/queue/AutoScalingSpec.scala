@@ -173,19 +173,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       watch(autoScaler)
       processor ! PoisonPill
 
-      var autoScalerTerminated = false
-      var processorTerminated = false
-
-      expectMsgPF() {
-        case Terminated(`autoScaler`) ⇒ autoScalerTerminated = true
-        case Terminated(`processor`)  ⇒ processorTerminated = true
-      }
-      expectMsgPF() {
-        case Terminated(`autoScaler`) ⇒ autoScalerTerminated = true
-        case Terminated(`processor`)  ⇒ processorTerminated = true
-      }
-      autoScalerTerminated shouldBe true
-      processorTerminated shouldBe true
+      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(processor, autoScaler)
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
