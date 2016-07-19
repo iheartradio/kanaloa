@@ -27,6 +27,20 @@ lazy val root = project.in(file("."))
   .settings(Publish.settings:_*)
   .settings(Publish.extraReleaseStep:_*)
 
+lazy val stressBackend = project.in(file("./stress/backend"))
+  .aggregate(core, cluster)
+  .dependsOn(core, cluster)
+  .settings(moduleName := "kanaloa-stress-backend")
+  .settings(noPublishing:_*)
+
+lazy val stressFrontend = project.in(file("./stress/frontend"))
+  .aggregate(stressBackend)
+  .dependsOn(stressBackend)
+  .settings(moduleName := "kanaloa-stress-frontend")
+  .settings(noPublishing:_*)
+  .settings(Dependencies.stressHttpFrontend:_*)
+
+
 lazy val core = project
   .configs(Testing.Integration)
   .settings(moduleName := "kanaloa-core")
