@@ -6,6 +6,7 @@ import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import concurrent.duration._
 import DurationFunctions._
 import java.time.{LocalDateTime ⇒ Time}
+import kanaloa.util.Java8TimeExtensions._
 
 class RegulatorSpec extends SpecWithActorSystem {
   def sample(
@@ -16,13 +17,13 @@ class RegulatorSpec extends SpecWithActorSystem {
     Sample(workDone, duration.ago, Time.now, poolSize = 14, queueLength = QueueLength(queueLength))
 
   def status(
-    lastDelay:         FiniteDuration = 1.second,
+    delay:             FiniteDuration = 1.second,
     droppingRate:      Double         = 0,
     burstDurationLeft: Duration       = 30.seconds,
     averageSpeed:      Double         = 0.1,
     recordedAt:        Time           = Time.now
   ): Status =
-    Status(lastDelay, DroppingRate(droppingRate), burstDurationLeft, Speed(averageSpeed), recordedAt)
+    Status(delay, DroppingRate(droppingRate), burstDurationLeft, Speed(averageSpeed), recordedAt)
 
   def settings(
     referenceDelay:         FiniteDuration = 3.seconds,
@@ -35,6 +36,13 @@ class RegulatorSpec extends SpecWithActorSystem {
 
   "Regulator" should {
     import Regulator.update
+
+    "update recordedAt" in {
+      val lastStatus = status(averageSpeed = 0.2, recordedAt = 2000.milliseconds.ago)
+      val result = update(sample(), lastStatus, settings())
+      val distance = lastStatus.recordedAt.until(result.recordedAt).toMillis.toDouble
+      distance shouldBe 2000.0 +- 30
+    }
 
     "update speed with weight" in {
       val lastStatus = status(averageSpeed = 0.2)
@@ -56,7 +64,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "update p using based factors when p > 10%" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 100), //speed of 0.1
-        status(droppingRate = 0.2, averageSpeed = 0.3, lastDelay = 200.milliseconds),
+        status(droppingRate = 0.2, averageSpeed = 0.3, delay = 200.milliseconds),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
@@ -66,7 +74,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "update p using half of based factors when 1% < p < 10%" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 100), //speed of 0.1
-        status(droppingRate = 0.05, averageSpeed = 0.3, lastDelay = 200.milliseconds),
+        status(droppingRate = 0.05, averageSpeed = 0.3, delay = 200.milliseconds),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
@@ -76,7 +84,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "update p using 1/8 of based factors when p < 1%" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 100), //speed of 0.1
-        status(droppingRate = 0.005, averageSpeed = 0.3, lastDelay = 200.milliseconds),
+        status(droppingRate = 0.005, averageSpeed = 0.3, delay = 200.milliseconds),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
@@ -86,7 +94,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "p ceiling at 1" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1000),
-        status(droppingRate = 0.5, averageSpeed = 0.3, lastDelay = 200.milliseconds),
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 200.milliseconds),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 100.milliseconds)
       ).droppingRate
 
@@ -96,7 +104,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "p floor at 0" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1), //speed of 0.1
-        status(droppingRate = 0.05, averageSpeed = 0.3, lastDelay = 200.milliseconds),
+        status(droppingRate = 0.05, averageSpeed = 0.3, delay = 200.milliseconds),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 500.milliseconds)
       ).droppingRate
 
@@ -106,7 +114,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     "reset burst allowed duration left when p is 0 and both current and previous delay is less than half of reference delay" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 20), //speed of 0.1 current delay 100
-        status(droppingRate = 0.01, averageSpeed = 0.3, lastDelay = 50.milliseconds, burstDurationLeft = 1.second),
+        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstDurationLeft = 1.second),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
       ).burstDurationLeft
 
@@ -116,11 +124,11 @@ class RegulatorSpec extends SpecWithActorSystem {
     "deduct burst allowed duration left when p > 0" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
-        status(droppingRate = 0.5, averageSpeed = 0.3, lastDelay = 50.milliseconds, burstDurationLeft = 28.second, recordedAt = 2.seconds.ago),
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstDurationLeft = 28.second, recordedAt = 2.seconds.ago),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
       ).burstDurationLeft
 
-      result.toMillis shouldBe 26000
+      result.toMillis.toDouble should be(26000.0 +- 2) //somehow exact matching integer fails range test.
     }
 
   }
