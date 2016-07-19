@@ -205,7 +205,6 @@ object QueueProcessor {
 
   case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)
 
-  case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   private[queue] case class RouteeRetrieved(routee: ActorRef)
