@@ -14,6 +14,10 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-slf4j" % Versions.akka
   )
 
+  val akkaHttp = Seq(
+    "com.typesafe.akka" %% "akka-http" % "2.0.4"
+  )
+
   val akkaCluster = Seq(
     "com.typesafe.akka" %% "akka-cluster" % Versions.akka,
     "com.typesafe.akka" %% "akka-cluster-tools" % Versions.akka
@@ -31,9 +35,7 @@ object Dependencies {
     "com.iheart" %% "ficus" % "1.2.6"
   )
 
-
-  lazy val settings = Seq(
-
+  lazy val commonSettings = Seq(
     scalaVersion in Global := "2.11.8",
 
     resolvers ++= Seq(
@@ -41,7 +43,14 @@ object Dependencies {
       Resolver.jcenterRepo,
       Resolver.bintrayRepo("scalaz", "releases"),
       "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/"
-    ),
+    )
+  )
+
+  lazy val stressHttpFrontend = Seq(
+    libraryDependencies ++= akkaHttp
+  )
+
+  lazy val settings = commonSettings ++ Seq(
 
     libraryDependencies ++= Dependencies.akka ++
       Dependencies.test ++
