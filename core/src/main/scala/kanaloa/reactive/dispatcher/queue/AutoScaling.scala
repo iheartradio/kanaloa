@@ -45,6 +45,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   import settings._
 
+  val random: Random = new Random(23)
   var actionScheduler: Option[Cancellable] = None
   var perfLog: PerformanceLog = Map.empty
 
@@ -104,7 +105,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
     case OptimizeOrExplore ⇒
       val action = {
-        if (Random.nextDouble() < explorationRatio)
+        if (random.nextDouble() < explorationRatio)
           explore(currentSize)
         else
           optimize(currentSize)
@@ -133,7 +134,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
   private def explore(currentSize: PoolSize): ScaleTo = {
     val change = Math.max(1, Random.nextInt(Math.ceil(currentSize * exploreStepSize).toInt))
-    if (Random.nextDouble() < chanceOfScalingDownWhenFull)
+    if (random.nextDouble() < chanceOfScalingDownWhenFull)
       ScaleTo(currentSize - change, Some("exploring"))
     else
       ScaleTo(currentSize + change, Some("exploring"))

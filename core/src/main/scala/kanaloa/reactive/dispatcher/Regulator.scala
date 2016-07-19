@@ -1,8 +1,11 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{Cancellable, ActorRef, Actor, ActorLogging}
+import akka.actor._
 import kanaloa.reactive.dispatcher.PerformanceSampler.Sample
 import java.time.{LocalDateTime ⇒ Time}
+import kanaloa.reactive.dispatcher.Regulator.Status
+import kanaloa.reactive.dispatcher.metrics.Metric
+
 import scala.concurrent.duration._
 import Regulator._
 import Types._
@@ -33,15 +36,15 @@ import kanaloa.util.Java8TimeExtensions._
  *      else
  *         burstAllowed = burstAllowed - timePassed (roughly Tupdate)
  *
- * @param sampler [[PerformanceSampler]] actor that provides Performance samples,
+ * @param metricsCollector [[PerformanceSampler]] actor that provides Performance samples,
  *               this also controls the TupdateRate with frequency of samples
  * @param regulatee [[PushingDispatcher]] actor that receive the dropping probability update
  */
-class Regulator(settings: Settings, sampler: ActorRef, regulatee: ActorRef) extends Actor with ActorLogging {
+class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: ActorRef) extends Actor with ActorLogging {
 
   override def preStart(): Unit = {
     super.preStart()
-    sampler ! PerformanceSampler.Subscribe(self)
+    metricsCollector ! PerformanceSampler.Subscribe(self)
   }
 
   def receive: Receive = {
@@ -58,13 +61,18 @@ class Regulator(settings: Settings, sampler: ActorRef, regulatee: ActorRef) exte
     case s: Sample ⇒
       val newStatus = update(s, status, settings)
       context become regulating(newStatus)
+      metricsCollector ! Metric.WorkQueueExpectedWaitTime(newStatus.delay)
+      metricsCollector ! Metric.DropRate(newStatus.droppingRate.value)
       regulatee ! newStatus.droppingRate
   }
 }
 
 object Regulator {
 
-  class DroppingRate(val value: Double) extends AnyVal
+  def props(settings: Settings, sampler: ActorRef, regulatee: ActorRef) =
+    Props(new Regulator(settings, sampler, regulatee))
+
+  class DroppingRate(val value: Double) extends AnyVal with Serializable
 
   object DroppingRate {
     def apply(value: Double): DroppingRate =

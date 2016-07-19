@@ -170,7 +170,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
         backend,
         ProcessingWorkerPoolSettings(),
         MetricsCollector(None)
-      )(ResultChecker.simple))
+      )(ResultChecker.expectType))
 
       watch(processor)
       val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(), MetricsCollector(None)))
@@ -183,7 +183,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
       val mc = MetricsCollector(None)
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.simple))
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.expectType))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
       val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(scalingInterval = 10.minutes), mc))
       watch(a)

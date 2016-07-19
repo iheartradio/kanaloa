@@ -1,8 +1,10 @@
 package kanaloa.reactive.dispatcher
 
-import kanaloa.reactive.dispatcher.PerformanceSampler.Sample
+import akka.testkit.TestProbe
+import kanaloa.reactive.dispatcher.PerformanceSampler.{Subscribe, Sample}
 import kanaloa.reactive.dispatcher.Regulator.{DroppingRate, Status, Settings}
 import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import concurrent.duration._
 import DurationFunctions._
 import java.time.{LocalDateTime ⇒ Time}
@@ -36,6 +38,27 @@ class RegulatorSpec extends SpecWithActorSystem {
 
   "Regulator" should {
     import Regulator.update
+
+    "send metrics" in {
+      val metricsCollector = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(), metricsCollector.ref, TestProbe().ref))
+      metricsCollector.expectMsgType[Subscribe]
+      regulator ! sample() //starts the regulator
+      regulator ! sample()
+
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
+      metricsCollector.expectMsgType[Metric.DropRate]
+    }
+
+    "send dropRate" in {
+      val regulatee = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
+      regulator ! sample() //starts the regulator
+
+      regulator ! sample()
+
+      regulatee.expectMsgType[DroppingRate]
+    }
 
     "update recordedAt" in {
       val lastStatus = status(averageSpeed = 0.2, recordedAt = 2000.milliseconds.ago)
