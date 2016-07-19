@@ -37,7 +37,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   override def preStart(): Unit = {
     super.preStart()
     (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
-    settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
   }
 
