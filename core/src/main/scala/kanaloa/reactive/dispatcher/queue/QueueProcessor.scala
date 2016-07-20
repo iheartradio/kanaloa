@@ -28,8 +28,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool)
   var resultHistory = Vector[Boolean]()
   var workerPool = Set[ActorRef]()
-
-  metricsCollector ! Metric.PoolSize(settings.startingPoolSize)
+  var inflightCreations = 0
 
   //stop any children which failed.  Let the DeathWatch handle it
   override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
@@ -37,7 +36,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   override def preStart(): Unit = {
     super.preStart()
     (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
-    settings.maxProcessingTime.foreach(delayedMsg(_, QueueMaxProcessTimeReached(queue)))
     context watch queue
   }
 
@@ -46,22 +44,24 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     onWorkError(resultHistory, workerPool)
   }
 
+  def currentWorkers = workerPool.size + inflightCreations
+
   def receive: Receive = {
     case ScaleTo(newPoolSize, reason) ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
-      val diff = toPoolSize - workerPool.size
+      val diff = toPoolSize - currentWorkers
       if (diff > 0) {
-        metricsCollector ! Metric.PoolSize(newPoolSize)
         (1 to diff).foreach(_ ⇒ retrieveRoutee())
       } else if (diff < 0)
-
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
     case RouteeRetrieved(routee) ⇒
-      workerPool = workerPool + createWorker(routee)
+      createWorker(routee)
+      metricsCollector ! Metric.PoolSize(workerPool.size)
 
     case RouteeFailed(ex) ⇒
+      inflightCreations -= 1
       log.error(ex, "Failed to retrieve Routee")
 
     case WorkCompleted(worker, duration) ⇒
@@ -78,7 +78,7 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
-      if (workerPool.size < settings.minPoolSize) {
+      if (currentWorkers < settings.minPoolSize) {
         retrieveRoutee() //kick off the creation of a new Worker
       }
 
@@ -132,18 +132,20 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
 
   private def retrieveRoutee(): Unit = {
     import context.dispatcher //do we want to pass this in?
+    inflightCreations += 1
     backend(this.context).onComplete {
       case Success(routee) ⇒ self ! RouteeRetrieved(routee)
       case Failure(ex)     ⇒ self ! RouteeFailed(ex)
     }
   }
 
-  private def createWorker(routee: ActorRef): WorkerRef = {
+  private def createWorker(routee: ActorRef): Unit = {
     val workerName = s"worker-$workerCount"
     workerCount += 1
     val worker = workerFactory.createWorker(queue, routee, resultChecker, workerName)
     context watch worker
-    worker
+    workerPool = workerPool + worker
+    inflightCreations -= 1
   }
 }
 
@@ -206,7 +208,6 @@ object QueueProcessor {
 
   case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)
 
-  case class QueueMaxProcessTimeReached(queue: QueueRef)
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   private[queue] case class RouteeRetrieved(routee: ActorRef)

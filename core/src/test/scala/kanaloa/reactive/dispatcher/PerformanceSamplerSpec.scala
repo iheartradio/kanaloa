@@ -158,10 +158,13 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       val ps = PoolSize(3)
       p ! ps
 
-      verify(reporter).report(ps)
+      eventually {
+        verify(reporter).report(ps)
+        verifyNoMoreInteractions(reporter)
+      }
     }
 
-    "report utilization even when fully utilized" in {
+    "report metrics when becoming fully utilized and received Sample" in {
       val reporter = mock[Reporter]
       val mc = system.actorOf(MetricsCollector.props(Some(reporter)))
 
@@ -173,6 +176,8 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       eventually {
         verify(reporter).report(PoolSize(4))
         verify(reporter).report(PoolUtilized(4))
+        verify(reporter).report(WorkQueueLength(fullyUtilizedResult.workLeft))
+        verifyNoMoreInteractions(reporter)
       }
 
     }
