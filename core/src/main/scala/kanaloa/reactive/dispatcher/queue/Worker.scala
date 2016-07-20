@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
+import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
 import kanaloa.reactive.dispatcher.queue.Worker._
@@ -16,8 +17,13 @@ import scala.concurrent.duration._
 trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   val queue: ActorRef
+  val metricsCollector: ActorRef
   val resultChecker: ResultChecker
-  val monitor: ActorRef = context.parent //this should be explicitly passed in
+  val circuitBreakerSettings: Option[CircuitBreakerSettings]
+
+  var circuitBreaker: Option[ActorRef] = circuitBreakerSettings.map { cbs ⇒
+    context.actorOf(CircuitBreaker.props(cbs, self))
+  }
 
   val routee: ActorRef
 
@@ -34,9 +40,15 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   def finish(): Unit = context stop self
 
+  def setDelay(delay: Option[FiniteDuration]): Unit = {
+    if (delayBeforeNextWork.isEmpty && delay.isDefined)
+      metricsCollector ! Metric.CircuitBreakerOpened
+    delayBeforeNextWork = delay
+  }
+
   val waitingForWork: Receive = {
     case qs: QueryStatus                  ⇒ qs reply Idle
-    case Hold(period)                     ⇒ delayBeforeNextWork = Some(period)
+    case SetDelay(delay)                  ⇒ setDelay(delay)
 
     case work: Work                       ⇒ sendWorkToRoutee(work, 0)
 
@@ -50,7 +62,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   def working(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, becomeUnregisteringIdle) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
-    case Hold(period)                     ⇒ delayBeforeNextWork = Some(period)
+    case SetDelay(delay)                  ⇒ setDelay(delay)
 
     //we are done with this Work, ask for more and wait for it
     case WorkFinished                     ⇒ askMoreWork()
@@ -70,7 +82,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒ qs reply WaitingToTerminate
 
     //ignore these, since all we care about is the Work completing one way or another
-    case Hold(_) | Retire | Terminated(`queue`) | NoWorkLeft ⇒
+    case SetDelay(_) | Retire | Terminated(`queue`) | NoWorkLeft ⇒
 
     case w: Work ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
@@ -82,7 +94,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒ qs reply UnregisteringIdle
 
     //ignore these
-    case Hold(_) | Retire | Terminated(`routee`) | NoWorkLeft ⇒
+    case SetDelay(_) | Retire | Terminated(`routee`) | NoWorkLeft ⇒
 
     case w: Work ⇒ sender ! Rejected(w, "Retiring") //safety first
 
@@ -97,7 +109,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus                    ⇒ qs reply UnregisteringBusy
 
     //ignore these
-    case Hold(_) | Retire | NoWorkLeft      ⇒
+    case SetDelay(_) | Retire | NoWorkLeft  ⇒
 
     case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
 
@@ -160,23 +172,15 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def sendWorkToRoutee(work: Work, retried: Int): Unit = {
-    val timeoutHandle: Cancellable =
-      delayBeforeNextWork match {
-        case Some(d) ⇒
-          import context.dispatcher
-          context.system.scheduler.scheduleOnce(d, routee, work.messageToDelegatee)
-          delayedMsg(d + work.settings.timeout, RouteeTimeout)
-        case None ⇒
-          routee ! work.messageToDelegatee
-          delayedMsg(work.settings.timeout, RouteeTimeout)
-      }
-    delayBeforeNextWork = None
+    val timeoutHandle: Cancellable = {
+      maybeDelayedMsg(delayBeforeNextWork, work.messageToDelegatee, routee)
+      delayedMsg(delayBeforeNextWork.getOrElse(Duration.Zero) + work.settings.timeout, RouteeTimeout)
+    }
     context become working(Outstanding(work, timeoutHandle, retried))
   }
 
   private def askMoreWork(): Unit = {
     maybeDelayedMsg(delayBeforeNextWork, RequestWork(self), queue)
-    delayBeforeNextWork = None
     context become waitingForWork
   }
 
@@ -195,18 +199,22 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     startAt:       LocalDateTime = LocalDateTime.now
   ) {
     def success(result: Any): Unit = {
-      monitor ! WorkCompleted(self, startAt.until(LocalDateTime.now))
       done(result)
+      val duration = startAt.until(LocalDateTime.now)
+      circuitBreaker.foreach(_ ! WorkCompleted(self, duration))
+      metricsCollector ! Metric.WorkCompleted(duration)
     }
 
     def fail(result: Any): Unit = {
-      monitor ! WorkFailed(result.toString)
       done(result)
+      circuitBreaker.foreach(_ ! WorkFailed(result.toString))
+      metricsCollector ! Metric.WorkFailed
     }
 
     def timeout(): Unit = {
-      monitor ! WorkTimedOut("unknown")
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
+      circuitBreaker.foreach(_ ! WorkTimedOut("unknown"))
+      metricsCollector ! Metric.WorkTimedOut
     }
 
     protected def done(result: Any): Unit = {
@@ -235,16 +243,23 @@ object Worker {
   case object Working extends WorkerStatus
   case object WaitingToTerminate extends WorkerStatus
 
-  case class Hold(period: FiniteDuration)
+  case class SetDelay(period: Option[FiniteDuration])
   private[queue] case object WorkFinished
 
   class DefaultWorker(
-    val queue:         QueueRef,
-    val routee:        ActorRef,
-    val resultChecker: ResultChecker
+    val queue:                  QueueRef,
+    val routee:                 ActorRef,
+    val metricsCollector:       ActorRef,
+    val circuitBreakerSettings: Option[CircuitBreakerSettings],
+    val resultChecker:          ResultChecker
   ) extends Worker
 
-  def default(queue: QueueRef, routee: ActorRef)(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, routee, resultChecker)).withDeploy(Deploy.local)
+  def default(
+    queue:                  QueueRef,
+    routee:                 ActorRef,
+    metricsCollector:       ActorRef,
+    circuitBreakerSettings: Option[CircuitBreakerSettings] = None
+  )(resultChecker: ResultChecker): Props = {
+    Props(new DefaultWorker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker)).withDeploy(Deploy.local)
   }
 }

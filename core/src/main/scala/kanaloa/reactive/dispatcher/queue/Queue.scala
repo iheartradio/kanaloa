@@ -89,6 +89,16 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }
   }
 
+  /**
+   * Dispatch as many as possible work, so by the end either work queue or worker
+   * queue should be empty.
+   * Note that the workers left in the worker queue after dispatch are the only ones
+   * that counts as idle workers.
+   * @param status
+   * @param dispatched
+   * @param retiring
+   * @return
+   */
   @tailrec
   protected final def dispatchWork(status: Status, dispatched: Int = 0, retiring: Boolean = false): Status = {
     if (status.workBuffer.isEmpty && !status.queuedWorkers.isEmpty && !retiring) onQueuedWorkExhausted()

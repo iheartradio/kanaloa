@@ -204,7 +204,9 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
       actualPoolSize
     }
 
-    performMultipleTests(test, optimalSize)
+    val failRatio = performMultipleTests(test, optimalSize, 6)
+
+    failRatio should be <= 0.34
   }
 }
 
@@ -276,7 +278,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
 
     val failRatio = performMultipleTests(test, optimalSize, 6)
 
-    failRatio should be <= 0.5
+    failRatio should be <= 0.34
   }
 }
 

@@ -28,12 +28,13 @@ trait Dispatcher extends Actor {
   protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
 
   private[dispatcher] val processor = {
-    val props = (settings.circuitBreaker match {
-      case Some(cb) ⇒
-        QueueProcessor.withCircuitBreaker(queue, backend, settings.workerPool, cb, metricsCollector) _
-      case None ⇒
-        QueueProcessor.default(queue, backend, settings.workerPool, metricsCollector) _
-    })(resultChecker)
+    val props = QueueProcessor.default(
+      queue,
+      backend,
+      settings.workerPool,
+      metricsCollector,
+      settings.circuitBreaker
+    )(resultChecker)
 
     context.actorOf(props, name + "-queue-processor")
   }

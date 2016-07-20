@@ -21,10 +21,14 @@ package kanaloa.reactive.dispatcher.queue {
 
   case class WorkSettings(retry: Int = 0, timeout: FiniteDuration = 30.seconds)
 
+  /**
+   * see reference.conf
+   * @param openDurationBase
+   * @param timeoutCountThreshold
+   */
   case class CircuitBreakerSettings(
-    closeDuration:      FiniteDuration = 3.seconds,
-    errorRateThreshold: Double         = 1,
-    historyLength:      Int            = 10
+    openDurationBase:      FiniteDuration = 3.seconds,
+    timeoutCountThreshold: Double         = 3
   )
 
   /**

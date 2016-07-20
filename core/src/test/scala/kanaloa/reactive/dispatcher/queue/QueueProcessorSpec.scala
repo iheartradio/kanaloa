@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
-import akka.testkit.{TestActor, TestActorRef, TestProbe}
+import akka.testkit.{TestActorRef, TestActor, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown, WorkCompleted}
@@ -17,15 +17,15 @@ import scala.concurrent.duration._
 
 class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
-  type QueueCreator = (ActorRef, Backend, ProcessingWorkerPoolSettings, ActorRef, WorkerFactory) ⇒ ResultChecker ⇒ Props
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
-  def withQP(poolSettings: ProcessingWorkerPoolSettings, qCreator: QueueCreator, test: QueueTest) {
+  def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings())(test: QueueTest) {
+
     val queueProbe = TestProbe("queue")
     val testBackend = new TestBackend()
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[QueueProcessor](qCreator(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, testWorkerFactory)(SimpleResultChecker))
+    val qp = TestActorRef[QueueProcessor](QueueProcessor.default(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, None, testWorkerFactory)(SimpleResultChecker))
     watch(qp)
     try {
       test(qp, queueProbe, metricsCollector, testBackend, testWorkerFactory)
@@ -33,19 +33,6 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
       unwatch(qp)
       qp.stop()
     }
-  }
-
-  def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings())(test: QueueTest) {
-    withQP(poolSettings, QueueProcessor.default, test)
-  }
-
-  def withQueueProcessorCB(
-    poolSettings:           ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(),
-    circuitBreakerSettings: CircuitBreakerSettings       = CircuitBreakerSettings()
-  )(test: QueueTest) {
-
-    val pa: QueueCreator = QueueProcessor.withCircuitBreaker(_: ActorRef, _: Backend, _: ProcessingWorkerPoolSettings, circuitBreakerSettings, _: ActorRef, _: WorkerFactory)
-    withQP(poolSettings, pa, test)
   }
 
   //very specific for my needs here, but we can def generalize this if need be
@@ -177,45 +164,6 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
     }
   }
 
-  "The QueueProcessorWithCircuitBreaker" should {
-
-    "record result history" in withQueueProcessorCB() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-
-      val duration = 1.millisecond
-
-      qp ! WorkCompleted(self, duration)
-      qp ! WorkCompleted(self, duration)
-      qp ! WorkFailed("")
-      qp ! WorkFailed("")
-      qp ! WorkTimedOut("")
-      qp ! WorkTimedOut("")
-
-      eventually {
-        qp.underlyingActor.resultHistory should have size 6
-        qp.underlyingActor.resultHistory.count(x ⇒ x) shouldBe 2
-        qp.underlyingActor.resultHistory.count(x ⇒ !x) shouldBe 4
-      }
-
-      val msgs = (1 to 5).map(x ⇒ Metric.PoolSize(x)) ++ Seq(Metric.WorkCompleted(duration), Metric.WorkCompleted(duration), Metric.WorkFailed, Metric.WorkFailed, Metric.WorkTimedOut, Metric.WorkTimedOut)
-      metricsCollector.expectMsgAllOf(msgs: _*)
-
-      //no Holds should be set since only 4/6 requests failed, which is not the 100% fail rate
-      workerFactory.probeMap.values.foreach { probe ⇒
-        probe.msgAvailable shouldBe false //is this a race condition waiting to happen?
-      }
-
-    }
-
-    "send Holds when the circuitBreaker opens" in withQueueProcessorCB(circuitBreakerSettings = CircuitBreakerSettings(historyLength = 1)) {
-      (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-        //we have a queue length of one, and one failure, which sets our error rate to 100%.  Should get Holds for 3 seconds
-        qp ! WorkFailed("")
-        workerFactory.probeMap.values.foreach { probe ⇒
-          probe.expectMsg(Worker.Hold(3.seconds))
-        }
-    }
-  }
-
   class TestBackend extends Backend {
     val probe = TestProbe()
     var timesInvoked: Int = 0
@@ -233,7 +181,14 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
     val retiredCount: AtomicInteger = new AtomicInteger(0)
 
     //create a Worker, and increment a count when its told to Retire.
-    override def createWorker(queueRef: QueueRef, routee: QueueRef, resultChecker: ResultChecker, workerName: String)(implicit ac: ActorRefFactory): ActorRef = {
+    override def createWorker(
+      queueRef:               QueueRef,
+      routee:                 QueueRef,
+      metricsCollector:       ActorRef,
+      circuitBreakerSettings: Option[CircuitBreakerSettings],
+      resultChecker:          ResultChecker,
+      workerName:             String
+    )(implicit ac: ActorRefFactory): ActorRef = {
       val probe = TestProbe(workerName)
       probe.setAutoPilotPF {
         case Worker.Retire ⇒
