@@ -196,7 +196,8 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
         qp.underlyingActor.resultHistory.count(x ⇒ !x) shouldBe 4
       }
 
-      metricsCollector.expectMsgAllOf(Metric.PoolSize(5), Metric.WorkCompleted(duration), Metric.WorkCompleted(duration), Metric.WorkFailed, Metric.WorkFailed, Metric.WorkTimedOut, Metric.WorkTimedOut)
+      val msgs = (1 to 5).map(x ⇒ Metric.PoolSize(x)) ++ Seq(Metric.WorkCompleted(duration), Metric.WorkCompleted(duration), Metric.WorkFailed, Metric.WorkFailed, Metric.WorkTimedOut, Metric.WorkTimedOut)
+      metricsCollector.expectMsgAllOf(msgs: _*)
 
       //no Holds should be set since only 4/6 requests failed, which is not the 100% fail rate
       workerFactory.probeMap.values.foreach { probe ⇒

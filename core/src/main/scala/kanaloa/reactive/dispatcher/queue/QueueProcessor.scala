@@ -29,8 +29,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   var resultHistory = Vector[Boolean]()
   var workerPool = Set[ActorRef]()
 
-  metricsCollector ! Metric.PoolSize(settings.startingPoolSize)
-
   //stop any children which failed.  Let the DeathWatch handle it
   override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
 
@@ -51,14 +49,13 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
       val diff = toPoolSize - workerPool.size
       if (diff > 0) {
-        metricsCollector ! Metric.PoolSize(newPoolSize)
         (1 to diff).foreach(_ ⇒ retrieveRoutee())
       } else if (diff < 0)
-
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
     case RouteeRetrieved(routee) ⇒
       workerPool = workerPool + createWorker(routee)
+      metricsCollector ! Metric.PoolSize(workerPool.size)
 
     case RouteeFailed(ex) ⇒
       log.error(ex, "Failed to retrieve Routee")
