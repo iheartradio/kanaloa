@@ -1,6 +1,6 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.{ActorRef, ActorSystem, PoisonPill}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Terminated}
 import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.DurationFunctions._
@@ -169,11 +169,11 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       )(ResultChecker.simple))
 
       watch(processor)
-      val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(), MetricsCollector(None)))
-      watch(a)
+      val autoScaler = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(), MetricsCollector(None)))
+      watch(autoScaler)
       processor ! PoisonPill
-      expectTerminated(processor)
-      expectTerminated(a)
+
+      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(processor, autoScaler)
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
