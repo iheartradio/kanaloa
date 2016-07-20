@@ -176,7 +176,7 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       eventually {
         verify(reporter).report(PoolSize(4))
         verify(reporter).report(PoolUtilized(4))
-        verify(reporter).report(WorkQueueLength(fullyUtilizedResult.workLeft))
+        verify(reporter).report(WorkQueueLength(fullyUtilizedResult.queueLength.value))
         verifyNoMoreInteractions(reporter)
       }
 
