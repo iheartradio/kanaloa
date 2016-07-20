@@ -91,13 +91,13 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   @tailrec
   protected final def dispatchWork(status: Status, dispatched: Int = 0, retiring: Boolean = false): Status = {
+    if (status.workBuffer.isEmpty && !status.queuedWorkers.isEmpty && !retiring) onQueuedWorkExhausted()
     (for (
       (worker, queuedWorkers) ← status.queuedWorkers.dequeueOption;
       (work, workBuffer) ← status.workBuffer.dequeueOption
     ) yield {
       worker ! work
       context unwatch worker
-      if (workBuffer.isEmpty && !retiring) onQueuedWorkExhausted()
       status.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = status.countOfWorkSent + 1)
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch

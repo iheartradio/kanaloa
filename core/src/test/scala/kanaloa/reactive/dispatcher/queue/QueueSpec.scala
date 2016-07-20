@@ -27,8 +27,7 @@ class QueueSpec extends SpecWithActorSystem {
       delegatee.reply(MessageProcessed("c"))
     }
 
-    //TODO fix this test
-    /*"shutdown with all outstanding work done from the queue side" in new QueueScope {
+    "shutdown with all outstanding work done from the queue side" in new QueueScope {
       val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c", "d").iterator, sendResultsTo = Some(self)))
 
       delegatee.expectMsg(DelegateeMessage("a"))
@@ -44,31 +43,9 @@ class QueueSpec extends SpecWithActorSystem {
 
       expectMsg("b")
 
-      //delegatee.expectMsg(5.seconds, DelegateeMessage("c")) // c is already placed in buffer
-      //delegatee.reply(MessageProcessed("c"))
-
       expectMsg(ShutdownSuccessfully)
 
-    }*/
-
-    //TODO: I broke this test
-    /*"shutdown with all outstanding work done from the workers side" in new QueueScope {
-      val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c", "d").iterator))
-
-      delegatee.expectMsg(DelegateeMessage("a"))
-      delegatee.reply(MessageProcessed("a"))
-      delegatee.expectMsg(DelegateeMessage("b"))
-
-      queueProcessor ! Shutdown(Some(self), retireQueue = false)
-
-      expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
-
-      delegatee.reply(MessageProcessed("b"))
-
-      delegatee.expectNoMsg(50.milliseconds) //although c is still in queue's buffer worker already retired.
-      expectMsg(ShutdownSuccessfully)
-
-    }*/
+    }
 
   }
 
@@ -82,9 +59,11 @@ class QueueSpec extends SpecWithActorSystem {
       delegatee.expectNoMsg(250.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("b"))
-
+      watch(queueProcessor)
       queueProcessor ! Shutdown
-      //TODO: verify Queueprocessor is shutodwn
+
+      expectTerminated(queueProcessor)
+
     }
 
   }
