@@ -54,3 +54,4 @@ lazy val cluster = project
 
 addCommandAlias("validate", ";root;clean;compile;test;integration:test;multi-jvm:test")
 addCommandAlias("root", ";project root")
+
