@@ -80,6 +80,7 @@ class QueueSpec extends SpecWithActorSystem {
       delegatee.expectMsg(DelegateeMessage("b"))
 
       queueProcessor ! Shutdown
+      //TODO: verify Queueprocessor is shutodwn
     }
 
   }
@@ -99,7 +100,7 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
       queueProcessor ! ScaleTo(5)
 
       eventually {
-        receivedMetrics should contain allOf (Metric.PoolSize(1), Metric.PoolSize(3), Metric.PoolSize(5))
+        receivedMetrics should contain allOf (Metric.PoolSize(1), Metric.PoolSize(2), Metric.PoolSize(3), Metric.PoolSize(4), Metric.PoolSize(5))
       }
     }
 
