@@ -19,11 +19,10 @@ object TestUtils {
   def iteratorQueueProps(
     iterator:         Iterator[String],
     metricsCollector: ActorRef,
-    historySettings:  DispatchHistorySettings = DispatchHistorySettings(),
-    workSetting:      WorkSettings            = WorkSettings(),
-    sendResultsTo:    Option[ActorRef]        = None
+    workSetting:      WorkSettings     = WorkSettings(),
+    sendResultsTo:    Option[ActorRef] = None
   ): Props =
-    Queue.ofIterator(iterator.map(DelegateeMessage(_)), historySettings, metricsCollector, workSetting, sendResultsTo)
+    Queue.ofIterator(iterator.map(DelegateeMessage(_)), metricsCollector, workSetting, sendResultsTo)
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 

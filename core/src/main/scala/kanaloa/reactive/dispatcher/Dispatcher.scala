@@ -5,7 +5,8 @@ import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
-import kanaloa.reactive.dispatcher.metrics.{Reporter, MetricsCollector}
+import kanaloa.reactive.dispatcher.Regulator.DroppingRate
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
@@ -13,6 +14,7 @@ import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.concurrent.duration._
+import scala.util.Random
 
 trait Dispatcher extends Actor {
   def name: String
@@ -53,23 +55,16 @@ trait Dispatcher extends Actor {
 object Dispatcher {
 
   case class Settings(
-    workTimeout:     FiniteDuration                 = 1.minute,
-    workRetry:       Int                            = 0,
-    updateInterval:  FiniteDuration                 = 1.second,
-    dispatchHistory: DispatchHistorySettings,
-    workerPool:      ProcessingWorkerPoolSettings,
-    circuitBreaker:  Option[CircuitBreakerSettings],
-    backPressure:    Option[BackPressureSettings],
-    autoScaling:     Option[AutoScalingSettings]
+    workTimeout:    FiniteDuration                 = 1.minute,
+    workRetry:      Int                            = 0,
+    updateInterval: FiniteDuration                 = 1.second,
+    workerPool:     ProcessingWorkerPoolSettings,
+    regulator:      Option[Regulator.Settings],
+    circuitBreaker: Option[CircuitBreakerSettings],
+    autoScaling:    Option[AutoScalingSettings]
   ) {
     val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
   }
-
-  val defaultBackPressureSettings = BackPressureSettings(
-    maxBufferSize = 60000,
-    thresholdForExpectedWaitTime = 5.minute,
-    maxHistoryLength = 10.seconds
-  )
 
   private[dispatcher] def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) = {
     val referenceConfig = ConfigFactory.defaultReference(getClass.getClassLoader).getConfig("kanaloa")
@@ -88,7 +83,7 @@ object Dispatcher {
   private def toDispatcherSettings(config: Config): Dispatcher.Settings = {
     val settings = config.atPath("root").as[Dispatcher.Settings]("root")
     settings.copy(
-      backPressure = readComponent[BackPressureSettings]("backPressure", config),
+      regulator = readComponent[Regulator.Settings]("backPressure", config),
       circuitBreaker = readComponent[CircuitBreakerSettings]("circuitBreaker", config),
       autoScaling = readComponent[AutoScalingSettings]("autoScaling", config)
     )
@@ -120,10 +115,12 @@ case class PushingDispatcher(
   resultChecker:    ResultChecker
 )
   extends Dispatcher {
+  val random = new Random(23)
+  var droppingRate: DroppingRate = DroppingRate(0)
+  protected lazy val queueProps = Queue.default(metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
 
-  protected lazy val queueProps = settings.backPressure match {
-    case Some(bp) ⇒ Queue.withBackPressure(settings.dispatchHistory, bp, metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
-    case None     ⇒ Queue.default(metricsCollector, settings.dispatchHistory, WorkSettings(settings.workRetry, settings.workTimeout))
+  settings.regulator.foreach { rs ⇒
+    context.actorOf(Regulator.props(rs, metricsCollector, self))
   }
 
   /**
@@ -134,8 +131,18 @@ case class PushingDispatcher(
    * @return
    */
   override def extraReceive: Receive = {
-    case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected("Server is at capacity"))
-    case m                                 ⇒ queue ! Enqueue(m, false, Some(sender()))
+    case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
+    case r: DroppingRate                   ⇒ droppingRate = r
+    case m                                 ⇒ dropOrEnqueue(m, sender)
+  }
+
+  private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
+    if (droppingRate.value > 0 &&
+      (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
+      metricsCollector ! Metric.WorkRejected
+      sender ! WorkRejected(s"Over capacity, request dropped under random dropping rate ${droppingRate.value}")
+    } else
+      queue ! Enqueue(m, false, Some(replyTo))
   }
 }
 
@@ -164,7 +171,6 @@ case class PullingDispatcher(
 ) extends Dispatcher {
   protected def queueProps = QueueOfIterator.props(
     iterator,
-    settings.dispatchHistory,
     WorkSettings(settings.workRetry, settings.workTimeout),
     metricsCollector,
     sendResultsTo

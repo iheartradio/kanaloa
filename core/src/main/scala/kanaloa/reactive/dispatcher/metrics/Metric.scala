@@ -8,7 +8,7 @@ object Metric {
   sealed trait Event extends Metric
 
   case object WorkEnqueued extends Event
-  case object EnqueueRejected extends Event
+  case object WorkRejected extends Event
 
   case object WorkTimedOut extends Event
   case object WorkFailed extends Event
@@ -18,6 +18,7 @@ object Metric {
   sealed trait Status extends Metric
 
   case class PoolSize(size: Int) extends Status
+  case class DropRate(value: Double) extends Status
   case class PoolUtilized(numWorkers: Int) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueExpectedWaitTime(duration: Duration) extends Status

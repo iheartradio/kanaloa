@@ -75,7 +75,7 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
           name = "test",
           backend,
           kanaloaConfig
-        )(ResultChecker.simple[EchoMessage]))
+        )(ResultChecker.expectType[EchoMessage]))
 
         dispatcher ! EchoMessage(1)
         expectMsg(EchoMessage(1))
@@ -116,7 +116,7 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
           name = "test",
           backend,
           kanaloaConfig
-        )(ResultChecker.simple[EchoMessage]))
+        )(ResultChecker.expectType[EchoMessage]))
 
         (1 to 100).foreach { _ =>
           dispatcher ! EchoMessage(1)

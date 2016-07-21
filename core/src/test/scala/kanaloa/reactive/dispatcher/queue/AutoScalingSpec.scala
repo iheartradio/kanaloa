@@ -5,6 +5,7 @@ import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.DurationFunctions._
 import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
+import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.MetricsCollector
 import kanaloa.reactive.dispatcher.queue.AutoScaling.{AutoScalingStatus, OptimizeOrExplore, PoolSize}
 import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
@@ -18,6 +19,9 @@ import scala.concurrent.duration._
 
 class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventually {
 
+  def sample(poolSize: PoolSize) =
+    Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14))
+
   "AutoScaling" should {
     "when no history" in new AutoScalingScope {
       as ! OptimizeOrExplore
@@ -25,7 +29,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
     }
 
     "record perfLog" in new AutoScalingScope {
-      as ! Sample(3, 2.second.ago, 1.second.ago, 30)
+      as ! sample(poolSize = 30)
       as ! QueryStatus()
       val status = expectMsgType[AutoScalingStatus]
       status.poolSize should contain(30)
@@ -33,9 +37,9 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
     }
 
     "update poolsize" in new AutoScalingScope {
-      as ! Sample(3, 2.second.ago, 1.second.ago, 30)
-      as ! Sample(3, 2.second.ago, 1.second.ago, 33)
-      as ! Sample(3, 2.second.ago, 1.second.ago, 35)
+      as ! sample(poolSize = 30)
+      as ! sample(poolSize = 33)
+      as ! sample(poolSize = 35)
       as ! QueryStatus()
       val status = expectMsgType[AutoScalingStatus]
       status.poolSize should contain(35)
@@ -52,7 +56,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
 
     "stop an underutilizationStreak" in new AutoScalingScope {
       as ! PartialUtilization(3)
-      as ! Sample(3, 2.second.ago, 1.second.ago, 30)
+      as ! sample(poolSize = 30)
 
       as ! QueryStatus()
       val status = expectMsgType[AutoScalingStatus]
@@ -83,7 +87,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
 
     "explore when currently maxed out and exploration rate is 1" in new AutoScalingScope {
       val subject = autoScalingRef(alwaysExploreSettings)
-      subject ! Sample(3, 2.second.ago, 1.second.ago, 30)
+      subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
 
@@ -94,7 +98,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
 
     "does not optimize when not currently maxed" in new AutoScalingScope {
       val subject = autoScalingRef()
-      subject ! Sample(3, 2.second.ago, 1.second.ago, 30)
+      subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
       tProcessor.expectMsgType[ScaleTo]
@@ -166,7 +170,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
         backend,
         ProcessingWorkerPoolSettings(),
         MetricsCollector(None)
-      )(ResultChecker.simple))
+      )(ResultChecker.expectType))
 
       watch(processor)
       val autoScaler = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(), MetricsCollector(None)))
@@ -179,7 +183,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
       val mc = MetricsCollector(None)
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.simple))
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.expectType))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
       val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(scalingInterval = 10.minutes), mc))
       watch(a)
@@ -225,7 +229,8 @@ class AutoScalingScope(implicit system: ActorSystem)
           workDone,
           start = distance.seconds.ago,
           end = (distance - 1).seconds.ago,
-          size
+          poolSize = size,
+          queueLength = QueueLength(14)
         )
     }
 

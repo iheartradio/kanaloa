@@ -3,6 +3,7 @@ package kanaloa.reactive.dispatcher
 import java.time.{LocalDateTime ⇒ Time}
 
 import akka.actor.{Terminated, ActorRef, Actor}
+import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.Metric._
 import PerformanceSampler._
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector}
@@ -67,8 +68,8 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     }
   }
 
-  def reportQueueLength(workLeft: Int): Unit =
-    report(WorkQueueLength(workLeft))
+  def reportQueueLength(queueLength: QueueLength): Unit =
+    report(WorkQueueLength(queueLength.value))
 
   def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
     case DispatchResult(idle, workLeft) ⇒
@@ -77,7 +78,8 @@ private[dispatcher] trait PerformanceSampler extends Actor {
         tryComplete(s)
         publishUtilization(idle, s.poolSize)
         context become partialUtilized(s.poolSize)
-      }
+      } else
+        context become fullyUtilized(s.copy(queueLength = workLeft))
 
     case metric: Metric ⇒
       handle(metric) {
@@ -88,7 +90,9 @@ private[dispatcher] trait PerformanceSampler extends Actor {
           val sizeChanged = s.poolSize.fold(true)(_ != size)
           if (sizeChanged) {
             tryComplete(s)
-            context become fullyUtilized(QueueStatus(poolSize = Some(size)))
+            context become fullyUtilized(
+              QueueStatus(poolSize = Some(size), queueLength = s.queueLength)
+            )
           }
       }
 
@@ -100,7 +104,9 @@ private[dispatcher] trait PerformanceSampler extends Actor {
 
   def partialUtilized(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
     case DispatchResult(idle, workLeft) if settings.fullyUtilized(idle) ⇒
-      context become fullyUtilized(QueueStatus(poolSize = poolSize))
+      context become fullyUtilized(
+        QueueStatus(poolSize = poolSize, queueLength = workLeft)
+      )
       reportQueueLength(workLeft)
 
     case DispatchResult(idle, _) ⇒
@@ -136,7 +142,7 @@ private[dispatcher] object PerformanceSampler {
   case class Subscribe(actorRef: ActorRef)
   case class Unsubscribe(actorRef: ActorRef)
 
-  case class DispatchResult(workersLeft: Int, workLeft: Int)
+  case class DispatchResult(workersLeft: Int, queueLength: QueueLength)
 
   /**
    *
@@ -153,9 +159,11 @@ private[dispatcher] object PerformanceSampler {
   }
 
   case class QueueStatus(
-    workDone: Int         = 0,
-    start:    Time        = Time.now,
-    poolSize: Option[Int] = None
+    queueLength: QueueLength,
+    workDone:    Int         = 0,
+    start:       Time        = Time.now,
+    poolSize:    Option[Int] = None
+
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
@@ -166,7 +174,8 @@ private[dispatcher] object PerformanceSampler {
         workDone = workDone,
         start = start,
         end = Time.now,
-        poolSize = poolSize.get
+        poolSize = poolSize.get,
+        queueLength = queueLength
       ))
       else
         None
@@ -176,11 +185,17 @@ private[dispatcher] object PerformanceSampler {
   sealed trait Report
 
   case class Sample(
-    workDone: Int,
-    start:    Time,
-    end:      Time,
-    poolSize: Int
-  ) extends Report
+    workDone:    Int,
+    start:       Time,
+    end:         Time,
+    poolSize:    Int,
+    queueLength: QueueLength
+  ) extends Report {
+    /**
+     * Work done per milliseconds
+     */
+    lazy val speed: Speed = Speed(workDone.toDouble * 1000 / start.until(end).toMicros.toDouble)
+  }
 
   /**
    * Number of utilized the workers in the worker when not all workers in the pool are busy

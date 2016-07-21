@@ -31,7 +31,7 @@ class StatsDReporter(
 
   import Metric._
 
-  private def gauge(key: String, value: Int, rate: Double = statusSampleRate) =
+  private def gauge(key: String, value: Any, rate: Double = statusSampleRate) =
     statsd.gauge(key, value.toString, statusSampleRate)
   private def increment(key: String, rate: Double = eventSampleRate) =
     statsd.increment(key, 1, rate)
@@ -43,23 +43,28 @@ class StatsDReporter(
   val failureSampleRate: Double = 1.0
 
   def report(metric: Metric): Unit = metric match {
-    case WorkEnqueued    ⇒ increment("queue.enqueued")
-    case EnqueueRejected ⇒ increment("queue.enqueueRejected")
+    case WorkEnqueued ⇒ increment("queue.enqueued")
+    case WorkRejected ⇒ increment("queue.enqueueRejected", Math.min(1d, eventSampleRate * 3d))
+
     case WorkCompleted(processTime) ⇒
       increment("work.completed")
       statsd.timing("queue.avgProcessTime", processTime.toMillis.toInt, eventSampleRate)
+
     case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
-    case WorkTimedOut         ⇒ increment("work.timedOut")
-    case CircuitBreakerOpened ⇒ increment("queue.circuitBreakerOpened")
+    case WorkTimedOut         ⇒ increment("work.timedOut", failureSampleRate)
+    case CircuitBreakerOpened ⇒ increment("queue.circuitBreakerOpened", failureSampleRate)
 
     case PoolSize(size) ⇒
       gauge("pool.size", size)
+
+    case DropRate(value) ⇒
+      gauge("queue.dropRate", value)
 
     case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
     case WorkQueueExpectedWaitTime(duration) ⇒
-      statsd.timing("queue.waitTime", duration.toMillis.toInt, eventSampleRate)
+      statsd.timing("queue.waitTime", duration.toMillis.toInt)
 
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)

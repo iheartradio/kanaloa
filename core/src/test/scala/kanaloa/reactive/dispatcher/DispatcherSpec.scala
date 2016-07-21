@@ -4,7 +4,8 @@ import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, StatsDReporter}
+import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.scalatest.OptionValues
@@ -72,7 +73,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
         (i: String) ⇒ Future.successful(MessageProcessed(i))
-      )(ResultChecker.simple[MessageProcessed]))
+      )(ResultChecker.expectType[MessageProcessed]))
     }
 
     "work happily with simpleBackend" in new SimplePushingDispatchScope {
@@ -89,20 +90,69 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
         (i: String) ⇒ Future.successful("A Result")
-      )(ResultChecker.simple[MessageProcessed]))
+      )(ResultChecker.expectType[MessageProcessed]))
 
       dispatcher ! "3"
       expectMsgType[WorkFailed]
     }
+
     "receive WorkRejected messages if queue is at capacity" in new ScopeWithActor {
-      val config = ConfigFactory.parseString("kanaloa.default-dispatcher.backPressure.maxBufferSize=0")
+      val backendProb = TestProbe()
       val dispatcher = system.actorOf(PushingDispatcher.props(
         "test",
-        (i: String) ⇒ Future.successful("A Result"),
-        config
-      )(ResultChecker.simple[MessageProcessed]))
+        backendProb.ref
+      )(ResultChecker.complacent))
+
+      dispatcher ! Regulator.DroppingRate(1)
       dispatcher ! "message"
+      backendProb.expectNoMsg(40.milliseconds)
       expectMsgType[WorkRejected]
+    }
+
+    "send WorkRejected metric when message is rejected" in new ScopeWithActor {
+      val metricCollector = TestProbe()
+      val dispatcher = system.actorOf(Props(new PushingDispatcher(
+        "test",
+        Dispatcher.defaultDispatcherSettings(),
+        TestProbe().ref,
+        metricCollector.ref,
+        ResultChecker.complacent
+      )))
+
+      dispatcher ! Regulator.DroppingRate(1)
+      dispatcher ! "message"
+      metricCollector.fishForMessage(30.milliseconds) {
+        case Metric.WorkRejected ⇒ true
+        case _                   ⇒ false
+      }
+    }
+
+    "reject work according to drop rate" in new ScopeWithActor {
+      val backendProb = TestProbe()
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        "test",
+        backendProb.ref,
+        ConfigFactory.parseString(
+          """
+            |kanaloa.default-dispatcher {
+            |  updateInterval = 300s
+            |  circuitBreaker.enabled = off
+            |  autoScaling.enabled = off
+            |}""".stripMargin
+        ) //make sure regulator doesn't interfere
+      )(ResultChecker.complacent))
+
+      dispatcher ! Regulator.DroppingRate(0.5)
+
+      val numOfWork = 1000
+
+      (1 to numOfWork).foreach(_ ⇒ dispatcher ! "message")
+
+      val received = backendProb.receiveWhile(10.seconds, 20.milliseconds) {
+        case "message" ⇒ backendProb.reply("1")
+      }
+
+      (received.length.toDouble / numOfWork.toDouble) shouldBe 0.5 +- 0.07
     }
   }
 
@@ -167,23 +217,6 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
           """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.autoScaling shouldBe None
-    }
-
-    "turn off backPressure if set to off" in {
-      val cfgStr =
-        """
-            kanaloa {
-              dispatchers {
-                example {
-                  backPressure {
-                    enabled = off
-                  }
-                }
-              }
-            }
-          """
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.backPressure shouldBe None
     }
 
     "turn off circuitBreaker if set to off" in {
