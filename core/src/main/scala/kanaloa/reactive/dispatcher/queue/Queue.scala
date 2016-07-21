@@ -8,7 +8,6 @@ import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{Status, _}
-import kanaloa.util.FiniteCollection._
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
@@ -208,36 +207,12 @@ object Queue {
 
   private case object RetiringTimeout
 
-  trait QueueDispatchInfo {
-    /**
-     * The average duration it takes to dispatch a message, this is a lower bound (actual could be slower than this).
-     * Also it only measures when the all the workers are fully utilized.
-     */
-    def avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration]
-  }
-
   protected[queue] case class Status(
     workBuffer:      ScalaQueue[Work]             = ScalaQueue.empty,
     queuedWorkers:   ScalaQueue[ActorRef]         = ScalaQueue.empty,
     countOfWorkSent: Long                         = 0,
     dispatchHistory: Vector[DispatchHistoryEntry] = Vector.empty
-  ) extends QueueDispatchInfo {
-
-    lazy val relevantHistory: Vector[DispatchHistoryEntry] = dispatchHistory.takeRightWhile(_.allWorkerOccupied) //only take into account latest busy queue history
-
-    /**
-     * The lower bound of average duration it takes to dequeue one request， The reciprocal of it is the upper bound of dispatch speed.
-     */
-    lazy val avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration] = {
-      if (relevantHistory.length >= 2) {
-        val duration = relevantHistory.head.time.until(relevantHistory.last.time)
-        val totalDispatched = relevantHistory.map(_.dispatched).sum
-        Some(duration / Math.max(1d, totalDispatched.toDouble))
-      } else None
-    }
-
-    lazy val currentQueueLength = dispatchHistory.lastOption.map(_.queueLength).getOrElse(0)
-  }
+  )
 
   private[queue] case class DispatchHistoryEntry(dispatched: Int, queueLength: Int, waitingWorkers: Int, time: LocalDateTime) {
     def aggregate(that: DispatchHistoryEntry) = copy(dispatched = dispatched + that.dispatched)

@@ -4,26 +4,27 @@ import java.time.LocalDateTime
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
-import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.WorkCompleted
-import kanaloa.reactive.dispatcher.queue.Worker._
 import kanaloa.reactive.dispatcher.ResultChecker
+import kanaloa.reactive.dispatcher.metrics.Metric
+import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
+import kanaloa.reactive.dispatcher.queue.Worker._
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 
-trait Worker extends Actor with ActorLogging with MessageScheduler {
+class Worker(
+  queue:                  QueueRef,
+  routee:                 ActorRef,
+  metricsCollector:       ActorRef,
+  circuitBreakerSettings: Option[CircuitBreakerSettings],
+  resultChecker:          ResultChecker
+) extends Actor with ActorLogging with MessageScheduler {
 
-  val queue: ActorRef
-  val metricsCollector: ActorRef
-  val resultChecker: ResultChecker
-  val circuitBreakerSettings: Option[CircuitBreakerSettings]
   var timeoutCount: Int = 0
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
-  val routee: ActorRef
+  private val circuitBreaker: Option[CircuitBreaker] = circuitBreakerSettings.map(new CircuitBreaker(_))
 
   def receive = waitingForWork
 
@@ -144,8 +145,7 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
   private def retryOrAbandon(outstanding: Outstanding, error: Any): Unit = {
     outstanding.cancel()
-    //why do we fail if there is a delayBeforeNextWork? Is this because of the subsequent 'sendWorkToRoutee' call?
-    if (outstanding.retried < outstanding.work.settings.retry && delayBeforeNextWork.isEmpty) {
+    if (outstanding.retried < outstanding.work.settings.retry) {
       log.debug(s"Retry work $outstanding")
       sendWorkToRoutee(outstanding.work, outstanding.retried + 1)
     } else {
@@ -180,6 +180,23 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
       msgString.take(msgString.lastIndexWhere(_.isWhitespace, maxLength)).trim + "..."
   }
 
+  private class CircuitBreaker(settings: CircuitBreakerSettings) {
+    def resetTimeoutCount(): Unit = {
+      timeoutCount = 0
+      delayBeforeNextWork = None
+    }
+
+    def incrementTimeoutCount(): Unit = {
+      timeoutCount = timeoutCount + 1
+      if (timeoutCount >= settings.timeoutCountThreshold) {
+        delayBeforeNextWork = Some(settings.openDurationBase * timeoutCount)
+        if (timeoutCount == settings.timeoutCountThreshold) //just crossed the threshold
+          metricsCollector ! Metric.CircuitBreakerOpened
+      }
+
+    }
+  }
+
   protected case class Outstanding(
     work:          Work,
     timeoutHandle: Cancellable,
@@ -189,19 +206,19 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
     def success(result: Any): Unit = {
       done(result)
       val duration = startAt.until(LocalDateTime.now)
-      resetTimeoutCount()
+      circuitBreaker.foreach(_.resetTimeoutCount())
       metricsCollector ! Metric.WorkCompleted(duration)
     }
 
     def fail(result: Any): Unit = {
       done(result)
-      resetTimeoutCount()
+      circuitBreaker.foreach(_.resetTimeoutCount())
       metricsCollector ! Metric.WorkFailed
     }
 
     def timeout(): Unit = {
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
-      incrementTimeoutCount()
+      circuitBreaker.foreach(_.incrementTimeoutCount())
       metricsCollector ! Metric.WorkTimedOut
     }
 
@@ -216,21 +233,6 @@ trait Worker extends Actor with ActorLogging with MessageScheduler {
 
     def reportResult(result: Any): Unit = work.replyTo.foreach(_ ! result)
 
-    def resetTimeoutCount(): Unit = {
-      timeoutCount = 0
-      delayBeforeNextWork = None
-    }
-
-    def incrementTimeoutCount(): Unit = {
-      timeoutCount = timeoutCount + 1
-      circuitBreakerSettings.foreach { cbs ⇒
-        if (timeoutCount >= cbs.timeoutCountThreshold) {
-          delayBeforeNextWork = Some(cbs.openDurationBase * timeoutCount)
-          if (timeoutCount == cbs.timeoutCountThreshold) //just crossed the threshold
-            metricsCollector ! Metric.CircuitBreakerOpened
-        }
-      }
-    }
   }
 
 }
@@ -247,16 +249,7 @@ object Worker {
   case object Working extends WorkerStatus
   case object WaitingToTerminate extends WorkerStatus
 
-  case class SetDelay(period: Option[FiniteDuration])
   private[queue] case object WorkFinished
-
-  class DefaultWorker(
-    val queue:                  QueueRef,
-    val routee:                 ActorRef,
-    val metricsCollector:       ActorRef,
-    val circuitBreakerSettings: Option[CircuitBreakerSettings],
-    val resultChecker:          ResultChecker
-  ) extends Worker
 
   def default(
     queue:                  QueueRef,
@@ -264,6 +257,6 @@ object Worker {
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None
   )(resultChecker: ResultChecker): Props = {
-    Props(new DefaultWorker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker)).withDeploy(Deploy.local)
+    Props(new Worker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker)).withDeploy(Deploy.local)
   }
 }

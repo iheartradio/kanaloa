@@ -2,9 +2,6 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor.PoisonPill
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, Unregister}
-import kanaloa.reactive.dispatcher.queue.Worker.SetDelay
-
-import scala.concurrent.duration._
 
 class WorkerIdleSpec extends WorkerSpec {
 

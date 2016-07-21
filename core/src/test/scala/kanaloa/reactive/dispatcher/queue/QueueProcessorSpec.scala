@@ -5,9 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully, WorkFailed, WorkTimedOut}
-import kanaloa.reactive.dispatcher.metrics.Metric
-import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown, WorkCompleted}
+import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown}
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker, SpecWithActorSystem}
 import org.scalatest.concurrent.Eventually
 

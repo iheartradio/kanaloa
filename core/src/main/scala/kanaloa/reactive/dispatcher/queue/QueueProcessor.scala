@@ -2,26 +2,25 @@ package kanaloa.reactive.dispatcher.queue
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
-import kanaloa.util.FiniteCollection._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
-trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
-  import QueueProcessor.WorkerPool
+class QueueProcessor(
+  queue:                  QueueRef,
+  backend:                Backend,
+  settings:               ProcessingWorkerPoolSettings,
+  circuitBreakerSettings: Option[CircuitBreakerSettings],
+  metricsCollector:       ActorRef,
+  workerFactory:          WorkerFactory,
+  resultChecker:          ResultChecker
+) extends Actor with ActorLogging with MessageScheduler {
 
-  val queue: QueueRef
-  def backend: Backend
-  def settings: ProcessingWorkerPoolSettings
-  def resultChecker: ResultChecker
-  val metricsCollector: ActorRef
-  def workerFactory: WorkerFactory
-  def circuitBreakerSettings: Option[CircuitBreakerSettings]
   var workerCount = 0
   var workerPool = Set[ActorRef]()
   var inflightCreations = 0
@@ -129,30 +128,14 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   }
 }
 
-/**
- * The default queue processor uses the same [[ ResultChecker ]] for all queues
- *
- * @param resultChecker
- */
-case class DefaultQueueProcessor(
-  queue:                  QueueRef,
-  backend:                Backend,
-  settings:               ProcessingWorkerPoolSettings,
-  circuitBreakerSettings: Option[CircuitBreakerSettings],
-  metricsCollector:       ActorRef,
-  workerFactory:          WorkerFactory,
-  resultChecker:          ResultChecker
-) extends QueueProcessor
-
 private[queue] trait WorkerFactory {
   def createWorker(
     queueRef:               ActorRef,
     routee:                 ActorRef,
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings],
-
-    resultChecker: ResultChecker,
-    workerName:    String
+    resultChecker:          ResultChecker,
+    workerName:             String
   )(implicit ac: ActorRefFactory): ActorRef
 }
 
@@ -176,13 +159,13 @@ object QueueProcessor {
     assert(numOfWorkers >= 0)
   }
 
-  case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)
-
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   private[queue] case class RouteeRetrieved(routee: ActorRef)
   private[queue] case class RouteeFailed(ex: Throwable)
+
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes)
+
   private case object ShutdownTimeout
 
   def default(
@@ -193,7 +176,7 @@ object QueueProcessor {
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None,
     workerFactory:          WorkerFactory                  = DefaultWorkerFactory
   )(resultChecker: ResultChecker): Props =
-    Props(new DefaultQueueProcessor(
+    Props(new QueueProcessor(
       queue,
       backend,
       settings,
