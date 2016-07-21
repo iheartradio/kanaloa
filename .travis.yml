@@ -1,5 +1,10 @@
 language: scala
 
+sudo: required
+
+services:
+  - docker
+
 git:
   depth: 9999
 
