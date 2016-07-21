@@ -4,7 +4,7 @@ import akka.actor.PoisonPill
 import kanaloa.reactive.dispatcher.ApiProtocol.{WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister}
-import kanaloa.reactive.dispatcher.queue.Worker.{SetDelay, UnregisteringIdle}
+import kanaloa.reactive.dispatcher.queue.Worker.{UnregisteringIdle}
 
 import scala.concurrent.duration._
 
@@ -33,22 +33,6 @@ class WorkerWorkingSpec extends WorkerSpec {
       routeeProbe.send(worker, Result("Response"))
       expectMsg("Response")
       metricCollectorProbe.expectMsgType[Metric.WorkCompleted]
-    }
-
-    "consume Hold when asking for more Work, transitions to 'idle'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, metricCollectorProbe) ⇒
-      val holdTime = 50.milliseconds
-      worker ! SetDelay(Some(holdTime))
-      metricCollectorProbe.expectMsg(Metric.CircuitBreakerOpened)
-      eventually {
-        worker.underlyingActor.delayBeforeNextWork.value shouldBe holdTime
-      }
-      routeeProbe.send(worker, Result("Response"))
-      //since we set 'self' as the replyTo, we should get the response
-      expectMsg("Response")
-
-      queueProbe.expectNoMsg((holdTime * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within hold
-      queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
-      assertWorkerStatus(worker, Worker.Idle)
     }
 
     "handle failed Work, transitions to 'idle'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
@@ -119,57 +103,45 @@ class WorkerWorkingSpec extends WorkerSpec {
 
     }
 
-    "trigger circuit breaker when counter is above threshold" in withWorkingWorker(ws, cbs) {
-      (worker, queueProbe, _, work, _) ⇒
+    "triggers circuit breaker when counter above threshold, report metrics" in withWorkingWorker(ws, cbs) { (worker, queueProbe, routeeProbe, work, metricCollectorProbe) ⇒
+      queueProbe.expectMsg(RequestWork(worker))
+      queueProbe.send(worker, work) //second time out
 
-        queueProbe.expectMsg(40.milliseconds, RequestWork(worker))
-
-        queueProbe.send(worker, work) //second time out
-        eventually {
-          worker.underlyingActor.delayBeforeNextWork should contain(cbs.get.openDurationBase * 2)
-        }
+      metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
+      metricCollectorProbe.expectMsg(Metric.CircuitBreakerOpened)
+      queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
 
     }
 
     "reset circuit breaker when a success is received" in withWorkingWorker(ws, cbs) {
       (worker, queueProbe, routeeProbe, work, _) ⇒
 
-        queueProbe.expectMsg(40.milliseconds, RequestWork(worker))
-
+        queueProbe.expectMsg(RequestWork(worker))
         queueProbe.send(worker, work) //second time out
 
-        eventually {
-          worker.underlyingActor.delayBeforeNextWork should contain(cbs.get.openDurationBase * 2)
-        }
+        queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
 
         queueProbe.expectMsg(RequestWork(worker))
         queueProbe.send(worker, work.copy(settings = WorkSettings()))
         routeeProbe.send(worker, Result("Response"))
 
-        eventually {
-          worker.underlyingActor.delayBeforeNextWork should be(empty)
-        }(PatienceConfig(timeout = 400.milliseconds))
+        queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
 
     }
 
     "reset circuit breaker when a regular failure  is received" in withWorkingWorker(ws, cbs) {
       (worker, queueProbe, routeeProbe, work, _) ⇒
 
-        queueProbe.expectMsg(40.milliseconds, RequestWork(worker))
-
+        queueProbe.expectMsg(RequestWork(worker))
         queueProbe.send(worker, work) //second time out
 
-        eventually {
-          worker.underlyingActor.delayBeforeNextWork should contain(cbs.get.openDurationBase * 2)
-        }
+        queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
 
         queueProbe.expectMsg(RequestWork(worker))
         queueProbe.send(worker, work.copy(settings = WorkSettings()))
         routeeProbe.send(worker, Fail("sad red panda"))
 
-        eventually {
-          worker.underlyingActor.delayBeforeNextWork should be(empty)
-        }(PatienceConfig(timeout = 400.milliseconds))
+        queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
 
     }
   }

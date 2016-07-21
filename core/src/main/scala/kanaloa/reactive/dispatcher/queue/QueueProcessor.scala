@@ -5,7 +5,6 @@ import kanaloa.reactive.dispatcher.ApiProtocol._
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
-import kanaloa.reactive.dispatcher.queue.Worker.SetDelay
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
 import kanaloa.util.FiniteCollection._
 import kanaloa.util.MessageScheduler

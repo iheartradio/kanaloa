@@ -23,18 +23,6 @@ class WorkerIdleSpec extends WorkerSpec {
       expectTerminated(worker)
     }
 
-    "consume Hold value when sent Work" in withIdleWorker() { (worker, _, routeeProbe, _) ⇒
-      val hold = 30.milliseconds
-      worker ! SetDelay(Some(hold))
-      eventually {
-        worker.underlyingActor.delayBeforeNextWork.value shouldBe hold
-      }
-      worker ! Work("work")
-      routeeProbe.expectNoMsg((hold * 0.9).asInstanceOf[FiniteDuration])
-      routeeProbe.expectMsg("work")
-      assertWorkerStatus(worker, Worker.Working)
-    }
-
     "send work to Routee and becomes Working" in withIdleWorker() { (worker, _, routeeProbe, _) ⇒
       worker ! Work("work")
       routeeProbe.expectMsg("work")
