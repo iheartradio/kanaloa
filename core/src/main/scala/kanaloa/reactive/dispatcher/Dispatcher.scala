@@ -133,14 +133,16 @@ case class PushingDispatcher(
   override def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m ⇒
-      if (droppingRate.value == 1
-        || (droppingRate.value > 0
-          && random.nextDouble() < droppingRate.value)) {
-        metricsCollector ! Metric.WorkRejected
-        sender ! WorkRejected("Over capacity.")
-      } else
-        queue ! Enqueue(m, false, Some(sender()))
+    case m                                 ⇒ dropOrEnqueue(m, sender)
+  }
+
+  private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
+    if (droppingRate.value > 0 &&
+      (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
+      metricsCollector ! Metric.WorkRejected
+      sender ! WorkRejected("Over capacity.")
+    } else
+      queue ! Enqueue(m, false, Some(replyTo))
   }
 }
 
