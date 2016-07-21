@@ -183,7 +183,7 @@ object PullingDispatcher {
     name:          String,
     iterator:      Iterator[_],
     backend:       T,
-    sendResultsTo: Option[ActorRef],
+    sendResultsTo: Option[ActorRef] = None,
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
