@@ -49,7 +49,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       })
 
       val iterator = Stream.continually(1).iterator
-      val pwp = system.actorOf(Props(PullingDispatcher(
+      val dispatcher = system.actorOf(Props(PullingDispatcher(
         "test",
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
@@ -61,10 +61,12 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         }
       )))
 
+      watch(dispatcher)
       expectNoMsg(20.milliseconds)
-      pwp ! ShutdownGracefully(Some(self))
+      dispatcher ! ShutdownGracefully(Some(self))
 
       expectMsg(ShutdownSuccessfully)
+      expectTerminated(dispatcher)
     }
   }
 
