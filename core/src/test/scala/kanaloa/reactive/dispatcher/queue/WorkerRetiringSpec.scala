@@ -8,8 +8,8 @@ import kanaloa.reactive.dispatcher.queue.Worker.Retire
 
 class WorkerUnregisteringIdleSpec extends WorkerSpec {
 
-  def withUnregisteringIdleWorker(test: (TestActorRef[Worker], TestProbe, TestProbe) ⇒ Any) {
-    withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
+  final def withUnregisteringIdleWorker(test: (TestActorRef[Worker], TestProbe, TestProbe) ⇒ Any) {
+    withIdleWorker() { (worker, queueProbe, routeeProbe, _) ⇒
       worker ! Retire //this puts the worker into the unregistering state
       test(worker, queueProbe, routeeProbe)
     }
@@ -41,8 +41,8 @@ class WorkerUnregisteringIdleSpec extends WorkerSpec {
 
 class WorkerUnregisteringBusySpec extends WorkerSpec {
 
-  def withUnregisteringBusyWorker(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
-    withWorkingWorker(WorkSettings()) { (worker, queueProbe, routeeProbe, work) ⇒
+  final def withUnregisteringBusyWorker(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
+    withWorkingWorker(WorkSettings()) { (worker, queueProbe, routeeProbe, work, _) ⇒
       worker ! Retire //this changes the Worker's state into 'unregisteringbusy'
       test(worker, queueProbe, routeeProbe, work)
     }
@@ -92,8 +92,8 @@ class WorkerUnregisteringBusySpec extends WorkerSpec {
 
 class WorkerWaitingToTerminateSpec extends WorkerSpec {
 
-  def withTerminatingWorker(settings: WorkSettings = WorkSettings())(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
-    withWorkingWorker(settings) { (worker, queueProbe, routeeProbe, work) ⇒
+  final def withTerminatingWorker(settings: WorkSettings = WorkSettings())(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
+    withWorkingWorker(settings) { (worker, queueProbe, routeeProbe, work, _) ⇒
       worker ! NoWorkLeft //this changes the Worker's state into 'WaitingToTerminate
       test(worker, queueProbe, routeeProbe, work)
     }

@@ -8,7 +8,6 @@ import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sampl
 import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.MetricsCollector
 import kanaloa.reactive.dispatcher.queue.AutoScaling.{AutoScalingStatus, OptimizeOrExplore, PoolSize}
-import kanaloa.reactive.dispatcher.queue.Queue.QueueDispatchInfo
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
@@ -241,7 +240,6 @@ class AutoScalingScope(implicit system: ActorSystem)
 
 object AutoScalingScope {
   import akka.actor.ActorDSL._
-  case class MockQueueInfo(avgDequeueDurationLowerBoundWhenFullyUtilized: Option[Duration]) extends QueueDispatchInfo
 
   def newWorker(busy: Boolean = true)(implicit system: ActorSystem) = actor(new Act {
     become {

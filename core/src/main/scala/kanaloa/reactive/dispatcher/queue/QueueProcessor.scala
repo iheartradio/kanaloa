@@ -5,28 +5,23 @@ import kanaloa.reactive.dispatcher.ApiProtocol._
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
-import kanaloa.reactive.dispatcher.queue.Worker.Hold
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
-import kanaloa.util.FiniteCollection._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
-trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
-  import QueueProcessor.WorkerPool
+class QueueProcessor(
+  queue:                  QueueRef,
+  backend:                Backend,
+  settings:               ProcessingWorkerPoolSettings,
+  circuitBreakerSettings: Option[CircuitBreakerSettings],
+  metricsCollector:       ActorRef,
+  workerFactory:          WorkerFactory,
+  resultChecker:          ResultChecker
+) extends Actor with ActorLogging with MessageScheduler {
 
-  val queue: QueueRef
-  def backend: Backend
-  def settings: ProcessingWorkerPoolSettings
-  def resultChecker: ResultChecker
-  val metricsCollector: ActorRef
-  def workerFactory: WorkerFactory
-  type ResultHistory = Vector[Boolean]
-  val resultHistoryLength: Int
   var workerCount = 0
-  protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool)
-  var resultHistory = Vector[Boolean]()
   var workerPool = Set[ActorRef]()
   var inflightCreations = 0
 
@@ -37,11 +32,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     super.preStart()
     (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
     context watch queue
-  }
-
-  def recordWorkError(): Unit = {
-    this.resultHistory = resultHistory.enqueueFinite(false, resultHistoryLength)
-    onWorkError(resultHistory, workerPool)
   }
 
   def currentWorkers = workerPool.size + inflightCreations
@@ -63,18 +53,6 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
     case RouteeFailed(ex) ⇒
       inflightCreations -= 1
       log.error(ex, "Failed to retrieve Routee")
-
-    case WorkCompleted(worker, duration) ⇒
-      resultHistory = resultHistory.enqueueFinite(true, resultHistoryLength)
-      metricsCollector ! Metric.WorkCompleted(duration)
-
-    case WorkFailed(_) ⇒
-      recordWorkError()
-      metricsCollector ! Metric.WorkFailed
-
-    case WorkTimedOut(_) ⇒
-      recordWorkError()
-      metricsCollector ! Metric.WorkTimedOut
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
@@ -142,60 +120,35 @@ trait QueueProcessor extends Actor with ActorLogging with MessageScheduler {
   private def createWorker(routee: ActorRef): Unit = {
     val workerName = s"worker-$workerCount"
     workerCount += 1
-    val worker = workerFactory.createWorker(queue, routee, resultChecker, workerName)
+    val worker = workerFactory.createWorker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker, workerName)
     context watch worker
+
     workerPool = workerPool + worker
     inflightCreations -= 1
   }
 }
 
-/**
- * The default queue processor uses the same [[ ResultChecker ]] for all queues
- *
- * @param resultChecker
- */
-case class DefaultQueueProcessor(
-  queue:            QueueRef,
-  backend:          Backend,
-  settings:         ProcessingWorkerPoolSettings,
-  metricsCollector: ActorRef,
-  workerFactory:    WorkerFactory,
-  resultChecker:    ResultChecker
-) extends QueueProcessor {
-
-  override val resultHistoryLength: Int = 0
-
-  override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = () //do nothing
-}
-
-case class QueueProcessorWithCircuitBreaker(
-  queue:                  QueueRef,
-  backend:                Backend,
-  settings:               ProcessingWorkerPoolSettings,
-  circuitBreakerSettings: CircuitBreakerSettings,
-  metricsCollector:       ActorRef,
-  workerFactory:          WorkerFactory,
-  resultChecker:          ResultChecker
-) extends QueueProcessor {
-
-  override val resultHistoryLength: Int = circuitBreakerSettings.historyLength
-
-  override protected def onWorkError(resultHistory: ResultHistory, pool: WorkerPool): Unit = {
-    if ((resultHistory.count(r ⇒ !r).toDouble / resultHistoryLength) >= circuitBreakerSettings.errorRateThreshold) {
-      metricsCollector ! Metric.CircuitBreakerOpened
-      pool.foreach(_ ! Hold(circuitBreakerSettings.closeDuration))
-    }
-  }
-}
-
 private[queue] trait WorkerFactory {
-  def createWorker(queueRef: ActorRef, routee: ActorRef, resultChecker: ResultChecker, workerName: String)(implicit ac: ActorRefFactory): ActorRef
+  def createWorker(
+    queueRef:               ActorRef,
+    routee:                 ActorRef,
+    metricsCollector:       ActorRef,
+    circuitBreakerSettings: Option[CircuitBreakerSettings],
+    resultChecker:          ResultChecker,
+    workerName:             String
+  )(implicit ac: ActorRefFactory): ActorRef
 }
 
 object DefaultWorkerFactory extends WorkerFactory {
 
-  override def createWorker(queue: QueueRef, routee: QueueRef, resultChecker: ResultChecker, workerName: String)(implicit ac: ActorRefFactory): ActorRef = {
-    ac.actorOf(Worker.default(queue, routee)(resultChecker), workerName)
+  override def createWorker(
+    queue:                  QueueRef,
+    routee:                 ActorRef,
+    metricsCollector:       ActorRef,
+    circuitBreakerSettings: Option[CircuitBreakerSettings],
+    resultChecker:          ResultChecker, workerName: String
+  )(implicit ac: ActorRefFactory): ActorRef = {
+    ac.actorOf(Worker.default(queue, routee, metricsCollector, circuitBreakerSettings)(resultChecker), workerName)
   }
 }
 
@@ -206,40 +159,24 @@ object QueueProcessor {
     assert(numOfWorkers >= 0)
   }
 
-  case class WorkCompleted(worker: WorkerRef, duration: FiniteDuration)
-
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
   private[queue] case class RouteeRetrieved(routee: ActorRef)
   private[queue] case class RouteeFailed(ex: Throwable)
+
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes)
+
   private case object ShutdownTimeout
 
   def default(
-    queue:            QueueRef,
-    backend:          Backend,
-    settings:         ProcessingWorkerPoolSettings,
-    metricsCollector: ActorRef,
-    workerFactory:    WorkerFactory                = DefaultWorkerFactory
-  )(resultChecker: ResultChecker): Props =
-    Props(new DefaultQueueProcessor(
-      queue,
-      backend,
-      settings,
-      metricsCollector,
-      workerFactory,
-      resultChecker
-    )).withDeploy(Deploy.local)
-
-  def withCircuitBreaker(
     queue:                  QueueRef,
     backend:                Backend,
     settings:               ProcessingWorkerPoolSettings,
-    circuitBreakerSettings: CircuitBreakerSettings,
     metricsCollector:       ActorRef,
-    workerFactory:          WorkerFactory                = DefaultWorkerFactory
+    circuitBreakerSettings: Option[CircuitBreakerSettings] = None,
+    workerFactory:          WorkerFactory                  = DefaultWorkerFactory
   )(resultChecker: ResultChecker): Props =
-    Props(new QueueProcessorWithCircuitBreaker(
+    Props(new QueueProcessor(
       queue,
       backend,
       settings,
@@ -248,5 +185,6 @@ object QueueProcessor {
       workerFactory,
       resultChecker
     )).withDeploy(Deploy.local)
+
 }
 

@@ -1,26 +1,38 @@
 language: scala
+
 sudo: required
 
 services:
-   - docker
+  - docker
+
+git:
+  depth: 9999
 
 scala:
    - 2.11.8
 jdk:
    - oraclejdk8
 
+env:
+  global:
+    - secure: "G6KEYmXDMG4P46MDhJDQNj7eepuBNMRtb3uS/klfemWeGFZgZopUlHu8PW4dwCOL8tF153Tdkn25QbpYGrpbeZQuVLd5NmLJg9uEYUM8iKqeHo3YG8HTUxM+1l8EwZRM7AiaL+RYxmp4sSiIHTl8NRwSA9QZkJSS/KUoqg7n68i1qLP3a+8gHUd7UTFUHj8eiPmWfNefMSpBMi2Dspa45S3EVszUp2KUHpm3m/7i5QINtjRpJegJ4C6nYesEHSJGJDfOx44iooRDirGRJyTJWNsqLIYTp+S8uiYEuuwXagDl41Ig5tewifEGd83oB+ugUOBqFbksnwhY8ioYdhmjb0P6XzNhUWm1IGSdrOWwy/9GKvKAbZbNaEFTvYq5F4xC9HnMFJWEf5P9RdZhW7XT+ehtiQCVB3UKDMOtQgwmV3+7/md5VQXPJiERWJmnOhRoVkOB6H4s95yWmqpmCRoKBf4pJtFCdDLfHLxk5ZdGZGNIagRFbZs2Lah5Dx7ZG+h6lXpEOQ8LfHMc0lzlE0F+6JWAgWvEerRHrpjOqmDSMbbC8lotHmVkq/jDRZzrx5Mvnytxf4lwP8Ax1RR62IYKouA3YYmPWgwU+O/uq9lr3sHiybKX+6Jt2CXI7/gQ2eVl3uHXIh4LYfficdCsOF17F3+EQNeAnququGCHKow9nvU="
 
 cache:
   directories:
+  - $HOME/.sbt/0.13/dependency
+  - $HOME/.sbt/boot/scala*
+  - $HOME/.sbt/launchers
   - $HOME/.ivy2/cache
-  - $HOME/.sbt/boot/
+  - $HOME/.nvm
 
 script:
   - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test
 
-  # Tricks to avoid unnecessary cache updates
-  - find $HOME/.sbt -name "*.lock" | xargs rm
-  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
-
 after_success:
-  - sbt ++$TRAVIS_SCALA_VERSION coverageReport codacyCoverage
+  - sbt ++$TRAVIS_SCALA_VERSION coverageReport coverageAggregate codacyCoverage
+
+before_cache:
+  - du -h -d 1 $HOME/.ivy2/cache
+  - du -h -d 2 $HOME/.sbt/
+  - find $HOME/.sbt -name "*.lock" -type f -delete
+  - find $HOME/.ivy2/cache -name "ivydata-*.properties" -type f -delete

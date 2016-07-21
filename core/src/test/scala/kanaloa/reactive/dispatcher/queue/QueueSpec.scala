@@ -141,66 +141,6 @@ class ScalingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
   }
 }
 
-class CircuitBreakerSpec extends SpecWithActorSystem with Eventually {
-
-  "Circuit Breaker" should {
-
-    "worker cools down after consecutive errors" in new QueueScope {
-      val queue = defaultQueue()
-
-      system.actorOf(queueProcessorWithCBProps(
-        queue,
-        CircuitBreakerSettings(historyLength = 3, closeDuration = 500.milliseconds)
-      ))
-
-      queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
-
-      queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageFailed)
-
-      queue ! Enqueue("c")
-      delegatee.expectMsg("c")
-      delegatee.reply(MessageFailed)
-
-      queue ! Enqueue("d")
-      delegatee.expectMsg("d")
-      delegatee.reply(MessageFailed)
-
-      delegatee.expectNoMsg(70.milliseconds) //give some time for the circuit breaker to kick in
-
-      queue ! Enqueue("e")
-      delegatee.expectNoMsg(150.milliseconds)
-
-      delegatee.expectMsg("e")
-
-    }
-
-    "worker report to metrics after consecutive errors" in new MetricCollectorScope() {
-      val queue = defaultQueue()
-      system.actorOf(queueProcessorWithCBProps(
-        queue,
-        CircuitBreakerSettings(historyLength = 2, closeDuration = 300.milliseconds)
-      ))
-
-      queue ! Enqueue("a")
-      queue ! Enqueue("b")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageFailed)
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageFailed)
-
-      delegatee.expectNoMsg(30.milliseconds) //give some time for the circuit breaker to kick in
-
-      eventually {
-        receivedMetrics should contain(Metric.CircuitBreakerOpened)
-      }
-    }
-  }
-}
-
 class DefaultQueueSpec extends SpecWithActorSystem {
   "DefaultQueue" should {
     "dispatch work on demand on parallel" in new QueueScope {
@@ -331,6 +271,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
       val workerProps: Props = Worker.default(
         TestProbe().ref,
+        TestProbe().ref,
         TestProbe().ref
       )(resultChecker)
 
@@ -364,12 +305,6 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
-
-  def queueProcessorWithCBProps(queue: QueueRef, circuitBreakerSettings: CircuitBreakerSettings) =
-    QueueProcessor.withCircuitBreaker(queue, backend, ProcessingWorkerPoolSettings(startingPoolSize = 1), circuitBreakerSettings, metricsCollector) {
-      case MessageProcessed(msg) ⇒ Right(msg)
-      case MessageFailed         ⇒ Left("doesn't matter")
-    }
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)

@@ -144,11 +144,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       dispatcher ! Regulator.DroppingRate(0.5)
 
-      val numOfWork = 1000
+      val numOfWork = 500
 
       (1 to numOfWork).foreach(_ ⇒ dispatcher ! "message")
 
-      val received = backendProb.receiveWhile(10.seconds, 20.milliseconds) {
+      val received = backendProb.receiveWhile(30.seconds, 500.milliseconds) {
         case "message" ⇒ backendProb.reply("1")
       }
 
@@ -243,7 +243,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               dispatchers {
                 example {
                   circuitBreaker {
-                    errorRateThreshold = 0.5
+                    timeoutCountThreshold = 0.5
                   }
                 }
               }
@@ -251,7 +251,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
           """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.circuitBreaker.get.errorRateThreshold === 0.5
+      settings.circuitBreaker.get.timeoutCountThreshold === 6
     }
 
     "parse statsD collector " in {

@@ -25,36 +25,47 @@ object SimpleResultChecker extends ResultChecker {
 
 abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
 
-  def createWorker = {
+  final def createWorker(circuitBreakerSettings: Option[CircuitBreakerSettings]) = {
     val queueProbe = TestProbe("queue")
     val routeeProbe = TestProbe("routee")
-    val worker = TestActorRef[Worker](Worker.default(queueProbe.ref, routeeProbe.ref)(SimpleResultChecker))
-    (queueProbe, routeeProbe, worker)
+    val metricsCollectorProbe = TestProbe("metricsCollector")
+    val worker = TestActorRef[Worker](
+      Worker.default(
+        queueProbe.ref,
+        routeeProbe.ref,
+        metricsCollectorProbe.ref,
+        circuitBreakerSettings
+      )(SimpleResultChecker)
+    )
+    (queueProbe, routeeProbe, worker, metricsCollectorProbe)
   }
 
-  def assertWorkerStatus(worker: ActorRef, status: Worker.WorkerStatus) {
+  final def assertWorkerStatus(worker: ActorRef, status: Worker.WorkerStatus) {
     worker ! QueryStatus()
     expectMsg(status)
   }
 
-  def withIdleWorker(test: (TestActorRef[Worker], TestProbe, TestProbe) ⇒ Any) {
-    val (queueProbe, routeeProbe, worker) = createWorker
+  final def withIdleWorker(circuitBreakerSettings: Option[CircuitBreakerSettings] = None)(test: (TestActorRef[Worker], TestProbe, TestProbe, TestProbe) ⇒ Any) {
+    val (queueProbe, routeeProbe, worker, metricsCollectorProbe) = createWorker(circuitBreakerSettings)
     watch(worker)
     try {
       queueProbe.expectMsg(RequestWork(worker)) //should ALWAYS HAPPEN when a Worker starts up
-      test(worker, queueProbe, routeeProbe)
+      test(worker, queueProbe, routeeProbe, metricsCollectorProbe)
     } finally {
       unwatch(worker)
       worker.stop()
     }
   }
 
-  def withWorkingWorker(settings: WorkSettings = WorkSettings())(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
-    withIdleWorker { (worker, queueProbe, routeeProbe) ⇒
+  final def withWorkingWorker(
+    settings:               WorkSettings                   = WorkSettings(),
+    circuitBreakerSettings: Option[CircuitBreakerSettings] = None
+  )(test: (TestActorRef[Worker], TestProbe, TestProbe, Work, TestProbe) ⇒ Any) {
+    withIdleWorker(circuitBreakerSettings) { (worker, queueProbe, routeeProbe, metricCollectorProbe) ⇒
       val work = Work("work", Some(self), settings)
-      worker ! work //send it work, to put it into the Working state
+      queueProbe.send(worker, work) //send it work, to put it into the Working state
       routeeProbe.expectMsg(work.messageToDelegatee) //work should always get sent to a Routee from an Idle Worker
-      test(worker, queueProbe, routeeProbe, work)
+      test(worker, queueProbe, routeeProbe, work, metricCollectorProbe)
     }
   }
 }
