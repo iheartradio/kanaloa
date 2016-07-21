@@ -110,6 +110,7 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
       metricCollectorProbe.expectMsg(Metric.CircuitBreakerOpened)
       queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
+      worker.underlyingActor.delayBeforeNextWork should contain(cbs.get.openDurationBase * 2)
 
     }
 
@@ -126,6 +127,7 @@ class WorkerWorkingSpec extends WorkerSpec {
         routeeProbe.send(worker, Result("Response"))
 
         queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
+        worker.underlyingActor.delayBeforeNextWork should be(empty)
 
     }
 
