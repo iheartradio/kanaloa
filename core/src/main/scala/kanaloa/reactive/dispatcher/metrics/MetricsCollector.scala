@@ -1,15 +1,8 @@
 package kanaloa.reactive.dispatcher.metrics
 
-import java.time.{LocalDateTime ⇒ Time}
-
 import akka.actor._
 import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.PerformanceSampler.PerformanceSamplerSettings
-import kanaloa.reactive.dispatcher.metrics.Metric._
-import kanaloa.reactive.dispatcher.metrics.MetricsCollector._
-
-import scala.concurrent.duration._
-import kanaloa.util.Java8TimeExtensions._
 
 /**
  *  A metrics collector to which all [[Metric]] are sent to.
