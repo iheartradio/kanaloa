@@ -144,11 +144,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       dispatcher ! Regulator.DroppingRate(0.5)
 
-      val numOfWork = 1000
+      val numOfWork = 2000
 
       (1 to numOfWork).foreach(_ ⇒ dispatcher ! "message")
 
-      val received = backendProb.receiveWhile(10.seconds, 50.milliseconds) {
+      val received = backendProb.receiveWhile(10.seconds, 70.milliseconds) {
         case "message" ⇒ backendProb.reply("1")
       }
 
