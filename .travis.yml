@@ -24,7 +24,7 @@ script:
   - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test
 
 after_success:
-  - sbt ++$TRAVIS_SCALA_VERSION coverageReport codacyCoverage
+  - sbt ++$TRAVIS_SCALA_VERSION coverageReport coverageAggregate codacyCoverage
 
 before_cache:
   - du -h -d 1 $HOME/.ivy2/cache
