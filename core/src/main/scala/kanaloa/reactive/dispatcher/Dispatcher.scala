@@ -6,7 +6,7 @@ import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
 import kanaloa.reactive.dispatcher.Dispatcher.Settings
 import kanaloa.reactive.dispatcher.Regulator.DroppingRate
-import kanaloa.reactive.dispatcher.metrics.{Metric, Reporter, MetricsCollector}
+import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.reactive.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
@@ -134,14 +134,16 @@ case class PushingDispatcher(
   override def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m ⇒
-      if (droppingRate.value == 1
-        || (droppingRate.value > 0
-          && random.nextDouble() < droppingRate.value)) {
-        metricsCollector ! Metric.WorkRejected
-        sender ! WorkRejected("Over capacity.")
-      } else
-        queue ! Enqueue(m, false, Some(sender()))
+    case m                                 ⇒ dropOrEnqueue(m, sender)
+  }
+
+  private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
+    if (droppingRate.value > 0 &&
+      (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
+      metricsCollector ! Metric.WorkRejected
+      sender ! WorkRejected(s"Over capacity, request dropped under random dropping rate ${droppingRate.value}")
+    } else
+      queue ! Enqueue(m, false, Some(replyTo))
   }
 }
 
