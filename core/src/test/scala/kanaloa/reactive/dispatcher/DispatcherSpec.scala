@@ -95,7 +95,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          delayedBacked
+          delayedBackend
         )(ResultChecker.complacent)
       )
 
