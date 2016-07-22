@@ -82,24 +82,31 @@ class QueueProcessor(
   }
 
   def shuttingDown(reportTo: Option[ActorRef]): Receive = {
-
-    case Terminated(worker) if workerPool.contains(worker) ⇒
-      removeWorker(worker)
+    def tryFinish(): Unit = {
       if (workerPool.isEmpty) {
         log.info(s"All Workers have terminated, QueueProcessor is shutting down")
         reportTo.foreach(_ ! ShutdownSuccessfully)
         context stop self
       }
+    }
+    {
+      case Terminated(worker) if workerPool.contains(worker) ⇒
+        removeWorker(worker)
+        tryFinish()
 
-    case Terminated(_)   ⇒ //ignore other termination
+      case Terminated(`queue`) ⇒
+        tryFinish()
 
-    case qs: QueryStatus ⇒ qs reply ShuttingDown
+      case qs: QueryStatus ⇒ qs reply ShuttingDown
 
-    case ShutdownTimeout ⇒
-      log.warning("Shutdown timed out, forcefully shutting down")
-      context stop self
+      case ShutdownTimeout ⇒
+        log.warning("Shutdown timed out, forcefully shutting down")
+        reportTo.foreach(_ ! ShutdownForcefully)
+        context stop self
 
-    case _ ⇒ //Ignore
+      case m ⇒ log.info("message received and ignored during shutdown: " + m)
+
+    }: Receive
   }
 
   def removeWorker(worker: ActorRef): Unit = {
@@ -111,7 +118,7 @@ class QueueProcessor(
   private def retrieveRoutee(): Unit = {
     import context.dispatcher //do we want to pass this in?
     inflightCreations += 1
-    backend(this.context).onComplete {
+    backend(context).onComplete {
       case Success(routee) ⇒ self ! RouteeRetrieved(routee)
       case Failure(ex)     ⇒ self ! RouteeFailed(ex)
     }

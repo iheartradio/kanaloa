@@ -28,6 +28,9 @@ object ApiProtocol {
   case object ShutdownSuccessfully extends Response
 
   @SerialVersionUID(1L)
+  case object ShutdownForcefully extends Response
+
+  @SerialVersionUID(1L)
   case class WorkRejected(reason: String) extends WorkException
 
   @SerialVersionUID(1L)

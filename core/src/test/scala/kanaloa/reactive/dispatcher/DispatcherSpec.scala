@@ -1,12 +1,12 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.{ActorRefFactory, ActorSystem, Props}
 import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
-import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
+import kanaloa.reactive.dispatcher.queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.scalatest.OptionValues
 
@@ -83,9 +83,24 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         )(ResultChecker.complacent)
       )
 
-      watch(dispatcher)
+      dispatcher ! ShutdownGracefully(Some(self))
+      expectMsg(ShutdownSuccessfully)
+    }
+
+    "shutdown before worker created" in new ScopeWithActor with Backends {
+      val iterator = Stream.continually(1).iterator
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          delayedBacked
+        )(ResultChecker.complacent)
+      )
 
       dispatcher ! ShutdownGracefully(Some(self))
+
       expectMsg(ShutdownSuccessfully)
     }
 

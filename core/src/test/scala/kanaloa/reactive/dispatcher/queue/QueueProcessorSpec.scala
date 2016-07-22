@@ -5,16 +5,19 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
-import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownForcefully, QueryStatus, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.metrics.Metric
+import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown}
-import kanaloa.reactive.dispatcher.{Backend, ResultChecker, SpecWithActorSystem}
+import kanaloa.reactive.dispatcher._
+import kanaloa.reactive.dispatcher.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
 
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
+class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
 
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
@@ -154,11 +157,32 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
 
     }
 
+    "shutdown before worker created" in {
+      import system.dispatcher
+
+      val queueProbe = TestProbe()
+      val queueProcessor = system.actorOf(
+        QueueProcessor.default(
+          queueProbe.ref,
+          delayedBacked,
+          ProcessingWorkerPoolSettings(),
+          TestProbe().ref
+        )(ResultChecker.complacent)
+      )
+      queueProcessor ! Shutdown(Some(self))
+      queueProbe.expectMsgType[Retire]
+      queueProbe.ref ! PoisonPill
+
+      expectMsg(ShutdownSuccessfully)
+
+    }
+
     "force shutdown if timeout" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 25.milliseconds)
       queueProbe.expectMsg(Queue.Retire(25.milliseconds))
       //We wn't kill the Workers, and the timeout should kick in
+      expectMsg(ShutdownForcefully)
       expectTerminated(qp) //should force itself to shutdown
     }
   }
@@ -205,4 +229,76 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually {
     }
   }
 
+}
+
+class ScalingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
+
+  "scaling" should {
+
+    "send PoolSize metric when pool size changes" in new MetricCollectorScope {
+
+      val queueProcessor = initQueue(
+        iteratorQueue(Iterator("a", "b")), //make sure queue remains alive during test
+        numberOfWorkers = 1
+      )
+      queueProcessor ! ScaleTo(3)
+      queueProcessor ! ScaleTo(5)
+
+      eventually {
+        val poolSizeMetrics = receivedMetrics.collect {
+          case Metric.PoolSize(x) ⇒ x
+        }
+        poolSizeMetrics.max should be <= 5
+      }
+    }
+
+    "retiring a worker when there is no work" in new QueueScope {
+      val queueProcessor = initQueue(
+        iteratorQueue(
+          List("a", "b", "c").iterator,
+          sendResultsTo = Some(self)
+        ),
+        numberOfWorkers = 2
+      )
+      queueProcessor ! ScaleTo(1)
+      expectNoMsg(20.millisecond) //wait for retire to take effect
+      delegatee.expectMsgType[DelegateeMessage]
+
+      delegatee.reply(MessageProcessed("ar"))
+
+      expectMsg("ar")
+      delegatee.expectMsgType[DelegateeMessage]
+
+      delegatee.reply(MessageProcessed("br"))
+      expectMsg("br")
+
+    }
+
+    "retiring a worker when it already started working" in new QueueScope {
+      val queueProcessor = initQueue(
+        iteratorQueue(
+          List("a", "b", "c").iterator,
+          sendResultsTo = Some(self)
+        ),
+        numberOfWorkers = 2
+      )
+      delegatee.expectMsgType[DelegateeMessage]
+
+      expectNoMsg(20.millisecond) //wait for both workers get occupied
+
+      queueProcessor ! ScaleTo(1)
+
+      expectNoMsg(20.millisecond) //wait for one of the workers got into retiring
+
+      delegatee.reply(MessageProcessed("ar"))
+
+      delegatee.expectMsgType[DelegateeMessage]
+
+      expectMsg("ar")
+
+      delegatee.reply(MessageProcessed("br"))
+      expectMsg("br")
+
+    }
+  }
 }
