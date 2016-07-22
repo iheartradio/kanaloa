@@ -1,12 +1,12 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ActorSystem, Props}
-import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import akka.actor.{ActorRefFactory, ActorSystem, Props}
+import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
-import kanaloa.reactive.dispatcher.queue.ProcessingWorkerPoolSettings
+import kanaloa.reactive.dispatcher.queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.scalatest.OptionValues
 
@@ -40,32 +40,70 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       delegatee.reply(Success)
     }
 
-    "stop in the middle of processing a list" in new ScopeWithActor {
-      import akka.actor.ActorDSL._
-      val echoSuccess = actor(new Act {
-        become {
-          case _ ⇒ sender ! Success
-        }
-      })
+    "shutdown in the middle of processing a list" in new ScopeWithActor {
 
       val iterator = Stream.continually(1).iterator
-      val pwp = system.actorOf(Props(PullingDispatcher(
-        "test",
-        iterator,
-        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
-        echoSuccess,
-        metricsCollector = MetricsCollector(None),
-        None,
-        {
-          case Success ⇒ Right(())
-        }
-      )))
+      val resultProbe = TestProbe()
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          TestActors.echoActorProps,
+          Some(resultProbe.ref)
+        )(ResultChecker.complacent)
+      )
 
-      expectNoMsg(20.milliseconds)
-      pwp ! ShutdownGracefully(Some(self))
+      resultProbe.expectMsg(1)
+      resultProbe.expectMsg(1)
+      resultProbe.expectMsg(1)
+
+      watch(dispatcher)
+
+      dispatcher ! ShutdownGracefully(Some(self))
+
+      expectMsg(ShutdownSuccessfully)
+      expectTerminated(dispatcher)
+    }
+
+    "shutdown before work starts" in new ScopeWithActor {
+      //an iterator that doesn't return work immediately
+      val iterator = new Iterator[Int] {
+        def hasNext: Boolean = true
+        def next(): Int = {
+          Thread.sleep(500)
+          1
+        }
+      }
+
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          TestActors.echoActorProps
+        )(ResultChecker.complacent)
+      )
+
+      dispatcher ! ShutdownGracefully(Some(self))
+      expectMsg(ShutdownSuccessfully)
+    }
+
+    "shutdown before worker created" in new ScopeWithActor with Backends {
+      val iterator = Stream.continually(1).iterator
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          delayedBackend
+        )(ResultChecker.complacent)
+      )
+
+      dispatcher ! ShutdownGracefully(Some(self))
 
       expectMsg(ShutdownSuccessfully)
     }
+
   }
 
   "pushing work dispatcher" should {

@@ -35,7 +35,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         }
         context become processing(newStatus)
 
-      //TODO: all Queued Work needs to be failed.
       case Retire(timeout) ⇒
         log.debug("Queue commanded to retire")
         val newStatus = dispatchWork(status, retiring = true)
@@ -133,11 +132,6 @@ class QueueOfIterator(
   import QueueOfIterator._
 
   val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self))
-
-  override def preStart(): Unit = {
-    super.preStart()
-    onQueuedWorkExhausted()
-  }
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }

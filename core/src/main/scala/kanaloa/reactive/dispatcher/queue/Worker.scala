@@ -79,7 +79,7 @@ class Worker(
   }
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
-  def unregisteringIdle: Receive = {
+  val unregisteringIdle: Receive = {
     case qs: QueryStatus                            ⇒ qs reply UnregisteringIdle
 
     //ignore these

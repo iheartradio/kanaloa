@@ -7,15 +7,16 @@ import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.reactive.dispatcher.queue.Queue._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.reactive.dispatcher.queue.TestUtils._
-import kanaloa.reactive.dispatcher.SpecWithActorSystem
+import kanaloa.reactive.dispatcher.{Backends, SpecWithActorSystem}
 import org.scalatest.concurrent.Eventually
+import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
 import scala.util.Random
 
 class QueueSpec extends SpecWithActorSystem {
 
-  "Happy Path of iterator queue" should {
+  "Iterator Queue" should {
     "Process through a list of tasks in sequence with one worker" in new QueueScope {
       val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator))
 
@@ -47,10 +48,6 @@ class QueueSpec extends SpecWithActorSystem {
 
     }
 
-  }
-
-  "Sad path" should {
-
     "abandon work when delegatee times out" in new QueueScope {
       val queueProcessor = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(timeout = 288.milliseconds)))
 
@@ -63,86 +60,23 @@ class QueueSpec extends SpecWithActorSystem {
       queueProcessor ! Shutdown
 
       expectTerminated(queueProcessor)
+    }
+
+    "does not retrieve work without workers" in new QueueScope with Backends with MockitoSugar with Eventually {
+      import org.mockito.Mockito._
+      val iterator = mock[Iterator[String]]
+      val queue = system.actorOf(Queue.ofIterator(iterator, metricsCollector, WorkSettings()))
+      queue ! QueryStatus()
+      expectMsgType[Queue.Status]
+
+      verifyNoMoreInteractions(iterator)
 
     }
 
   }
-}
 
-class ScalingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
+  "Queue" should {
 
-  "scaling" should {
-
-    "send PoolSize metric when pool size changes" in new MetricCollectorScope {
-
-      val queueProcessor = initQueue(
-        iteratorQueue(Iterator("a", "b")), //make sure queue remains alive during test
-        numberOfWorkers = 1
-      )
-      queueProcessor ! ScaleTo(3)
-      queueProcessor ! ScaleTo(5)
-
-      eventually {
-        val poolSizeMetrics = receivedMetrics.collect {
-          case Metric.PoolSize(x) ⇒ x
-        }
-        poolSizeMetrics.max should be <= 5
-      }
-    }
-
-    "retiring a worker when there is no work" in new QueueScope {
-      val queueProcessor = initQueue(
-        iteratorQueue(
-          List("a", "b", "c").iterator,
-          sendResultsTo = Some(self)
-        ),
-        numberOfWorkers = 2
-      )
-      queueProcessor ! ScaleTo(1)
-      expectNoMsg(20.millisecond) //wait for retire to take effect
-      delegatee.expectMsgType[DelegateeMessage]
-
-      delegatee.reply(MessageProcessed("ar"))
-
-      expectMsg("ar")
-      delegatee.expectMsgType[DelegateeMessage]
-
-      delegatee.reply(MessageProcessed("br"))
-      expectMsg("br")
-
-    }
-
-    "retiring a worker when it already started working" in new QueueScope {
-      val queueProcessor = initQueue(
-        iteratorQueue(
-          List("a", "b", "c").iterator,
-          sendResultsTo = Some(self)
-        ),
-        numberOfWorkers = 2
-      )
-      delegatee.expectMsgType[DelegateeMessage]
-
-      expectNoMsg(20.millisecond) //wait for both workers get occupied
-
-      queueProcessor ! ScaleTo(1)
-
-      expectNoMsg(20.millisecond) //wait for one of the workers got into retiring
-
-      delegatee.reply(MessageProcessed("ar"))
-
-      delegatee.expectMsgType[DelegateeMessage]
-
-      expectMsg("ar")
-
-      delegatee.reply(MessageProcessed("br"))
-      expectMsg("br")
-
-    }
-  }
-}
-
-class DefaultQueueSpec extends SpecWithActorSystem {
-  "DefaultQueue" should {
     "dispatch work on demand on parallel" in new QueueScope {
       val queue = defaultQueue()
       initQueue(queue, numberOfWorkers = 3)
