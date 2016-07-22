@@ -61,9 +61,6 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       dispatcher ! ShutdownGracefully(Some(self))
 
-      ignoreMsg {
-        case 1 ⇒ true
-      }
       expectMsg(ShutdownSuccessfully)
       expectTerminated(dispatcher)
     }
