@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor.{ActorSystem, Props}
-import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
@@ -41,30 +41,29 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     "stop in the middle of processing a list" in new ScopeWithActor {
-      import akka.actor.ActorDSL._
-      val echoSuccess = actor(new Act {
-        become {
-          case _ ⇒ sender ! Success
-        }
-      })
 
       val iterator = Stream.continually(1).iterator
-      val dispatcher = system.actorOf(Props(PullingDispatcher(
-        "test",
-        iterator,
-        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
-        echoSuccess,
-        metricsCollector = MetricsCollector(None),
-        None,
-        {
-          case Success ⇒ Right(())
-        }
-      )))
+      val resultProbe = TestProbe()
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          TestActors.echoActorProps,
+          Some(resultProbe.ref)
+        )(ResultChecker.complacent)
+      )
+
+      resultProbe.expectMsg(1)
+      resultProbe.expectMsg(1)
+      resultProbe.expectMsg(1)
 
       watch(dispatcher)
-      expectNoMsg(20.milliseconds)
+
       dispatcher ! ShutdownGracefully(Some(self))
 
+      ignoreMsg {
+        case 1 ⇒ true
+      }
       expectMsg(ShutdownSuccessfully)
       expectTerminated(dispatcher)
     }
