@@ -40,7 +40,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       delegatee.reply(Success)
     }
 
-    "stop in the middle of processing a list" in new ScopeWithActor {
+    "shutdown in the middle of processing a list" in new ScopeWithActor {
 
       val iterator = Stream.continually(1).iterator
       val resultProbe = TestProbe()
@@ -64,6 +64,31 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       expectMsg(ShutdownSuccessfully)
       expectTerminated(dispatcher)
     }
+
+    "shutdown before work starts" in new ScopeWithActor {
+      //an iterator that doesn't return work immediately
+      val iterator = new Iterator[Int] {
+        def hasNext: Boolean = true
+        def next(): Int = {
+          Thread.sleep(500)
+          1
+        }
+      }
+
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          TestActors.echoActorProps
+        )(ResultChecker.complacent)
+      )
+
+      watch(dispatcher)
+
+      dispatcher ! ShutdownGracefully(Some(self))
+      expectMsg(ShutdownSuccessfully)
+    }
+
   }
 
   "pushing work dispatcher" should {
