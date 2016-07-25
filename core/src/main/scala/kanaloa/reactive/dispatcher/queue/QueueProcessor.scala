@@ -21,6 +21,11 @@ class QueueProcessor(
   resultChecker:          ResultChecker
 ) extends Actor with ActorLogging with MessageScheduler {
 
+  val healthCheckSchedule = {
+    import context.dispatcher
+    context.system.scheduler.schedule(settings.healthCheckInterval, settings.healthCheckInterval, self, HealthCheck)
+  }
+
   var workerCount = 0
   var workerPool = Set[ActorRef]()
   var inflightCreations = 0
@@ -41,9 +46,9 @@ class QueueProcessor(
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
       val diff = toPoolSize - currentWorkers
-      if (diff > 0) {
-        (1 to diff).foreach(_ ⇒ retrieveRoutee())
-      } else if (diff < 0)
+
+      tryCreateWorkersIfNeeded(diff)
+      if (diff < 0)
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
 
     case RouteeRetrieved(routee) ⇒
@@ -52,22 +57,23 @@ class QueueProcessor(
 
     case RouteeFailed(ex) ⇒
       inflightCreations -= 1
-      log.error(ex, "Failed to retrieve Routee")
+      log.warning("Failed to retrieve Routee: " + ex.getMessage)
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
-      if (currentWorkers < settings.minPoolSize) {
-        retrieveRoutee() //kick off the creation of a new Worker
-      }
+
+    case HealthCheck ⇒
+      tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers)
 
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒
       log.debug(s"Queue ${queue.path} is terminated")
+      healthCheckSchedule.cancel()
       if (workerPool.isEmpty) {
         context stop self
       } else {
         workerPool.foreach(_ ! Worker.Retire)
-        delayedMsg(3.minutes, ShutdownTimeout) //TODO: hardcoded
+        delayedMsg(3.minutes, ShutdownTimeout) //TODO: hardcoded it's a forced shutdown
         context become shuttingDown(None)
       }
 
@@ -78,6 +84,7 @@ class QueueProcessor(
       log.info("Commanded to shutdown. Shutting down")
       queue ! Retire(timeout)
       delayedMsg(timeout, ShutdownTimeout)
+      healthCheckSchedule.cancel()
       context become shuttingDown(reportTo)
   }
 
@@ -121,6 +128,12 @@ class QueueProcessor(
     backend(context).onComplete {
       case Success(routee) ⇒ self ! RouteeRetrieved(routee)
       case Failure(ex)     ⇒ self ! RouteeFailed(ex)
+    }
+  }
+
+  private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): Unit = {
+    if (numberOfWorkersToCreate > 0) {
+      (1 to numberOfWorkersToCreate).foreach(_ ⇒ retrieveRoutee())
     }
   }
 
@@ -168,12 +181,13 @@ object QueueProcessor {
 
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
-  private[queue] case class RouteeRetrieved(routee: ActorRef)
-  private[queue] case class RouteeFailed(ex: Throwable)
 
   case class Shutdown(reportBackTo: Option[ActorRef] = None, timeout: FiniteDuration = 3.minutes)
 
   private case object ShutdownTimeout
+  private case object HealthCheck
+  private[queue] case class RouteeRetrieved(routee: ActorRef)
+  private[queue] case class RouteeFailed(ex: Throwable)
 
   def default(
     queue:                  QueueRef,
