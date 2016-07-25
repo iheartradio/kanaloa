@@ -25,7 +25,7 @@ trait Dispatcher extends Actor {
 
   protected def queueProps: Props
 
-  protected lazy val queue = context.actorOf(queueProps, name + "-backing-queue")
+  protected lazy val queue = context.actorOf(queueProps, "queue")
 
   private[dispatcher] val processor = {
     val props = QueueProcessor.default(
@@ -36,13 +36,13 @@ trait Dispatcher extends Actor {
       settings.circuitBreaker
     )(resultChecker)
 
-    context.actorOf(props, name + "-queue-processor")
+    context.actorOf(props, "queue-processor")
   }
 
   context watch processor
 
   private val autoScaler = settings.autoScaling.foreach { s ⇒
-    context.actorOf(AutoScaling.default(processor, s, metricsCollector), name + "-auto-scaler")
+    context.actorOf(AutoScaling.default(processor, s, metricsCollector), "auto-scaler")
   }
 
   def receive: Receive = ({
@@ -121,7 +121,7 @@ case class PushingDispatcher(
   protected lazy val queueProps = Queue.default(metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
 
   settings.regulator.foreach { rs ⇒
-    context.actorOf(Regulator.props(rs, metricsCollector, self))
+    context.actorOf(Regulator.props(rs, metricsCollector, self), "regulator")
   }
 
   /**
