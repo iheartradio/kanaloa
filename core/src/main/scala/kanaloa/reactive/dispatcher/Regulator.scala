@@ -50,7 +50,7 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
   def receive: Receive = {
     case s: Sample ⇒
       context become regulating(Status(
-        delay = estimateDelay(s.queueLength, s.speed),
+        delay = estimateDelay(s, s.speed),
         droppingRate = DroppingRate(0),
         burstDurationLeft = settings.durationOfBurstAllowed,
         averageSpeed = s.speed
@@ -62,7 +62,12 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
     case s: Sample ⇒
       continueWith(update(s, status, settings))
     case PartialUtilization(_) ⇒
-      continueWith(status.copy(droppingRate = DroppingRate(0))) //should not drop anything when it has free workers
+      continueWith(
+        status.copy(
+          droppingRate = DroppingRate(0),
+          burstDurationLeft = settings.durationOfBurstAllowed,
+          recordedAt = Time.now)
+      ) //reset to baseline when seeing a PartialUtilization
     case _: Report ⇒ //ignore other performance report
   }
 
@@ -108,8 +113,11 @@ object Regulator {
     weightOfLatestMetric:   Double         = 0.5
   )
 
-  private[dispatcher] def estimateDelay(queueLength: QueueLength, speed: Speed): FiniteDuration =
-    ((queueLength.value / speed.value) * 1000d * 1000d).nanoseconds
+  private[dispatcher] def estimateDelay(sample: Sample, avgSpeed: Speed): FiniteDuration =
+    if (avgSpeed.value > 0)
+      ((sample.queueLength.value / avgSpeed.value) * 1000d * 1000d).nanoseconds
+    else //if there is no speed at all, the best estimation is the current duration times queue length
+      (sample.start.until(sample.end) * sample.queueLength.value.toDouble).asInstanceOf[FiniteDuration]
 
   private[dispatcher] def update(sample: Sample, lastStatus: Status, settings: Settings): Status = {
     import settings._
@@ -117,7 +125,8 @@ object Regulator {
       Speed(
         sample.speed.value * weightOfLatestMetric + ((1d - weightOfLatestMetric) * lastStatus.averageSpeed.value)
       )
-    val delay = estimateDelay(sample.queueLength, avgSpeed)
+
+    val delay = estimateDelay(sample, avgSpeed)
 
     def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
 

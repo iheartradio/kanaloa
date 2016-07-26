@@ -47,7 +47,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     super.postStop()
   }
 
-  def receive = partialUtilized(None)
+  def receive = partialUtilized(0)
 
   def handleSubscriptions: Receive = {
     case Subscribe(s) ⇒
@@ -60,12 +60,10 @@ private[dispatcher] trait PerformanceSampler extends Actor {
       subscribers -= s
   }
 
-  def publishUtilization(idle: Int, poolSizeO: Option[Int]): Unit = {
-    poolSizeO.foreach { poolSize ⇒
-      val utilization = poolSize - idle
-      publish(PartialUtilization(utilization))
-      report(PoolUtilized(utilization))
-    }
+  def publishUtilization(idle: Int, poolSize: Int): Unit = {
+    val utilization = poolSize - idle
+    publish(PartialUtilization(utilization))
+    report(PoolUtilized(utilization))
   }
 
   def reportQueueLength(queueLength: QueueLength): Unit =
@@ -88,12 +86,12 @@ private[dispatcher] trait PerformanceSampler extends Actor {
           context become fullyUtilized(s.copy(workDone = s.workDone + 1))
 
         case PoolSize(size) ⇒
-          val sizeChanged = s.poolSize.fold(true)(_ != size)
+          val sizeChanged = s.poolSize != size
           if (sizeChanged) {
             val (r, _) = tryComplete(s)
             r foreach publish
             context become fullyUtilized(
-              QueueStatus(poolSize = Some(size), queueLength = s.queueLength)
+              QueueStatus(poolSize = size, queueLength = s.queueLength)
             )
           }
       }
@@ -102,12 +100,10 @@ private[dispatcher] trait PerformanceSampler extends Actor {
       val (rep, status) = tryComplete(s)
       rep foreach publish
       context become fullyUtilized(status)
-
-      s.poolSize.foreach(s ⇒ report(PoolUtilized(s))) //take the chance to report utilization to reporter
-
+      report(PoolUtilized(s.poolSize)) //take the chance to report utilization to reporter
   }
 
-  def partialUtilized(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
+  def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
     case DispatchResult(idle, workLeft, full) if full ⇒
       context become fullyUtilized(
         QueueStatus(poolSize = poolSize, queueLength = workLeft)
@@ -120,7 +116,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     case metric: Metric ⇒
       handle(metric) {
         case PoolSize(s) ⇒
-          context become partialUtilized(Some(s))
+          context become partialUtilized(s)
       }
     case AddSample ⇒
   }
@@ -170,17 +166,16 @@ private[dispatcher] object PerformanceSampler {
     queueLength: QueueLength,
     workDone:    Int         = 0,
     start:       Time        = Time.now,
-    poolSize:    Option[Int] = None
+    poolSize:    Int         = 0
 
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
-      if (duration >= minSampleDuration
-        && poolSize.isDefined) Some(Sample(
+      if (duration >= minSampleDuration) Some(Sample(
         workDone = workDone,
         start = start,
         end = Time.now,
-        poolSize = poolSize.get,
+        poolSize = poolSize,
         queueLength = queueLength
       ))
       else

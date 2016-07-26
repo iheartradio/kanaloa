@@ -193,6 +193,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       (received.length.toDouble / numOfWork.toDouble) shouldBe 0.5 +- 0.07
     }
 
+    //todo: move this to integration test once the integration re-org test PR is merged.
     "start to reject work when worker creation fails" in new ScopeWithActor with Eventually {
       val failingBackend = new Backend {
         def apply(f: ActorRefFactory): Future[ActorRef] = Future.failed(new Exception("failing backend"))
@@ -206,7 +207,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |  updateInterval = 10ms
             |  backPressure {
             |    durationOfBurstAllowed = 10ms
-            |    durationOfBurstAllowed = 0s
+            |    referenceDelay = 2s
             |  }
             |}""".stripMargin
         )
@@ -215,9 +216,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       eventually {
         (1 to 100).foreach(_ ⇒ dispatcher ! "a work")
         expectMsgType[WorkRejected](20.milliseconds)
-      }(PatienceConfig(10.seconds, 200.milliseconds))
+      }(PatienceConfig(5.seconds, 40.milliseconds))
 
     }
+
   }
 
   "readConfig" should {

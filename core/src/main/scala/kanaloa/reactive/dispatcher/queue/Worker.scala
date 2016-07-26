@@ -189,7 +189,7 @@ class Worker(
     def incrementTimeoutCount(): Unit = {
       timeoutCount = timeoutCount + 1
       if (timeoutCount >= settings.timeoutCountThreshold) {
-        delayBeforeNextWork = Some(settings.openDurationBase * timeoutCount)
+        delayBeforeNextWork = Some(settings.openDurationBase * timeoutCount.toLong)
         if (timeoutCount == settings.timeoutCountThreshold) //just crossed the threshold
           metricsCollector ! Metric.CircuitBreakerOpened
       }
