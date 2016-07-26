@@ -7,13 +7,14 @@ import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkFailed, WorkTim
 import kanaloa.reactive.dispatcher.ResultChecker
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
+import kanaloa.reactive.dispatcher.queue.WorkSender.{RelayWork, WorkResult}
 import kanaloa.reactive.dispatcher.queue.Worker._
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 
-class Worker(
+private[queue] class Worker(
   queue:                  QueueRef,
   routee:                 ActorRef,
   metricsCollector:       ActorRef,
@@ -21,8 +22,13 @@ class Worker(
   resultChecker:          ResultChecker
 ) extends Actor with ActorLogging with MessageScheduler {
 
+  //if a WorkSender fails, Let the DeathWatch handle it
+  override def supervisorStrategy: SupervisorStrategy = SupervisorStrategy.stoppingStrategy
+
   var timeoutCount: Int = 0
   var delayBeforeNextWork: Option[FiniteDuration] = None
+
+  var workId: Long = 0
 
   private val circuitBreaker: Option[CircuitBreaker] = circuitBreakerSettings.map(new CircuitBreaker(_))
 
@@ -120,7 +126,13 @@ class Worker(
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
       onRouteeFailure()
     }
-    case x if sender() == routee ⇒ {
+
+    case Terminated(x) if x == outstanding.workSender ⇒
+      log.warning("WorkSender failed!")
+      outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
+      onRouteeFailure()
+
+    case WorkSender.WorkResult(wId, x) if wId == workId ⇒ {
       val result: Either[String, Any] = resultChecker.applyOrElse(x, failedResultMatch)
       result match {
         case Right(res) ⇒
@@ -132,6 +144,10 @@ class Worker(
           retryOrAbandon(outstanding, e)
       }
     }
+
+    case WorkSender.WorkResult(wId, x) ⇒ //should never happen..right?
+      log.error("Received a response for a request which has already been serviced")
+
     case RouteeTimeout ⇒
       log.warning(s"Routee ${routee.path} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
@@ -160,11 +176,12 @@ class Worker(
   }
 
   private def sendWorkToRoutee(work: Work, retried: Int): Unit = {
-    val timeoutHandle: Cancellable = {
-      maybeDelayedMsg(delayBeforeNextWork, work.messageToDelegatee, routee)
-      delayedMsg(delayBeforeNextWork.getOrElse(Duration.Zero) + work.settings.timeout, RouteeTimeout)
-    }
-    context become working(Outstanding(work, timeoutHandle, retried))
+    workId += 1 //do we increase this on a retry?
+    val sender = context.actorOf(WorkSender.props(self, routee, RelayWork(workId, work.messageToDelegatee, delayBeforeNextWork)))
+    context.watch(sender)
+    val timeout = delayedMsg(delayBeforeNextWork.getOrElse(Duration.Zero) + work.settings.timeout, RouteeTimeout)
+    val out = Outstanding(work, timeout, sender, retried)
+    context become working(out)
   }
 
   private def askMoreWork(): Unit = {
@@ -200,6 +217,7 @@ class Worker(
   protected case class Outstanding(
     work:          Work,
     timeoutHandle: Cancellable,
+    workSender:    ActorRef,
     retried:       Int           = 0,
     startAt:       LocalDateTime = LocalDateTime.now
   ) {
@@ -227,17 +245,19 @@ class Worker(
       reportResult(result)
     }
 
-    def cancel(): Unit = if (!timeoutHandle.isCancelled) timeoutHandle.cancel()
-
+    def cancel(): Unit = {
+      timeoutHandle.cancel()
+      context.unwatch(workSender)
+      workSender ! PoisonPill
+    }
     lazy val workDescription = descriptionOf(work.messageToDelegatee)
 
     def reportResult(result: Any): Unit = work.replyTo.foreach(_ ! result)
 
   }
-
 }
 
-object Worker {
+private[queue] object Worker {
 
   private case object RouteeTimeout
   case object Retire
@@ -260,3 +280,28 @@ object Worker {
     Props(new Worker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker)).withDeploy(Deploy.local)
   }
 }
+
+private[queue] class WorkSender(worker: ActorRef, routee: ActorRef, relayWork: RelayWork) extends Actor with MessageScheduler with ActorLogging {
+
+  import relayWork._
+
+  maybeDelayedMsg(delay, message, routee)
+
+  def receive: Receive = {
+
+    case x ⇒ worker ! WorkResult(workId, x)
+  }
+}
+
+private[queue] object WorkSender {
+
+  case class RelayWork(workId: Long, message: Any, delay: Option[FiniteDuration])
+
+  case class WorkResult(workId: Long, result: Any)
+
+  def props(worker: ActorRef, routee: ActorRef, relayWork: RelayWork): Props = {
+    Props(classOf[WorkSender], worker, routee, relayWork)
+  }
+
+}
+

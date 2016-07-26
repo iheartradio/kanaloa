@@ -1,10 +1,11 @@
 package kanaloa.reactive.dispatcher.queue
 
-import akka.actor.PoisonPill
+import akka.actor.{Actor, ActorRef, PoisonPill, Props}
+import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{WorkFailed, WorkTimedOut}
 import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.{NoWorkLeft, RequestWork, Unregister}
-import kanaloa.reactive.dispatcher.queue.Worker.{UnregisteringIdle}
+import kanaloa.reactive.dispatcher.queue.Worker.UnregisteringIdle
 
 import scala.concurrent.duration._
 
@@ -22,7 +23,7 @@ class WorkerWorkingSpec extends WorkerSpec {
     }
 
     "handle successful Work, transitions to 'idle'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
-      routeeProbe.send(worker, Result("Response"))
+      routeeProbe.reply(Result("Response"))
       //since we set 'self' as the replyTo, we should get the response
       expectMsg("Response")
       queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
@@ -30,28 +31,28 @@ class WorkerWorkingSpec extends WorkerSpec {
     }
 
     "report successful work to metricsCollector'" in withWorkingWorker() { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
-      routeeProbe.send(worker, Result("Response"))
+      routeeProbe.reply(Result("Response"))
       expectMsg("Response")
       metricCollectorProbe.expectMsgType[Metric.WorkCompleted]
     }
 
     "handle failed Work, transitions to 'idle'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
-      routeeProbe.send(worker, Fail("sad panda :("))
+      routeeProbe.reply(Fail("sad panda :("))
       expectMsgType[WorkFailed]
       queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
       assertWorkerStatus(worker, Worker.Idle)
     }
 
     "report failed work to metricsCollector'" in withWorkingWorker() { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
-      routeeProbe.send(worker, Fail("sad panda :("))
+      routeeProbe.reply(Fail("sad panda :("))
       expectMsgType[WorkFailed]
       metricCollectorProbe.expectMsg(Metric.WorkFailed)
     }
 
     "apply retries on failed Work, transitions to 'idle'" in withWorkingWorker(WorkSettings(retry = 1)) { (worker, queueProbe, routeeProbe, work, _) ⇒
-      routeeProbe.send(worker, Fail("sad panda :(")) //first fail
+      routeeProbe.reply(Fail("sad panda :(")) //first fail
       routeeProbe.expectMsg(work.messageToDelegatee)
-      routeeProbe.send(worker, Fail("still a sad panda :( :("))
+      routeeProbe.reply(Fail("still a sad panda :( :("))
       expectMsgType[WorkFailed]
       queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
       assertWorkerStatus(worker, Worker.Idle)
@@ -89,6 +90,34 @@ class WorkerWorkingSpec extends WorkerSpec {
       worker ! Worker.Retire
       assertWorkerStatus(worker, Worker.UnregisteringBusy)
     }
+    "should only send responses for the current executing Work" in {
+      //create a new worker whose Routee is actually a Router which simply sends messages to a specific Actor
+      //This is so that we can control the response order of who gets messages
+      val queueProbe = TestProbe("queue")
+      val routeeA = TestProbe("routeeA")
+      val routeeB = TestProbe("routeeB")
+      val routerActor = system.actorOf(Props(classOf[SimpleRoutingActor], Set(routeeA.ref, routeeB.ref)))
+      val metricsCollectorProbe = TestProbe("metricsCollector")
+      val worker = TestActorRef[Worker](Worker.default(queueProbe.ref, routerActor, metricsCollectorProbe.ref)(SimpleResultChecker))
+
+      //send the first message, with an aggressive timeout, just so we can have this message timeout
+      queueProbe.send(worker, Work(RoutedMessage(routeeA.ref, "AMessage"), Some(self), WorkSettings(timeout = 1.millisecond)))
+
+      routeeA.expectMsg("AMessage")
+      expectMsgType[WorkTimedOut]
+
+      queueProbe.expectMsgType[RequestWork]
+      //now send a message to the second actor
+      queueProbe.send(worker, Work(RoutedMessage(routeeB.ref, "BMessage"), Some(self), WorkSettings(timeout = 10.minutes)))
+
+      routeeB.expectMsg("BMessage")
+      //Now, have A respond, it should be ignored
+      routeeA.reply(Result("A Result!"))
+
+      routeeB.reply(Result("B Result!"))
+
+      expectMsg("B Result!")
+    }
   }
 
   "A Working Worker with circuit breaker" should {
@@ -116,17 +145,18 @@ class WorkerWorkingSpec extends WorkerSpec {
 
     "reset circuit breaker when a success is received" in withWorkingWorker(ws, cbs) {
       (worker, queueProbe, routeeProbe, work, _) ⇒
-
         queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work) //second time out
+        queueProbe.send(worker, work.copy(messageToDelegatee = "work2")) //second time out
 
         queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
 
         queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(settings = WorkSettings()))
-        routeeProbe.send(worker, Result("Response"))
+        queueProbe.send(worker, work.copy(messageToDelegatee = "work3", settings = WorkSettings()))
 
-        queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
+        routeeProbe.expectMsgAllOf("work2", "work3")
+        routeeProbe.reply(Result("Response"))
+
+        queueProbe.expectMsg(RequestWork(worker)) //should immediately receive work request
         worker.underlyingActor.delayBeforeNextWork should be(empty)
 
     }
@@ -135,16 +165,25 @@ class WorkerWorkingSpec extends WorkerSpec {
       (worker, queueProbe, routeeProbe, work, _) ⇒
 
         queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work) //second time out
+        queueProbe.send(worker, work.copy(messageToDelegatee = "work2")) //second time out
 
         queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
 
         queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(settings = WorkSettings()))
-        routeeProbe.send(worker, Fail("sad red panda"))
+        queueProbe.send(worker, work.copy(messageToDelegatee = "work3", settings = WorkSettings()))
+        routeeProbe.expectMsgAllOf("work2", "work3")
+        routeeProbe.reply(Fail("sad red panda"))
 
         queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
-
     }
   }
 }
+
+class SimpleRoutingActor(actors: Set[ActorRef]) extends Actor {
+  override def receive: Receive = {
+    case RoutedMessage(routee, message) ⇒
+      actors.find(_ == routee).foreach { _.forward(message) }
+  }
+}
+
+case class RoutedMessage(routee: ActorRef, message: String)

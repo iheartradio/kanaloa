@@ -61,7 +61,7 @@ class WorkerUnregisteringBusySpec extends WorkerSpec {
     }
 
     "transition to 'unregisteringIdle' if WorkComplete" in withUnregisteringBusyWorker { (worker, queueProbe, routeeProbe, work) ⇒
-      routeeProbe.send(worker, Result("finished!"))
+      routeeProbe.reply(Result("finished!"))
       expectMsg("finished!")
       assertWorkerStatus(worker, Worker.UnregisteringIdle)
     }
@@ -73,7 +73,7 @@ class WorkerUnregisteringBusySpec extends WorkerSpec {
     }
 
     "transition to 'unregisteringIdle' if Work fails" in withUnregisteringBusyWorker { (worker, queueProbe, routeeProbe, work) ⇒
-      routeeProbe.send(worker, Fail("finished!"))
+      routeeProbe.reply(Fail("finished!"))
       expectMsgType[WorkFailed]
       assertWorkerStatus(worker, Worker.UnregisteringIdle)
     }
@@ -117,13 +117,13 @@ class WorkerWaitingToTerminateSpec extends WorkerSpec {
     }
 
     "terminate when the Work completes" in withTerminatingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
-      routeeProbe.send(worker, Result("finished!"))
+      routeeProbe.reply(Result("finished!"))
       expectMsg("finished!")
       expectTerminated(worker)
     }
 
     "terminate if the Work fails" in withTerminatingWorker() { (worker, queueProbe, routeeProbe, work) ⇒
-      routeeProbe.send(worker, Fail("fail"))
+      routeeProbe.reply(Fail("fail"))
       expectMsgType[WorkFailed]
       expectTerminated(worker)
     }
