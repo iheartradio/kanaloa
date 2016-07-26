@@ -110,18 +110,21 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newStatus) ⇒ dispatchWork(newStatus, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! PerformanceSampler.DispatchResult(status.queuedWorkers.length, QueueLength(status.workBuffer.length))
+        metricsCollector ! PerformanceSampler.DispatchResult(status.queuedWorkers.length, QueueLength(status.workBuffer.length), fullyUtilized(status))
         status
     }
   }
 
+  def fullyUtilized(status: Status): Boolean
   def onQueuedWorkExhausted(): Unit = ()
 }
 
 case class DefaultQueue(
   defaultWorkSettings: WorkSettings,
   metricsCollector:    ActorRef
-) extends Queue
+) extends Queue {
+  def fullyUtilized(status: Status): Boolean = status.queuedWorkers.length == 0 && status.workBuffer.length > 0
+}
 
 class QueueOfIterator(
   private val iterator:    Iterator[_],
@@ -132,6 +135,8 @@ class QueueOfIterator(
   import QueueOfIterator._
 
   val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self))
+
+  def fullyUtilized(status: Status): Boolean = status.queuedWorkers.length <= 2
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }

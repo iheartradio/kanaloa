@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.testkit.TestProbe
-import kanaloa.reactive.dispatcher.PerformanceSampler.{Subscribe, Sample}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{NoProgress, Subscribe, Sample}
 import kanaloa.reactive.dispatcher.Regulator.{DroppingRate, Status, Settings}
 import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.Metric
@@ -50,14 +50,28 @@ class RegulatorSpec extends SpecWithActorSystem {
       metricsCollector.expectMsgType[Metric.DropRate]
     }
 
-    "send dropRate" in {
+    "send dropRate when outside burst duration" in {
       val regulatee = TestProbe()
-      val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
+      val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 30.milliseconds), TestProbe().ref, regulatee.ref))
       regulator ! sample() //starts the regulator
 
-      regulator ! sample()
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate].value shouldBe (0) //does not send dropping rate larger than zero when within a burst
 
-      regulatee.expectMsgType[DroppingRate]
+      regulatee.expectNoMsg(40.milliseconds)
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
+    }
+
+    "send dropRate when no progress were made" in {
+      val regulatee = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
+
+      regulator ! NoProgress(2.seconds.ago, QueueLength(20)) //starts the regulator
+
+      regulator ! NoProgress(2.seconds.ago, QueueLength(40)) //starts the regulator
+
+      regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
     }
 
     "update recordedAt" in {

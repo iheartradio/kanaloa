@@ -35,8 +35,8 @@ private[dispatcher] trait PerformanceSampler extends Actor {
   val scheduledSampling = {
     import context.dispatcher
     context.system.scheduler.schedule(
-      sampleRate,
-      sampleRate,
+      sampleInterval,
+      sampleInterval,
       self,
       AddSample
     )
@@ -72,10 +72,11 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     report(WorkQueueLength(queueLength.value))
 
   def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft) ⇒
+    case DispatchResult(idle, workLeft, full) ⇒
       reportQueueLength(workLeft)
-      if (!settings.fullyUtilized(idle)) {
-        tryComplete(s)
+      if (!full) {
+        val (rpt, _) = tryComplete(s)
+        rpt foreach publish
         publishUtilization(idle, s.poolSize)
         context become partialUtilized(s.poolSize)
       } else
@@ -89,7 +90,8 @@ private[dispatcher] trait PerformanceSampler extends Actor {
         case PoolSize(size) ⇒
           val sizeChanged = s.poolSize.fold(true)(_ != size)
           if (sizeChanged) {
-            tryComplete(s)
+            val (r, _) = tryComplete(s)
+            r foreach publish
             context become fullyUtilized(
               QueueStatus(poolSize = Some(size), queueLength = s.queueLength)
             )
@@ -97,20 +99,24 @@ private[dispatcher] trait PerformanceSampler extends Actor {
       }
 
     case AddSample ⇒
-      context become fullyUtilized(tryComplete(s))
+      val (rep, status) = tryComplete(s)
+      rep foreach publish
+      context become fullyUtilized(status)
+
       s.poolSize.foreach(s ⇒ report(PoolUtilized(s))) //take the chance to report utilization to reporter
 
   }
 
   def partialUtilized(poolSize: Option[Int]): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft) if settings.fullyUtilized(idle) ⇒
+    case DispatchResult(idle, workLeft, full) if full ⇒
       context become fullyUtilized(
         QueueStatus(poolSize = poolSize, queueLength = workLeft)
       )
       reportQueueLength(workLeft)
 
-    case DispatchResult(idle, _) ⇒
+    case DispatchResult(idle, _, _) ⇒
       publishUtilization(idle, poolSize)
+
     case metric: Metric ⇒
       handle(metric) {
         case PoolSize(s) ⇒
@@ -124,12 +130,21 @@ private[dispatcher] trait PerformanceSampler extends Actor {
    * @param status
    * @return a reset status if completes, the original status if not.
    */
-  private def tryComplete(status: QueueStatus): QueueStatus = {
-    status.toSample(minSampleDuration).fold(status) { sample ⇒
-      publish(sample)
-      status.copy(workDone = 0, start = Time.now)
+  private def tryComplete(status: QueueStatus): (Option[Report], QueueStatus) = {
+    status.toSample(minSampleDuration) match {
+      case sample @ Some(_) ⇒ (sample, status.copy(workDone = 0, start = Time.now))
+      case None ⇒
+        val report =
+          if (settings.reportNoProgress &&
+            status.duration > minSampleDuration &&
+            status.workDone == 0 &&
+            status.queueLength.value > 0)
+            Some(NoProgress(status.start, status.queueLength))
+          else None
+        (report, status)
     }
   }
+
   def publish(report: Report): Unit = {
     subscribers.foreach(_ ! report)
   }
@@ -142,20 +157,19 @@ private[dispatcher] object PerformanceSampler {
   case class Subscribe(actorRef: ActorRef)
   case class Unsubscribe(actorRef: ActorRef)
 
-  case class DispatchResult(workersLeft: Int, queueLength: QueueLength)
+  case class DispatchResult(workersLeft: Int, queueLength: QueueLength, fullyUtilized: Boolean)
 
   /**
    *
-   * @param sampleRate
-   * @param minSampleDurationRatio minimum sample duration ratio to sample rate. Sample duration less than this will be abandoned.
-   * @param fullyUtilized a function that given the number of idle workers indicate if the pool is fully utilized
+   * @param sampleInterval do one sampling each interval
+   * @param minSampleDurationRatio minimum sample duration ratio to [[sampleInterval]]. Sample whose duration is less than this will be abandoned.
    */
   case class PerformanceSamplerSettings(
-    sampleRate:             FiniteDuration = 1.second,
+    sampleInterval:         FiniteDuration = 1.second,
     minSampleDurationRatio: Double         = 0.3,
-    fullyUtilized:          Int ⇒ Boolean  = _ == 0
+    reportNoProgress:       Boolean        = true
   ) {
-    val minSampleDuration: Duration = sampleRate * minSampleDurationRatio
+    val minSampleDuration: Duration = sampleInterval * minSampleDurationRatio
   }
 
   case class QueueStatus(
@@ -167,8 +181,7 @@ private[dispatcher] object PerformanceSampler {
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
-      val end = Time.now
-      if (start.until(end) > minSampleDuration
+      if (duration > minSampleDuration
         && workDone > 0
         && poolSize.isDefined) Some(Sample(
         workDone = workDone,
@@ -180,6 +193,9 @@ private[dispatcher] object PerformanceSampler {
       else
         None
     }
+
+    def duration = start.until(Time.now)
+
   }
 
   sealed trait Report
@@ -203,4 +219,9 @@ private[dispatcher] object PerformanceSampler {
    * @param numOfBusyWorkers
    */
   case class PartialUtilization(numOfBusyWorkers: Int) extends Report
+
+  /**
+   * Indicate that system has been
+   */
+  case class NoProgress(since: Time, queueLength: QueueLength) extends Report
 }

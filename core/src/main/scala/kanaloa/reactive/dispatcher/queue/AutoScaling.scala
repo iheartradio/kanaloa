@@ -4,7 +4,8 @@ import java.time.{Duration ⇒ JDuration, LocalDateTime ⇒ Time}
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample, Subscribe, Unsubscribe}
+import kanaloa.reactive.dispatcher.PerformanceSampler
+import kanaloa.reactive.dispatcher.PerformanceSampler._
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.ScaleTo
 import kanaloa.util.Java8TimeExtensions._
@@ -75,7 +76,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
       self forward s
     case PartialUtilization(u) ⇒
       context become underUtilized(u)
-    case OptimizeOrExplore ⇒ //no history no action
+    case OptimizeOrExplore            ⇒ //no history no action
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndProcessor orElse {
@@ -90,6 +92,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
         processor ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
     case qs: QueryStatus ⇒
       qs.reply(AutoScalingStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
+
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
@@ -114,6 +118,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
     case qs: QueryStatus ⇒
       qs.reply(AutoScalingStatus(poolSize = Some(currentSize), performanceLog = perfLog))
+
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def optimize(currentSize: PoolSize): ScaleTo = {

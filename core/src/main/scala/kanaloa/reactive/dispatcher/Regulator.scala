@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor._
-import kanaloa.reactive.dispatcher.PerformanceSampler.Sample
+import kanaloa.reactive.dispatcher.PerformanceSampler.{NoProgress, Report, PartialUtilization, Sample}
 import java.time.{LocalDateTime ⇒ Time}
 import kanaloa.reactive.dispatcher.Regulator.Status
 import kanaloa.reactive.dispatcher.metrics.Metric
@@ -55,15 +55,33 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
         burstDurationLeft = settings.durationOfBurstAllowed,
         averageSpeed = s.speed
       ))
+    case noProgress: NoProgress ⇒
+      context become regulating(Status(
+        delay = estimateDelay(noProgress),
+        droppingRate = DroppingRate(0),
+        burstDurationLeft = settings.durationOfBurstAllowed,
+        averageSpeed = Speed(0)
+      ))
+    case _: Report ⇒ //ignore other performance report
   }
 
   def regulating(status: Status): Receive = {
     case s: Sample ⇒
-      val newStatus = update(s, status, settings)
-      context become regulating(newStatus)
-      metricsCollector ! Metric.WorkQueueExpectedWaitTime(newStatus.delay)
-      metricsCollector ! Metric.DropRate(newStatus.droppingRate.value)
-      regulatee ! newStatus.droppingRate
+      continueWith(update(s, status, settings))
+    case n: NoProgress ⇒
+      continueWith(update(n, status, settings))
+    case _: Report ⇒ //ignore other performance report
+  }
+
+  private def continueWith(status: Status): Unit = {
+    context become regulating(status)
+    metricsCollector ! Metric.WorkQueueExpectedWaitTime(status.delay)
+    metricsCollector ! Metric.DropRate(status.droppingRate.value)
+    val droppingRateToSend =
+      if (status.burstDurationLeft > Duration.Zero)
+        DroppingRate(0)
+      else status.droppingRate
+    regulatee ! droppingRateToSend
   }
 }
 
@@ -97,9 +115,11 @@ object Regulator {
     weightOfLatestMetric:   Double         = 0.5
   )
 
-  private[dispatcher] def estimateDelay(queueLength: QueueLength, speed: Speed): FiniteDuration = {
+  private[dispatcher] def estimateDelay(queueLength: QueueLength, speed: Speed): FiniteDuration =
     ((queueLength.value / speed.value) * 1000d * 1000d).nanoseconds
-  }
+
+  private[dispatcher] def estimateDelay(noProgress: NoProgress): FiniteDuration =
+    noProgress.since.until(Time.now) * noProgress.queueLength.value
 
   private[dispatcher] def update(sample: Sample, lastStatus: Status, settings: Settings): Status = {
     import settings._
@@ -107,8 +127,21 @@ object Regulator {
       Speed(
         sample.speed.value * weightOfLatestMetric + ((1d - weightOfLatestMetric) * lastStatus.averageSpeed.value)
       )
-
     val delay = estimateDelay(sample.queueLength, avgSpeed)
+
+    updateFromDelay(delay, lastStatus, settings).copy(averageSpeed = avgSpeed)
+  }
+
+  private[dispatcher] def update(noProgress: NoProgress, lastStatus: Status, settings: Settings): Status = {
+    val delay = estimateDelay(noProgress)
+    if (delay > lastStatus.delay)
+      updateFromDelay(delay, lastStatus, settings)
+    else
+      lastStatus
+  }
+
+  private def updateFromDelay(delay: FiniteDuration, lastStatus: Status, settings: Settings): Status = {
+    import settings._
 
     def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
 
@@ -128,13 +161,12 @@ object Regulator {
     else lastStatus.burstDurationLeft - (lastStatus.recordedAt.until(Time.now))
 
     lastStatus.copy(
-      averageSpeed = avgSpeed,
       delay = delay,
       droppingRate = newDropRate,
       burstDurationLeft = burstDurationLeft,
       recordedAt = Time.now
     )
-
   }
+
 }
 

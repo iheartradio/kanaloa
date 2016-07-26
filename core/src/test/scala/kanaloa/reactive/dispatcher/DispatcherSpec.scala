@@ -1,14 +1,14 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ActorRefFactory, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, Props}
 import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
-import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.scalatest.OptionValues
+import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.Future
 import concurrent.duration._
@@ -191,6 +191,32 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       }
 
       (received.length.toDouble / numOfWork.toDouble) shouldBe 0.5 +- 0.07
+    }
+
+    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually {
+      val failingBackend = new Backend {
+        def apply(f: ActorRefFactory): Future[ActorRef] = Future.failed(new Exception("failing backend"))
+      }
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        "test",
+        failingBackend,
+        ConfigFactory.parseString(
+          """
+            |kanaloa.default-dispatcher {
+            |  updateInterval = 10ms
+            |  backPressure {
+            |    durationOfBurstAllowed = 10ms
+            |    durationOfBurstAllowed = 0s
+            |  }
+            |}""".stripMargin
+        )
+      )(ResultChecker.complacent))
+
+      eventually {
+        (1 to 100).foreach(_ ⇒ dispatcher ! "a work")
+        expectMsgType[WorkRejected](20.milliseconds)
+      }(PatienceConfig(10.seconds, 200.milliseconds))
+
     }
   }
 
