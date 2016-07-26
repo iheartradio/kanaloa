@@ -16,13 +16,11 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
   val waitDuration = 30.milliseconds
 
   def initPerformanceSampler(
-    minSampleDurationRatio: Double  = 0,
-    reportNoProgress:       Boolean = false
+    minSampleDurationRatio: Double = 0
   )(implicit system: ActorSystem): (ActorRef, TestProbe) = {
     val ps = system.actorOf(MetricsCollector.props(None, PerformanceSamplerSettings(
       sampleInterval = waitDuration / 2,
-      minSampleDurationRatio = minSampleDurationRatio,
-      reportNoProgress
+      minSampleDurationRatio = minSampleDurationRatio
     )))
     ps ! fullyUtilizedResult //set it in the busy mode
     ps ! PoolSize(10)
@@ -69,11 +67,6 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       subscriberProbe.expectNoMsg(waitDuration)
       ps ! WorkFailed
       subscriberProbe.expectMsgType[Sample].workDone should be(1)
-    }
-
-    "report NoProgress when no work done" in {
-      val (ps, subscriberProbe) = initPerformanceSampler(reportNoProgress = true)
-      subscriberProbe.expectMsgType[NoProgress].since.isBefore(Time.now) should be(true)
     }
 
     "resume to collect metrics once pool becomes busy again, but doesn't count old work" in {

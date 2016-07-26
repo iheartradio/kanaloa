@@ -133,15 +133,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
   private def tryComplete(status: QueueStatus): (Option[Report], QueueStatus) = {
     status.toSample(minSampleDuration) match {
       case sample @ Some(_) ⇒ (sample, status.copy(workDone = 0, start = Time.now))
-      case None ⇒
-        val report =
-          if (settings.reportNoProgress &&
-            status.duration > minSampleDuration &&
-            status.workDone == 0 &&
-            status.queueLength.value > 0)
-            Some(NoProgress(status.start, status.queueLength))
-          else None
-        (report, status)
+      case None             ⇒ (None, status)
     }
   }
 
@@ -166,8 +158,7 @@ private[dispatcher] object PerformanceSampler {
    */
   case class PerformanceSamplerSettings(
     sampleInterval:         FiniteDuration = 1.second,
-    minSampleDurationRatio: Double         = 0.3,
-    reportNoProgress:       Boolean        = true
+    minSampleDurationRatio: Double         = 0.3
   ) {
     val minSampleDuration: Duration = sampleInterval * minSampleDurationRatio
   }

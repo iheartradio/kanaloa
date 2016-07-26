@@ -55,21 +55,14 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
         burstDurationLeft = settings.durationOfBurstAllowed,
         averageSpeed = s.speed
       ))
-    case noProgress: NoProgress ⇒
-      context become regulating(Status(
-        delay = estimateDelay(noProgress),
-        droppingRate = DroppingRate(0),
-        burstDurationLeft = settings.durationOfBurstAllowed,
-        averageSpeed = Speed(0)
-      ))
     case _: Report ⇒ //ignore other performance report
   }
 
   def regulating(status: Status): Receive = {
     case s: Sample ⇒
       continueWith(update(s, status, settings))
-    case n: NoProgress ⇒
-      continueWith(update(n, status, settings))
+    case PartialUtilization(_) ⇒
+      continueWith(status.copy(droppingRate = DroppingRate(0))) //should not drop anything when it has free workers
     case _: Report ⇒ //ignore other performance report
   }
 
@@ -118,9 +111,6 @@ object Regulator {
   private[dispatcher] def estimateDelay(queueLength: QueueLength, speed: Speed): FiniteDuration =
     ((queueLength.value / speed.value) * 1000d * 1000d).nanoseconds
 
-  private[dispatcher] def estimateDelay(noProgress: NoProgress): FiniteDuration =
-    noProgress.since.until(Time.now) * noProgress.queueLength.value
-
   private[dispatcher] def update(sample: Sample, lastStatus: Status, settings: Settings): Status = {
     import settings._
     val avgSpeed =
@@ -128,20 +118,6 @@ object Regulator {
         sample.speed.value * weightOfLatestMetric + ((1d - weightOfLatestMetric) * lastStatus.averageSpeed.value)
       )
     val delay = estimateDelay(sample.queueLength, avgSpeed)
-
-    updateFromDelay(delay, lastStatus, settings).copy(averageSpeed = avgSpeed)
-  }
-
-  private[dispatcher] def update(noProgress: NoProgress, lastStatus: Status, settings: Settings): Status = {
-    val delay = estimateDelay(noProgress)
-    if (delay > lastStatus.delay)
-      updateFromDelay(delay, lastStatus, settings)
-    else
-      lastStatus
-  }
-
-  private def updateFromDelay(delay: FiniteDuration, lastStatus: Status, settings: Settings): Status = {
-    import settings._
 
     def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
 
@@ -164,7 +140,8 @@ object Regulator {
       delay = delay,
       droppingRate = newDropRate,
       burstDurationLeft = burstDurationLeft,
-      recordedAt = Time.now
+      recordedAt = Time.now,
+      averageSpeed = avgSpeed
     )
   }
 

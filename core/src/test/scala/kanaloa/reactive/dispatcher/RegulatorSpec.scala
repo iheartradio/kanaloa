@@ -63,17 +63,6 @@ class RegulatorSpec extends SpecWithActorSystem {
       regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
     }
 
-    "send dropRate when no progress were made" in {
-      val regulatee = TestProbe()
-      val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
-
-      regulator ! NoProgress(2.seconds.ago, QueueLength(20)) //starts the regulator
-
-      regulator ! NoProgress(2.seconds.ago, QueueLength(40)) //starts the regulator
-
-      regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
-    }
-
     "update recordedAt" in {
       val lastStatus = status(averageSpeed = 0.2, recordedAt = 2000.milliseconds.ago)
       val result = update(sample(), lastStatus, settings())
