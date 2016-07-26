@@ -7,10 +7,10 @@ import kanaloa.reactive.dispatcher.queue._
 import scala.concurrent.{ExecutionContext, Future}
 
 trait Backends {
-  def delayedBackend(implicit ex: ExecutionContext) = new Backend {
+  def delayedBackend(delayInMs: Long = 1000)(implicit ex: ExecutionContext) = new Backend {
     def apply(f: ActorRefFactory): Future[QueueRef] = {
       Future {
-        Thread.sleep(1000)
+        Thread.sleep(delayInMs)
         f.actorOf(TestActors.echoActorProps)
       }
     }

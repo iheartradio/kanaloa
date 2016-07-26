@@ -66,7 +66,8 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
         status.copy(
           droppingRate = DroppingRate(0),
           burstDurationLeft = settings.durationOfBurstAllowed,
-          recordedAt = Time.now)
+          recordedAt = Time.now
+        )
       ) //reset to baseline when seeing a PartialUtilization
     case _: Report ⇒ //ignore other performance report
   }

@@ -189,7 +189,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       val queueProcessor = system.actorOf(
         QueueProcessor.default(
           queueProbe.ref,
-          delayedBackend,
+          delayedBackend(),
           ProcessingWorkerPoolSettings(),
           TestProbe().ref
         )(ResultChecker.complacent)

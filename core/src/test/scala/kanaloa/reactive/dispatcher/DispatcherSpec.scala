@@ -95,7 +95,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          delayedBackend
+          delayedBackend()
         )(ResultChecker.complacent)
       )
 
@@ -216,6 +216,38 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       eventually {
         (1 to 100).foreach(_ ⇒ dispatcher ! "a work")
         expectMsgType[WorkRejected](20.milliseconds)
+      }(PatienceConfig(5.seconds, 40.milliseconds))
+
+    }
+
+    //todo: move this to integration test once the integration re-org test PR is merged. 
+    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with Backends {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        "test",
+        delayedBackend(500),
+        ConfigFactory.parseString(
+          """
+            |kanaloa.default-dispatcher {
+            |  updateInterval = 50ms
+            |  backPressure {
+            |    durationOfBurstAllowed = 30ms
+            |    referenceDelay = 2s
+            |  }
+            |}""".stripMargin
+        )
+      )(ResultChecker.complacent))
+
+      //reach the point that it starts to reject work
+      eventually {
+        (1 to 100).foreach(_ ⇒ dispatcher ! "a work")
+        expectMsgType[WorkRejected](20.milliseconds)
+      }(PatienceConfig(5.seconds, 40.milliseconds))
+
+      //recovers after the worker become available
+      eventually {
+        dispatcher ! "a work"
+        expectMsg(10.milliseconds, "a work")
       }(PatienceConfig(5.seconds, 40.milliseconds))
 
     }

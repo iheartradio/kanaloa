@@ -71,7 +71,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   final def receive: Receive = watchingQueueAndProcessor orElse {
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
     case PartialUtilization(u) ⇒
@@ -84,9 +84,9 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
     case PartialUtilization(utilization) ⇒
       if (highestUtilization < utilization)
         context become underUtilized(utilization, start)
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
-      self ! s
+      self forward s
     case OptimizeOrExplore ⇒
       if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization)))
         processor ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
@@ -97,7 +97,7 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       val toUpdate = perfLog.get(s.poolSize).fold(s.speed.value) { oldSpeed ⇒
         oldSpeed * (1d - weightOfLatestMetric) + (s.speed.value * weightOfLatestMetric)
       }
