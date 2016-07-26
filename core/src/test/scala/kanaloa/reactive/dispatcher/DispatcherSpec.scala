@@ -232,7 +232,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |  updateInterval = 50ms
             |  backPressure {
             |    durationOfBurstAllowed = 30ms
-            |    referenceDelay = 2s
+            |    referenceDelay = 1s
             |  }
             |}""".stripMargin
         )
@@ -240,7 +240,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       //reach the point that it starts to reject work
       eventually {
-        (1 to 100).foreach(_ ⇒ dispatcher ! "a work")
+        (1 to 30).foreach(_ ⇒ dispatcher ! "a work")
         expectMsgType[WorkRejected](20.milliseconds)
       }(PatienceConfig(5.seconds, 40.milliseconds))
 
