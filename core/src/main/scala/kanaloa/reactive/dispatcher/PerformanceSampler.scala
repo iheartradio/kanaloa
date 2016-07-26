@@ -131,10 +131,13 @@ private[dispatcher] trait PerformanceSampler extends Actor {
    * @return a reset status if completes, the original status if not.
    */
   private def tryComplete(status: QueueStatus): (Option[Report], QueueStatus) = {
-    status.toSample(minSampleDuration) match {
-      case sample @ Some(_) ⇒ (sample, status.copy(workDone = 0, start = Time.now))
-      case None             ⇒ (None, status)
-    }
+    val sample = status.toSample(minSampleDuration)
+
+    val newStatus = if (sample.fold(false)(_.workDone > 0))
+      status.copy(workDone = 0, start = Time.now) //if sample is valid and there is work done restart the counter
+    else status
+
+    (sample, newStatus)
   }
 
   def publish(report: Report): Unit = {
@@ -172,8 +175,7 @@ private[dispatcher] object PerformanceSampler {
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
-      if (duration > minSampleDuration
-        && workDone > 0
+      if (duration >= minSampleDuration
         && poolSize.isDefined) Some(Sample(
         workDone = workDone,
         start = start,
