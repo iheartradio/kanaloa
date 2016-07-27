@@ -28,7 +28,7 @@ private[queue] class Worker(
   var timeoutCount: Int = 0
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
-  var workId: Long = 0
+  var workCounter: Long = 0
 
   private val circuitBreaker: Option[CircuitBreaker] = circuitBreakerSettings.map(new CircuitBreaker(_))
 
@@ -132,7 +132,7 @@ private[queue] class Worker(
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
       onRouteeFailure()
 
-    case WorkSender.WorkResult(wId, x) if wId == workId ⇒ {
+    case WorkSender.WorkResult(wId, x) if wId == outstanding.workId ⇒ {
       val result: Either[String, Any] = resultChecker.applyOrElse(x, failedResultMatch)
       result match {
         case Right(res) ⇒
@@ -176,11 +176,11 @@ private[queue] class Worker(
   }
 
   private def sendWorkToRoutee(work: Work, retried: Int): Unit = {
-    workId += 1 //do we increase this on a retry?
-    val sender = context.actorOf(WorkSender.props(self, routee, RelayWork(workId, work.messageToDelegatee, delayBeforeNextWork)))
+    workCounter += 1 //do we increase this on a retry?
+    val sender = context.actorOf(WorkSender.props(self, routee, RelayWork(workCounter, work.messageToDelegatee, delayBeforeNextWork)))
     context.watch(sender)
     val timeout = delayedMsg(delayBeforeNextWork.getOrElse(Duration.Zero) + work.settings.timeout, RouteeTimeout)
-    val out = Outstanding(work, timeout, sender, retried)
+    val out = Outstanding(work, workCounter, timeout, sender, retried)
     context become working(out)
   }
 
@@ -216,6 +216,7 @@ private[queue] class Worker(
 
   protected case class Outstanding(
     work:          Work,
+    workId:        Long,
     timeoutHandle: Cancellable,
     workSender:    ActorRef,
     retried:       Int           = 0,
