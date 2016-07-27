@@ -177,10 +177,11 @@ private[queue] class Worker(
 
   private def sendWorkToRoutee(work: Work, retried: Int): Unit = {
     workCounter += 1 //do we increase this on a retry?
-    val sender = context.actorOf(WorkSender.props(self, routee, RelayWork(workCounter, work.messageToDelegatee, delayBeforeNextWork)))
+    val newWorkId = workCounter
+    val sender = context.actorOf(WorkSender.props(self, routee, RelayWork(newWorkId, work.messageToDelegatee, delayBeforeNextWork)))
     context.watch(sender)
     val timeout = delayedMsg(delayBeforeNextWork.getOrElse(Duration.Zero) + work.settings.timeout, RouteeTimeout)
-    val out = Outstanding(work, workCounter, timeout, sender, retried)
+    val out = Outstanding(work, newWorkId, timeout, sender, retried)
     context become working(out)
   }
 
