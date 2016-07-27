@@ -45,10 +45,10 @@ class ClusterAwareBackend(
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
     val retriever = f.actorOf(ClusterAwareBackend.retrieverProps(router, routingLogic))
     import system.dispatcher
-    //let the retriever handles the time internally.
+    //let the retriever handle the timeout internally.
     retriever.ask(ClusterAwareBackend.GetRoutee)(timeout = timeout.duration * 2).map {
-      case RouteeRef(actorRef) => actorRef
-      case err => throw new FailedToGetRemoteRoutee(err.toString)
+      case RouteeRef(actorRef) ⇒ actorRef
+      case err                 ⇒ throw new FailedToGetRemoteRoutee(err.toString)
     }
   }
 

@@ -57,7 +57,7 @@ class QueueProcessor(
 
     case RouteeFailed(ex) ⇒
       inflightCreations -= 1
-      if(settings.logRouteeRetrievalError)
+      if (settings.logRouteeRetrievalError)
         log.warning("Failed to retrieve Routee: " + ex.getMessage)
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
