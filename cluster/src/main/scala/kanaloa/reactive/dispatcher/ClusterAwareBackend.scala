@@ -7,12 +7,13 @@ import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
 import akka.routing._
 import akka.pattern.ask
 import akka.util.Timeout
-import kanaloa.reactive.dispatcher.ClusterAwareBackend.RouteeRef
+import kanaloa.reactive.dispatcher.ClusterAwareBackend.{FailedToGetRemoteRoutee, RouteeRef}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
 /**
  * A [[Backend]] that represent actor deployed on remote cluster members.
+ *
  * @param actorRefPath the path with which the actor is deployed
  * @param role the role of the cluster member on which the actor is deployed.
  * @param routingLogic routing logic for routing between multiple remote actor deployments
@@ -44,13 +45,18 @@ class ClusterAwareBackend(
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
     val retriever = f.actorOf(ClusterAwareBackend.retrieverProps(router, routingLogic))
     import system.dispatcher
-    retriever.ask(ClusterAwareBackend.GetRoutee)(timeout = timeout.duration * 2).mapTo[RouteeRef].map(_.actorRef) //let the retriever handles the time internally.
-
+    //let the retriever handles the time internally.
+    retriever.ask(ClusterAwareBackend.GetRoutee)(timeout = timeout.duration * 2).map {
+      case RouteeRef(actorRef) => actorRef
+      case err => throw new FailedToGetRemoteRoutee(err.toString)
+    }
   }
 
 }
 
 object ClusterAwareBackend {
+
+  case class FailedToGetRemoteRoutee(msg: String) extends Exception("Failed to retrieve router due to " + msg)
   /**
    * Creates a [[ClusterAwareBackend]]
    * @param actorRefPath path of the remote actor
