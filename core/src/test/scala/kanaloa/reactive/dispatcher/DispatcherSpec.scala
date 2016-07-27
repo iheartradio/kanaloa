@@ -21,7 +21,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val pwp = system.actorOf(Props(PullingDispatcher(
         "test",
         iterator,
-        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autoScaling = None),
+        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autothrottle = None),
         backend,
         metricsCollector = MetricsCollector(None),
         None,
@@ -175,7 +175,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |kanaloa.default-dispatcher {
             |  updateInterval = 300s
             |  circuitBreaker.enabled = off
-            |  autoScaling.enabled = off
+            |  autothrottle.enabled = off
             |}""".stripMargin
         ) //make sure regulator doesn't interfere
       )(ResultChecker.complacent))
@@ -258,7 +258,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "use default settings when nothing is in config" in {
       val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty)
       settings.workRetry === 0
-      settings.autoScaling shouldBe defined
+      settings.autothrottle shouldBe defined
       reporter shouldBe empty
     }
 
@@ -297,16 +297,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
       settings.workRetry === 29
-      settings.autoScaling shouldBe defined
+      settings.autothrottle shouldBe defined
     }
 
-    "turn off autoScaling if set to off" in {
+    "turn off autothrottle if set to off" in {
       val cfgStr =
         """
             kanaloa {
               dispatchers {
                 example {
-                  autoScaling {
+                  autothrottle {
                     enabled = off
                   }
                 }
@@ -314,7 +314,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             }
           """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
-      settings.autoScaling shouldBe None
+      settings.autothrottle shouldBe None
     }
 
     "turn off circuitBreaker if set to off" in {
