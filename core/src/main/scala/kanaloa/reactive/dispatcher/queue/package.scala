@@ -37,10 +37,11 @@ package kanaloa.reactive.dispatcher.queue {
    * @param minPoolSize
    */
   case class ProcessingWorkerPoolSettings(
-    startingPoolSize:    Int            = 5,
-    minPoolSize:         Int            = 3,
-    maxPoolSize:         Int            = 400,
-    healthCheckInterval: FiniteDuration = 1.seconds
+    startingPoolSize:        Int            = 5,
+    minPoolSize:             Int            = 3,
+    maxPoolSize:             Int            = 400,
+    healthCheckInterval:     FiniteDuration = 1.seconds,
+    logRouteeRetrievalError: Boolean        = true
   )
 
   /**
