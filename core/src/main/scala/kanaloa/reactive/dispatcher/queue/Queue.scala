@@ -137,18 +137,18 @@ class QueueOfIterator(
   val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self))
 
   /**
-    * Determines if a status indicates the workers pool are fully utilized.
-    * This is different from the default pushing [[DefaultQueue]]
-    * for a QueueOfIterator, it only gets work when there is at least one queued worker,
-    * which means there is a significant chance a second worker comes in before
-    * the first worker gets work. This number is still a bit arbitrary though.
-    * Obviously we still have to chose an arbitrary number as the threshold of queued workers
-    * with which we deem the queue as partially utilized.
-    * Todo: Right now we lack the insight of how to set this up correctly so I'd rather have
-    * it hard coded for now than allowing our users to tweak it without giving them any guidance
-    * @param status
-    * @return
-    */
+   * Determines if a status indicates the workers pool are fully utilized.
+   * This is different from the default pushing [[DefaultQueue]]
+   * for a QueueOfIterator, it only gets work when there is at least one queued worker,
+   * which means there is a significant chance a second worker comes in before
+   * the first worker gets work. This number is still a bit arbitrary though.
+   * Obviously we still have to chose an arbitrary number as the threshold of queued workers
+   * with which we deem the queue as partially utilized.
+   * Todo: Right now we lack the insight of how to set this up correctly so I'd rather have
+   * it hard coded for now than allowing our users to tweak it without giving them any guidance
+   * @param status
+   * @return
+   */
   def fullyUtilized(status: Status): Boolean = status.queuedWorkers.length <= 2
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore

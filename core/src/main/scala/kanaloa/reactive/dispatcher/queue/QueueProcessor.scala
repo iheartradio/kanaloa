@@ -63,7 +63,7 @@ class QueueProcessor(
       removeWorker(worker)
 
     case HealthCheck ⇒
-      if(currentWorkers < settings.minPoolSize) {
+      if (currentWorkers < settings.minPoolSize) {
         log.warning("Number of workers in pool is below minimum.")
         tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers)
       }

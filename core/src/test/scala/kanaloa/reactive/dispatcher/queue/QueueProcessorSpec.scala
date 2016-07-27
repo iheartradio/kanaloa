@@ -15,7 +15,7 @@ import org.scalatest.concurrent.Eventually
 import org.mockito.Mockito._
 import org.scalatest.mock.MockitoSugar
 import scala.collection.mutable.{Map ⇒ MMap}
-import scala.concurrent.Future
+import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
 
 class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends with MockitoSugar {
@@ -189,7 +189,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       val queueProcessor = system.actorOf(
         QueueProcessor.default(
           queueProbe.ref,
-          delayedBackend(),
+          promiseBackend(Promise[ActorRef]),
           ProcessingWorkerPoolSettings(),
           TestProbe().ref
         )(ResultChecker.complacent)
