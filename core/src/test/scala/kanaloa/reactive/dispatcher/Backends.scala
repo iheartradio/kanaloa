@@ -1,18 +1,14 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.ActorRefFactory
+import akka.actor.{ActorRef, ActorRefFactory}
 import akka.testkit.{TestActors, TestProbe}
 import kanaloa.reactive.dispatcher.queue._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Promise, ExecutionContext, Future}
 
 trait Backends {
-  def delayedBackend(implicit ex: ExecutionContext) = new Backend {
-    def apply(f: ActorRefFactory): Future[QueueRef] = {
-      Future {
-        Thread.sleep(1000)
-        f.actorOf(TestActors.echoActorProps)
-      }
-    }
+  def promiseBackend(promise: Promise[ActorRef])(implicit ex: ExecutionContext) = new Backend {
+    def apply(f: ActorRefFactory): Future[ActorRef] = promise.future
   }
+
 }

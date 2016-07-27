@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.testkit.TestProbe
-import kanaloa.reactive.dispatcher.PerformanceSampler.{Subscribe, Sample}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Subscribe, Sample}
 import kanaloa.reactive.dispatcher.Regulator.{DroppingRate, Status, Settings}
 import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.Metric
@@ -50,14 +50,30 @@ class RegulatorSpec extends SpecWithActorSystem {
       metricsCollector.expectMsgType[Metric.DropRate]
     }
 
-    "send dropRate" in {
+    "send dropRate when outside burst duration" in {
+      val regulatee = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 30.milliseconds), TestProbe().ref, regulatee.ref))
+      regulator ! sample() //starts the regulator
+
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate].value shouldBe (0) //does not send dropping rate larger than zero when within a burst
+
+      regulatee.expectNoMsg(40.milliseconds)
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
+    }
+
+    "reset drop rate after seeing a PartialUtilization" in {
       val regulatee = TestProbe()
       val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
       regulator ! sample() //starts the regulator
 
-      regulator ! sample()
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate].value shouldBe 1d //does not send dropping rate larger than zero when within a burst
 
-      regulatee.expectMsgType[DroppingRate]
+      regulator ! PartialUtilization(3)
+      regulatee.expectMsgType[DroppingRate].value shouldBe 0d //does not send dropping rate larger than zero when within a burst
+
     }
 
     "update recordedAt" in {
@@ -82,6 +98,17 @@ class RegulatorSpec extends SpecWithActorSystem {
       ).delay
 
       delay.toMillis shouldBe 1000
+    }
+
+    "calculates status from zero speed sample" in {
+      val newStatus = update(
+        sample(workDone = 0, duration = 1.second, queueLength = 175), //speed of 0.1
+        status(averageSpeed = 0),
+        settings()
+      )
+
+      newStatus.averageSpeed.value shouldBe 0
+      newStatus.delay shouldBe 175.seconds
     }
 
     "update p using based factors when p > 10%" in {

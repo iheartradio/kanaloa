@@ -12,12 +12,13 @@ import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, Shut
 import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
-
+import org.mockito.Mockito._
+import org.scalatest.mock.MockitoSugar
 import scala.collection.mutable.{Map ⇒ MMap}
-import scala.concurrent.Future
+import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
 
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
+class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends with MockitoSugar {
 
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
@@ -107,13 +108,37 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         }
       }
 
-    "attempt to keep the number of Workers at the minimumWorkers" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
-      workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
+    "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withQueueProcessor(ProcessingWorkerPoolSettings(healthCheckInterval = 10.milliseconds)) {
+      (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+        //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
+        workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
+        eventually {
+          qp.underlyingActor.workerPool should have size 3
+          testBackend.timesInvoked shouldBe 7 //2 new invocations should have happened
+          workerFactory.probeMap should have size 3 //should only be 3 workers
+        }
+    }
+
+    "attempt to retry create Workers until it hits the minimumWorkers" in {
+      val settings = ProcessingWorkerPoolSettings(minPoolSize = 2, startingPoolSize = 2, healthCheckInterval = 10.milliseconds)
+
+      val testBackend = new Backend {
+        var count = 0
+        def apply(af: ActorRefFactory) = {
+          if (count > 2) Future.successful(TestProbe().ref)
+          else {
+            count += 1
+            Future.failed(new Exception("failed"))
+          }
+        }
+      }
+      val qp = TestActorRef[QueueProcessor](QueueProcessor.default(
+        TestProbe("queue").ref,
+        testBackend, settings, TestProbe("metrics-collector").ref
+      )(SimpleResultChecker))
+
       eventually {
-        qp.underlyingActor.workerPool should have size 3
-        testBackend.timesInvoked shouldBe 7 //2 new invocations should have happened
-        workerFactory.probeMap should have size 3 //should only be 3 workers
+        qp.underlyingActor.workerPool should have size 2
       }
     }
 
@@ -164,7 +189,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       val queueProcessor = system.actorOf(
         QueueProcessor.default(
           queueProbe.ref,
-          delayedBackend,
+          promiseBackend(Promise[ActorRef]),
           ProcessingWorkerPoolSettings(),
           TestProbe().ref
         )(ResultChecker.complacent)

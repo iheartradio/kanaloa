@@ -27,7 +27,7 @@ class ClusterAwareBackend(
   maxNumberOfBackendNodes: Int          = 100
 )(implicit
   system: ActorSystem,
-  timeout: Timeout = 1.seconds) extends Backend {
+  timeout: Timeout) extends Backend {
 
   private[dispatcher] lazy val router: ActorRef = {
     val routerProps: Props = ClusterRouterGroup(
@@ -44,13 +44,21 @@ class ClusterAwareBackend(
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
     val retriever = f.actorOf(ClusterAwareBackend.retrieverProps(router, routingLogic))
     import system.dispatcher
-    (retriever ? ClusterAwareBackend.GetRoutee).mapTo[RouteeRef].map(_.actorRef)
+    retriever.ask(ClusterAwareBackend.GetRoutee)(timeout = timeout.duration * 2).mapTo[RouteeRef].map(_.actorRef) //let the retriever handles the time internally.
+
   }
 
 }
 
 object ClusterAwareBackend {
-  def apply(actorRefPath: String, role: String)(implicit system: ActorSystem): ClusterAwareBackend = new ClusterAwareBackend(actorRefPath, role)
+  /**
+   * Creates a [[ClusterAwareBackend]]
+   * @param actorRefPath path of the remote actor
+   * @param role role of the node on which the remote actor is deployed
+   * @param system the cluster enabled [[ActorSystem]]
+   * @param timeout for finding the actual remote actor, which means both current node and remote node has to be in the cluster.
+   */
+  def apply(actorRefPath: String, role: String)(implicit system: ActorSystem, timeout: Timeout): ClusterAwareBackend = new ClusterAwareBackend(actorRefPath, role)
 
   private class RouteeRetriever(router: ActorRef, routingLogic: RoutingLogic)(implicit timeout: Timeout) extends Actor {
     import context.dispatcher

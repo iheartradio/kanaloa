@@ -1,6 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor.{ActorRef, ActorSystem}
+import akka.testkit.TestProbe
 import kanaloa.reactive.dispatcher.PerformanceSampler._
 import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.Metric._
@@ -8,65 +9,105 @@ import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Reporter}
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
-
+import java.time.{LocalDateTime ⇒ Time, LocalDate}
 import scala.concurrent.duration._
 
 class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventually {
   val waitDuration = 30.milliseconds
+  val startingPoolSize: Int = 10
 
-  def initPerformanceSampler(minSampleDurationRatio: Double = 0)(implicit system: ActorSystem): ActorRef = {
-    val ps = system.actorOf(MetricsCollector.props(None, PerformanceSamplerSettings(sampleRate = waitDuration / 2, minSampleDurationRatio = minSampleDurationRatio)))
+  def initPerformanceSampler(
+    minSampleDurationRatio: Double         = 0,
+    sampleInterval:         FiniteDuration = 30.seconds //relies on manual AddSample signal in tests
+  )(implicit system: ActorSystem): (ActorRef, TestProbe) = {
+    val ps = system.actorOf(MetricsCollector.props(None, PerformanceSamplerSettings(
+      sampleInterval = sampleInterval,
+      minSampleDurationRatio = minSampleDurationRatio
+    )))
     ps ! fullyUtilizedResult //set it in the busy mode
-    ps ! PoolSize(10)
-    ps ! Subscribe(self)
-    ps
+    ps ! PoolSize(startingPoolSize)
+    val subscriberProbe = TestProbe()
+    ps ! Subscribe(subscriberProbe.ref)
+    (ps, subscriberProbe)
   }
-  val partialUtilizedResult: DispatchResult = DispatchResult(1, QueueLength(0))
-  val fullyUtilizedResult: DispatchResult = DispatchResult(0, QueueLength(2))
+  val partialUtilizedResult: DispatchResult = DispatchResult(1, QueueLength(0), false)
+  val fullyUtilizedResult: DispatchResult = DispatchResult(0, QueueLength(2), true)
 
   "PerformanceSampler" should {
     "send Samples periodically" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler(sampleInterval = 100.milliseconds)
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
 
-      val sample1 = expectMsgType[Sample]
-      sample1.workDone should be(2)
+      val sample1 = subscriberProbe.expectMsgType[Sample]
+      sample1.workDone shouldBe 2
 
       ps ! WorkCompleted(1.millisecond)
 
-      val sample2 = expectMsgType[Sample]
-      sample2.workDone should be(1)
+      val sample2 = subscriberProbe.expectMsgType[Sample]
+      sample2.workDone shouldBe 1
 
-      sample2.start.isAfter(sample1.start) should be(true)
+      sample2.start.isAfter(sample1.start) shouldBe true
 
     }
 
     "ignore metrics when pool isn't fully occupied" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! partialUtilizedResult
-      expectMsgType[PartialUtilization].numOfBusyWorkers should be(9)
+
+      subscriberProbe.expectMsgType[Sample] //last sample when fully utilized
+      subscriberProbe.expectMsgType[PartialUtilization].numOfBusyWorkers shouldBe 9
 
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
+      ps ! AddSample
+      subscriberProbe.expectNoMsg(waitDuration)
 
-      expectNoMsg(waitDuration)
+    }
+
+    "sends sample without work" in {
+      val (ps, subscriberProbe) = initPerformanceSampler()
+
+      ps ! AddSample
+
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 0
+
+    }
+
+    "continually sends sample without work without reseting start" in {
+      val (ps, subscriberProbe) = initPerformanceSampler()
+
+      ps ! AddSample
+
+      val sample1 = subscriberProbe.expectMsgType[Sample]
+
+      Thread.sleep(30) //add a distance between first and second sample
+      ps ! DispatchResult(0, QueueLength(4), true)
+      ps ! AddSample
+      val sample2 = subscriberProbe.expectMsgType[Sample]
+      sample2.end.isAfter(sample1.end) shouldBe true
+      sample1.start shouldBe sample2.start
+      sample2.queueLength shouldBe QueueLength(4)
 
     }
 
     "ignore Work timeout but include failed Work " in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! WorkTimedOut
-      expectNoMsg(waitDuration)
+      ps ! AddSample
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 0
+
       ps ! WorkFailed
-      expectMsgType[Sample].workDone should be(1)
+      ps ! AddSample
+
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 1
     }
 
     "resume to collect metrics once pool becomes busy again, but doesn't count old work" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! partialUtilizedResult
-
-      expectMsgType[PartialUtilization]
+      subscriberProbe.expectMsgType[Sample] //last sample when fully utilized
+      subscriberProbe.expectMsgType[PartialUtilization]
 
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
@@ -75,81 +116,96 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
 
       ps ! WorkCompleted(1.millisecond)
 
-      expectMsgType[Sample].workDone should be(1)
+      ps ! AddSample
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 1
 
     }
 
     "reset counter when pool size changed" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
 
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
-      expectMsgType[Sample].workDone should be(2)
+
+      ps ! AddSample
+
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 2
 
       ps ! PoolSize(12)
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 0
+
       ps ! WorkCompleted(1.millisecond)
 
-      val sample = expectMsgType[Sample]
-      sample.workDone should be(1)
-      sample.poolSize should be(12)
+      ps ! AddSample
+
+      val sample = subscriberProbe.expectMsgType[Sample]
+      sample.workDone shouldBe 1
+      sample.poolSize shouldBe 12
 
     }
 
     "remember queue length when pool size changed" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
 
-      ps ! DispatchResult(0, QueueLength(11))
-      ps ! WorkCompleted(1.millisecond)
+      ps ! DispatchResult(0, QueueLength(11), true)
+      ps ! AddSample
 
-      expectMsgType[Sample].queueLength.value should be(11)
-
+      subscriberProbe.expectMsgType[Sample].queueLength.value shouldBe 11
       ps ! PoolSize(12)
-      ps ! WorkCompleted(1.millisecond)
+      subscriberProbe.expectMsgType[Sample]
 
-      expectMsgType[Sample].queueLength.value should be(11)
+      ps ! AddSample
+
+      subscriberProbe.expectMsgType[Sample].queueLength.value shouldBe 11
     }
 
     "register pool size when resting" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
 
       ps ! partialUtilizedResult
-      expectMsgType[PartialUtilization]
+      subscriberProbe.expectMsgType[Sample]
+      subscriberProbe.expectMsgType[PartialUtilization]
 
       ps ! PoolSize(15)
       ps ! fullyUtilizedResult
       ps ! WorkCompleted(1.millisecond)
-      expectMsgType[Sample].poolSize should be(15)
+      ps ! AddSample
+      subscriberProbe.expectMsgType[Sample].poolSize shouldBe 15
 
     }
 
     "register queue length" in {
-      val ps = initPerformanceSampler()
+      val (ps, subscriberProbe) = initPerformanceSampler()
 
-      ps ! DispatchResult(0, QueueLength(21))
+      ps ! DispatchResult(0, QueueLength(21), true)
       ps ! WorkCompleted(1.millisecond)
+      ps ! AddSample
 
-      expectMsgType[Sample].queueLength shouldBe QueueLength(21)
+      subscriberProbe.expectMsgType[Sample].queueLength shouldBe QueueLength(21)
 
     }
 
     "continue counting when sample duration not long enough" in {
-      val ps = initPerformanceSampler(0.99)
+      val (ps, subscriberProbe) = initPerformanceSampler(0.99, waitDuration)
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
-      expectNoMsg(waitDuration / 5)
+      subscriberProbe.expectNoMsg(waitDuration / 3)
+
       ps ! WorkCompleted(1.millisecond)
-      expectMsgType[Sample].workDone should be(2)
+
+      subscriberProbe.expectMsgType[Sample].workDone shouldBe 2
     }
 
     "reset counting when pool size changed" in {
-      val ps = initPerformanceSampler(0.99)
+      val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! WorkCompleted(1.millisecond)
       ps ! PoolSize(15)
-      expectNoMsg(waitDuration / 5)
+      subscriberProbe.expectMsgType[Sample].poolSize shouldBe startingPoolSize
       ps ! WorkCompleted(1.millisecond)
-      val sample = expectMsgType[Sample]
-      sample.workDone should be(1)
-      sample.poolSize should be(15)
+      ps ! AddSample
+      val sample = subscriberProbe.expectMsgType[Sample]
+      sample.workDone shouldBe 1
+      sample.poolSize shouldBe 15
     }
 
     "forward metrics to metric reporter" in {

@@ -1,16 +1,16 @@
 package kanaloa.reactive.dispatcher
 
-import akka.actor.{ActorRefFactory, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, Props}
 import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
-import kanaloa.reactive.dispatcher.PerformanceSampler.Subscribe
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
 import org.scalatest.OptionValues
+import org.scalatest.concurrent.Eventually
 
-import scala.concurrent.Future
+import scala.concurrent.{Promise, Future}
 import concurrent.duration._
 
 class DispatcherSpec extends SpecWithActorSystem with OptionValues {
@@ -95,7 +95,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          delayedBackend
+          promiseBackend(Promise[ActorRef])
         )(ResultChecker.complacent)
       )
 
@@ -192,6 +192,66 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       (received.length.toDouble / numOfWork.toDouble) shouldBe 0.5 +- 0.07
     }
+
+    //todo: move this to integration test once the integration re-org test PR is merged.
+    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with Backends {
+      import system.dispatcher
+      val pd = system.actorOf(PushingDispatcher.props(
+        "test",
+        promiseBackend(Promise[ActorRef].failure(new Exception("failing backend"))),
+        ConfigFactory.parseString(
+          """
+            |kanaloa.default-dispatcher {
+            |  updateInterval = 10ms
+            |  backPressure {
+            |    durationOfBurstAllowed = 10ms
+            |    referenceDelay = 2s
+            |  }
+            |}""".stripMargin
+        )
+      )(ResultChecker.complacent))
+
+      eventually {
+        (1 to 100).foreach(_ ⇒ pd ! "a work")
+        expectMsgType[WorkRejected](20.milliseconds)
+      }(PatienceConfig(5.seconds, 40.milliseconds))
+
+    }
+
+    //todo: move this to integration test once the integration re-org test PR is merged. 
+    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with Backends {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val backendActorPromise = Promise[ActorRef]
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        "test",
+        promiseBackend(backendActorPromise),
+        ConfigFactory.parseString(
+          """
+            |kanaloa.default-dispatcher {
+            |  updateInterval = 50ms
+            |  backPressure {
+            |    durationOfBurstAllowed = 30ms
+            |    referenceDelay = 1s
+            |  }
+            |}""".stripMargin
+        )
+      )(ResultChecker.complacent))
+
+      //reach the point that it starts to reject work
+      eventually {
+        (1 to 30).foreach(_ ⇒ dispatcher ! "a work")
+        expectMsgType[WorkRejected](20.milliseconds)
+      }(PatienceConfig(5.seconds, 40.milliseconds))
+
+      backendActorPromise.complete(util.Success(system.actorOf(TestActors.echoActorProps)))
+      //recovers after the worker become available
+      eventually {
+        dispatcher ! "a work"
+        expectMsg(10.milliseconds, "a work")
+      }(PatienceConfig(5.seconds, 40.milliseconds))
+
+    }
+
   }
 
   "readConfig" should {

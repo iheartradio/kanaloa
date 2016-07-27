@@ -4,7 +4,8 @@ import java.time.{Duration ⇒ JDuration, LocalDateTime ⇒ Time}
 
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
-import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample, Subscribe, Unsubscribe}
+import kanaloa.reactive.dispatcher.PerformanceSampler
+import kanaloa.reactive.dispatcher.PerformanceSampler._
 import kanaloa.reactive.dispatcher.queue.AutoScaling._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.ScaleTo
 import kanaloa.util.Java8TimeExtensions._
@@ -70,30 +71,33 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
   }
 
   final def receive: Receive = watchingQueueAndProcessor orElse {
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
     case PartialUtilization(u) ⇒
       context become underUtilized(u)
-    case OptimizeOrExplore ⇒ //no history no action
+    case OptimizeOrExplore            ⇒ //no history no action
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndProcessor orElse {
     case PartialUtilization(utilization) ⇒
       if (highestUtilization < utilization)
         context become underUtilized(utilization, start)
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
-      self ! s
+      self forward s
     case OptimizeOrExplore ⇒
       if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization)))
         processor ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
     case qs: QueryStatus ⇒
       qs.reply(AutoScalingStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
+
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
-    case s: Sample ⇒
+    case s: Sample if s.poolSize > 0 ⇒
       val toUpdate = perfLog.get(s.poolSize).fold(s.speed.value) { oldSpeed ⇒
         oldSpeed * (1d - weightOfLatestMetric) + (s.speed.value * weightOfLatestMetric)
       }
@@ -114,6 +118,8 @@ trait AutoScaling extends Actor with ActorLogging with MessageScheduler {
 
     case qs: QueryStatus ⇒
       qs.reply(AutoScalingStatus(poolSize = Some(currentSize), performanceLog = perfLog))
+
+    case _: PerformanceSampler.Report ⇒ //ignore other performance report
   }
 
   private def optimize(currentSize: PoolSize): ScaleTo = {
