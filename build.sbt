@@ -51,6 +51,29 @@ lazy val cluster = project
     libraryDependencies ++= Dependencies.akkaCluster
   ).configs(MultiJvm)
 
+lazy val stressBackend = project.in(file("./stress/backend"))
+  .aggregate(core, cluster)
+  .dependsOn(core, cluster)
+  .settings(moduleName := "kanaloa-stress-backend")
+  .settings(noPublishing:_*)
+  .settings(Dependencies.stressTestDeps:_*)
+
+lazy val stressFrontend = project.in(file("./stress/frontend"))
+  .aggregate(stressBackend)
+  .dependsOn(stressBackend)
+  .settings(moduleName := "kanaloa-stress-frontend")
+  .settings(noPublishing:_*)
+  .settings(Dependencies.stressTestDeps:_*)
+
+lazy val stressGatling = project.in(file("./stress/gatling"))
+  .enablePlugins(GatlingPlugin)
+  .aggregate(stressFrontend)
+  .dependsOn(stressFrontend)
+  .settings(moduleName := "kanaloa-stress-gatling")
+  .settings(noPublishing:_*)
+  .settings(Dependencies.stressTestDeps:_*)
+  .settings(Testing.settings:_*)
+
 
 addCommandAlias("validate", ";root;clean;compile;test;integration:test;multi-jvm:test")
 addCommandAlias("root", ";project root")
