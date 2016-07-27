@@ -61,12 +61,9 @@ class QueueProcessor(
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
+      healthCheck()
 
-    case HealthCheck ⇒
-      if (currentWorkers < settings.minPoolSize) {
-        log.warning("Number of workers in pool is below minimum.")
-        tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers)
-      }
+    case HealthCheck ⇒ healthCheck()
 
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒
@@ -119,7 +116,7 @@ class QueueProcessor(
     }: Receive
   }
 
-  def removeWorker(worker: ActorRef): Unit = {
+  private def removeWorker(worker: ActorRef): Unit = {
     context.unwatch(worker)
     workerPool = workerPool - worker
     metricsCollector ! Metric.PoolSize(workerPool.size)
@@ -134,10 +131,20 @@ class QueueProcessor(
     }
   }
 
-  private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): Unit = {
-    if (numberOfWorkersToCreate > 0) {
+  private def healthCheck(): Unit = {
+    if (tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers))
+      log.warning("Number of workers in pool is below minimum. Trying to replenish. ")
+  }
+  /**
+   *
+   * @param numberOfWorkersToCreate
+   * @return true if workers are scheduled to be created
+   */
+  private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): Boolean = {
+    val workerNeeded = numberOfWorkersToCreate > 0
+    if (workerNeeded)
       (1 to numberOfWorkersToCreate).foreach(_ ⇒ retrieveRoutee())
-    }
+    workerNeeded
   }
 
   private def createWorker(routee: ActorRef): Unit = {
