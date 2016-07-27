@@ -289,7 +289,6 @@ private[queue] class WorkSender(worker: ActorRef, routee: ActorRef, relayWork: R
   maybeDelayedMsg(delay, message, routee)
 
   def receive: Receive = {
-
     case x ⇒ worker ! WorkResult(workId, x)
   }
 }

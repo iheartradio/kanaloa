@@ -117,6 +117,7 @@ class WorkerWorkingSpec extends WorkerSpec {
       routeeB.reply(Result("B Result!"))
 
       expectMsg("B Result!")
+      expectNoMsg(30.milliseconds)
     }
   }
 
