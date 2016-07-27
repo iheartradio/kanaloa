@@ -208,8 +208,4 @@ private[dispatcher] object PerformanceSampler {
    */
   case class PartialUtilization(numOfBusyWorkers: Int) extends Report
 
-  /**
-   * Indicate that system has been
-   */
-  case class NoProgress(since: Time, queueLength: QueueLength) extends Report
 }

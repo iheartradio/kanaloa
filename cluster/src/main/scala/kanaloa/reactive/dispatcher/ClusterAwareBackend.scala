@@ -52,12 +52,11 @@ class ClusterAwareBackend(
 
 object ClusterAwareBackend {
   /**
-   *
-   * @param actorRefPath
-   * @param role
-   * @param system
-   * @param timeout for finding the actual remote actor ref
-   * @return
+   * Creates a [[ClusterAwareBackend]]
+   * @param actorRefPath path of the remote actor
+   * @param role role of the node on which the remote actor is deployed
+   * @param system the cluster enabled [[ActorSystem]]
+   * @param timeout for finding the actual remote actor, which means both current node and remote node has to be in the cluster.
    */
   def apply(actorRefPath: String, role: String)(implicit system: ActorSystem, timeout: Timeout): ClusterAwareBackend = new ClusterAwareBackend(actorRefPath, role)
 
