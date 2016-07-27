@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.testkit.TestProbe
-import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, NoProgress, Subscribe, Sample}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Subscribe, Sample}
 import kanaloa.reactive.dispatcher.Regulator.{DroppingRate, Status, Settings}
 import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.Metric

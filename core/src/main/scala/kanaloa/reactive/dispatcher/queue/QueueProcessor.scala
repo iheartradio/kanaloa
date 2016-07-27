@@ -63,7 +63,10 @@ class QueueProcessor(
       removeWorker(worker)
 
     case HealthCheck ⇒
-      tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers)
+      if(currentWorkers < settings.minPoolSize) {
+        log.warning("Number of workers in pool is below minimum.")
+        tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers)
+      }
 
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒

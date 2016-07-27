@@ -1,7 +1,7 @@
 package kanaloa.reactive.dispatcher
 
 import akka.actor._
-import kanaloa.reactive.dispatcher.PerformanceSampler.{NoProgress, Report, PartialUtilization, Sample}
+import kanaloa.reactive.dispatcher.PerformanceSampler.{Report, PartialUtilization, Sample}
 import java.time.{LocalDateTime ⇒ Time}
 import kanaloa.reactive.dispatcher.Regulator.Status
 import kanaloa.reactive.dispatcher.metrics.Metric

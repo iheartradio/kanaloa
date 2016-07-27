@@ -70,9 +70,9 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     report(WorkQueueLength(queueLength.value))
 
   def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft, full) ⇒
+    case DispatchResult(idle, workLeft, isFullyUtilized) ⇒
       reportQueueLength(workLeft)
-      if (!full) {
+      if (!isFullyUtilized) {
         val (rpt, _) = tryComplete(s)
         rpt foreach publish
         publishUtilization(idle, s.poolSize)
@@ -104,7 +104,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
   }
 
   def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft, full) if full ⇒
+    case DispatchResult(idle, workLeft, isFullyUtilized) if isFullyUtilized ⇒
       context become fullyUtilized(
         QueueStatus(poolSize = poolSize, queueLength = workLeft)
       )
