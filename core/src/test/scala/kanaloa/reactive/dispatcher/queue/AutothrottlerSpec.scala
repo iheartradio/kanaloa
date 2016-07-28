@@ -85,7 +85,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "explore when currently maxed out and exploration rate is 1" in new AutothrottleScope {
-      val subject = autothrottleRef(alwaysExploreSettings)
+      val subject = autothrottlerRef(alwaysExploreSettings)
       subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
@@ -96,7 +96,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "does not optimize when not currently maxed" in new AutothrottleScope {
-      val subject = autothrottleRef()
+      val subject = autothrottlerRef()
       subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
@@ -110,7 +110,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutothrottleScope {
-      val subject = autothrottleRef(alwaysOptimizeSettings)
+      val subject = autothrottlerRef(alwaysOptimizeSettings)
       mockBusyHistory(
         subject,
         (30, 3),
@@ -128,7 +128,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "ignore further away sample data when optmizing" in new AutothrottleScope {
-      val subject = autothrottleRef(alwaysOptimizeSettings)
+      val subject = autothrottlerRef(alwaysOptimizeSettings)
       mockBusyHistory(
         subject,
         (10, 1999), //should be ignored
@@ -152,7 +152,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "downsize if hasn't maxed out for more than relevant period of hours" in new AutothrottleScope {
-      val subject = autothrottleRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
+      val subject = autothrottlerRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
 
       subject ! PartialUtilization(5)
       tProcessor.expectNoMsg(20.milliseconds)
@@ -211,7 +211,7 @@ class AutothrottleScope(implicit system: ActorSystem)
 
   val tProcessor = TestProbe()
 
-  def autothrottleRef(settings: AutothrottleSettings = defaultSettings) = {
+  def autothrottlerRef(settings: AutothrottleSettings = defaultSettings) = {
 
     TestActorRef[Autothrottler](Autothrottler.default(
       tProcessor.ref, settings, metricsCollector
@@ -235,7 +235,7 @@ class AutothrottleScope(implicit system: ActorSystem)
 
   }
 
-  lazy val as = autothrottleRef()
+  lazy val as = autothrottlerRef()
 }
 
 object AutothrottleScope {
