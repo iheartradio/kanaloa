@@ -256,9 +256,9 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
 }
 
-class ScalingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
+class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
 
-  "scaling" should {
+  "autothrottle" should {
 
     "send PoolSize metric when pool size changes" in new MetricCollectorScope {
 

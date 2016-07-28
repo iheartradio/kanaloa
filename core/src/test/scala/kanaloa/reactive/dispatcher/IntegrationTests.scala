@@ -97,7 +97,7 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
             workerPool {
               startingPoolSize = 8
             }
-            autoScaling {
+            autothrottle {
               enabled = off
             }
             backPressure {
@@ -154,7 +154,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
 }
 
-class AutoScalingWithPushingIntegration extends IntegrationSpec {
+class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
   "pushing dispatcher move to the optimal pool size" in new TestScope {
 
@@ -178,9 +178,9 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
               thresholdForExpectedWaitTime = 1h
               maxHistoryLength = 3s
             }
-            autoScaling {
+            autothrottle {
               chanceOfScalingDownWhenFull = 0.1
-              scalingInterval = 100ms
+              resizeInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -210,7 +210,7 @@ class AutoScalingWithPushingIntegration extends IntegrationSpec {
   }
 }
 
-class AutoScalingWithPullingIntegration extends IntegrationSpec {
+class AutothrottleWithPullingIntegration extends IntegrationSpec {
 
   "pulling dispatcher move to the optimal pool size" in new TestScope {
 
@@ -239,9 +239,9 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
               thresholdForExpectedWaitTime = 1h
               maxHistoryLength = 3s
             }
-            autoScaling {
+            autothrottle {
               chanceOfScalingDownWhenFull = 0.1
-              scalingInterval = 100ms
+              resizeInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
           }
@@ -282,7 +282,7 @@ class AutoScalingWithPullingIntegration extends IntegrationSpec {
   }
 }
 
-class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
+class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
   "downsize when the traffic is sparse" in new TestScope {
     val backend = TestActorRef[SimpleBackend]
     val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
@@ -296,8 +296,8 @@ class AutoScalingDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
               startingPoolSize = 10
               minPoolSize = 2
             }
-            autoScaling {
-              scalingInterval = 10ms
+            autothrottle {
+              resizeInterval = 10ms
               downsizeAfterUnderUtilization = 100ms
             }
           }

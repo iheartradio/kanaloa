@@ -7,7 +7,7 @@ import kanaloa.reactive.dispatcher.DurationFunctions._
 import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
 import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.MetricsCollector
-import kanaloa.reactive.dispatcher.queue.AutoScaling.{AutoScalingStatus, OptimizeOrExplore, PoolSize}
+import kanaloa.reactive.dispatcher.queue.Autothrottler.{AutothrottleStatus, OptimizeOrExplore, PoolSize}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
@@ -16,76 +16,76 @@ import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.duration._
 
-class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventually {
+class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually {
 
   def sample(poolSize: PoolSize) =
     Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14))
 
-  "AutoScaling" should {
-    "when no history" in new AutoScalingScope {
+  "Autothrottle" should {
+    "when no history" in new AutothrottleScope {
       as ! OptimizeOrExplore
       tProcessor.expectNoMsg(50.milliseconds)
     }
 
-    "record perfLog" in new AutoScalingScope {
+    "record perfLog" in new AutothrottleScope {
       as ! sample(poolSize = 30)
       as ! QueryStatus()
-      val status = expectMsgType[AutoScalingStatus]
+      val status = expectMsgType[AutothrottleStatus]
       status.poolSize should contain(30)
       status.performanceLog.keys should contain(30)
     }
 
-    "update poolsize" in new AutoScalingScope {
+    "update poolsize" in new AutothrottleScope {
       as ! sample(poolSize = 30)
       as ! sample(poolSize = 33)
       as ! sample(poolSize = 35)
       as ! QueryStatus()
-      val status = expectMsgType[AutoScalingStatus]
+      val status = expectMsgType[AutothrottleStatus]
       status.poolSize should contain(35)
       status.performanceLog.keys should contain(33)
     }
 
-    "start an underutilizationStreak" in new AutoScalingScope {
+    "start an underutilizationStreak" in new AutothrottleScope {
       as ! PartialUtilization(3)
       as ! QueryStatus()
-      val status = expectMsgType[AutoScalingStatus]
+      val status = expectMsgType[AutothrottleStatus]
       status.partialUtilization should contain(3)
       status.partialUtilizationStart should not be (empty)
     }
 
-    "stop an underutilizationStreak" in new AutoScalingScope {
+    "stop an underutilizationStreak" in new AutothrottleScope {
       as ! PartialUtilization(3)
       as ! sample(poolSize = 30)
 
       as ! QueryStatus()
-      val status = expectMsgType[AutoScalingStatus]
+      val status = expectMsgType[AutothrottleStatus]
       status.partialUtilization should be(empty)
       status.partialUtilizationStart should be(empty)
     }
 
-    "update an underutilizationStreak to the highest utilization" in new AutoScalingScope {
+    "update an underutilizationStreak to the highest utilization" in new AutothrottleScope {
       as ! PartialUtilization(3)
       as ! QueryStatus()
 
-      val status1 = expectMsgType[AutoScalingStatus]
+      val status1 = expectMsgType[AutothrottleStatus]
 
       as ! PartialUtilization(5)
       as ! QueryStatus()
 
-      val status2 = expectMsgType[AutoScalingStatus]
+      val status2 = expectMsgType[AutothrottleStatus]
 
       as ! PartialUtilization(4)
       as ! QueryStatus()
 
-      val status3 = expectMsgType[AutoScalingStatus]
+      val status3 = expectMsgType[AutothrottleStatus]
 
       status1.partialUtilizationStart should not be (empty)
       status1.partialUtilizationStart should be(status3.partialUtilizationStart)
       status3.partialUtilization should contain(5)
     }
 
-    "explore when currently maxed out and exploration rate is 1" in new AutoScalingScope {
-      val subject = autoScalingRef(alwaysExploreSettings)
+    "explore when currently maxed out and exploration rate is 1" in new AutothrottleScope {
+      val subject = autothrottlerRef(alwaysExploreSettings)
       subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
@@ -95,8 +95,8 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       scaleCmd.reason.value shouldBe "exploring"
     }
 
-    "does not optimize when not currently maxed" in new AutoScalingScope {
-      val subject = autoScalingRef()
+    "does not optimize when not currently maxed" in new AutothrottleScope {
+      val subject = autothrottlerRef()
       subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
@@ -109,8 +109,8 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       tProcessor.expectNoMsg(30.millisecond)
     }
 
-    "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutoScalingScope {
-      val subject = autoScalingRef(alwaysOptimizeSettings)
+    "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutothrottleScope {
+      val subject = autothrottlerRef(alwaysOptimizeSettings)
       mockBusyHistory(
         subject,
         (30, 3),
@@ -127,8 +127,8 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       scaleCmd.numOfWorkers should be < 45
     }
 
-    "ignore further away sample data when optmizing" in new AutoScalingScope {
-      val subject = autoScalingRef(alwaysOptimizeSettings)
+    "ignore further away sample data when optmizing" in new AutothrottleScope {
+      val subject = autothrottlerRef(alwaysOptimizeSettings)
       mockBusyHistory(
         subject,
         (10, 1999), //should be ignored
@@ -151,8 +151,8 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       scaleCmd.numOfWorkers should be < 44
     }
 
-    "downsize if hasn't maxed out for more than relevant period of hours" in new AutoScalingScope {
-      val subject = autoScalingRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
+    "downsize if hasn't maxed out for more than relevant period of hours" in new AutothrottleScope {
+      val subject = autothrottlerRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
 
       subject ! PartialUtilization(5)
       tProcessor.expectNoMsg(20.milliseconds)
@@ -172,11 +172,11 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       )(ResultChecker.expectType))
 
       watch(processor)
-      val autoScaler = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(), MetricsCollector(None)))
-      watch(autoScaler)
+      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), MetricsCollector(None)))
+      watch(autothrottler)
       processor ! PoisonPill
 
-      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(processor, autoScaler)
+      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(processor, autothrottler)
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
@@ -184,7 +184,7 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
       val queue = TestProbe()
       val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.expectType))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
-      val a = system.actorOf(AutoScaling.default(processor, AutoScalingSettings(scalingInterval = 10.minutes), mc))
+      val a = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(resizeInterval = 10.minutes), mc))
       watch(a)
       a ! PartialUtilization(5)
       processor ! Shutdown(None, 100.milliseconds)
@@ -193,13 +193,13 @@ class AutoScalingSpec extends SpecWithActorSystem with OptionValues with Eventua
   }
 }
 
-class AutoScalingScope(implicit system: ActorSystem)
+class AutothrottleScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender {
 
   val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
-  val defaultSettings: AutoScalingSettings = AutoScalingSettings(
+  val defaultSettings: AutothrottleSettings = AutothrottleSettings(
     chanceOfScalingDownWhenFull = 0.3,
-    scalingInterval = 1.hour, //manual action only
+    resizeInterval = 1.hour, //manual action only
     explorationRatio = 0.5,
     downsizeRatio = 0.8,
     downsizeAfterUnderUtilization = 72.hours,
@@ -211,9 +211,9 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   val tProcessor = TestProbe()
 
-  def autoScalingRef(settings: AutoScalingSettings = defaultSettings) = {
+  def autothrottlerRef(settings: AutothrottleSettings = defaultSettings) = {
 
-    TestActorRef[AutoScaling](AutoScaling.default(
+    TestActorRef[Autothrottler](Autothrottler.default(
       tProcessor.ref, settings, metricsCollector
     ))
   }
@@ -235,10 +235,10 @@ class AutoScalingScope(implicit system: ActorSystem)
 
   }
 
-  lazy val as = autoScalingRef()
+  lazy val as = autothrottlerRef()
 }
 
-object AutoScalingScope {
+object AutothrottleScope {
   import akka.actor.ActorDSL._
 
   def newWorker(busy: Boolean = true)(implicit system: ActorSystem) = actor(new Act {

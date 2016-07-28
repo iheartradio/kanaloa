@@ -41,8 +41,8 @@ trait Dispatcher extends Actor {
 
   context watch processor
 
-  private val autoScaler = settings.autoScaling.foreach { s ⇒
-    context.actorOf(AutoScaling.default(processor, s, metricsCollector), "auto-scaler")
+  private val autothrottler = settings.autothrottle.foreach { s ⇒
+    context.actorOf(Autothrottler.default(processor, s, metricsCollector), "auto-scaler")
   }
 
   def receive: Receive = ({
@@ -62,7 +62,7 @@ object Dispatcher {
     workerPool:     ProcessingWorkerPoolSettings,
     regulator:      Option[Regulator.Settings],
     circuitBreaker: Option[CircuitBreakerSettings],
-    autoScaling:    Option[AutoScalingSettings]
+    autothrottle:   Option[AutothrottleSettings]
   ) {
     val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
   }
@@ -86,7 +86,7 @@ object Dispatcher {
     settings.copy(
       regulator = readComponent[Regulator.Settings]("backPressure", config),
       circuitBreaker = readComponent[CircuitBreakerSettings]("circuitBreaker", config),
-      autoScaling = readComponent[AutoScalingSettings]("autoScaling", config)
+      autothrottle = readComponent[AutothrottleSettings]("autothrottle", config)
     )
   }
 

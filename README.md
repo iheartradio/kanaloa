@@ -17,7 +17,7 @@ Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.
 
 ### Motivation
  Kanaloa work dispatchers sit in front of your service and dispatch received work to them. They make your service more resilient through the following means:
-  1. **Auto scaling** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
+  1. **Autothrottle** - it dynamically figures out the optimal number of concurrent requests your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
   2. **Back pressure control** - this control is [Little's law](https://en.wikipedia.org/wiki/Little%27s_law) inspired. It rejects requests when estimated wait time for which exceeds a certain threshold.
   3. **Circuit breaker** - when error rate from your service goes above a certain threshold, the kanaloa dispatcher stops all requests for a short period of time to give your service a chance to "cool down".
   4. **Real-time monitoring** - a built-in statsD reporter allows you to monitor a set of critical metrics (throughput, failure rate, queue length, expected wait time, service process time, number of concurrent requests, etc) in real time. It also provides real-time insights into how kanaloa dispatchers are working. An example on Grafana:
@@ -155,7 +155,7 @@ We also provide a [docker image](https://github.com/iheartradio/docker-grafana-g
 
 Behind the scene kanaloa dispatchers create a set of workers that work with your services. These workers wait for result coming back from the service before they accept more work from the dispatcher. This way it controls the number of concurrent requests dispatchers send to services. It auto-scales the work pool to an optimal size that provides the highest throughput.
 
-This auto-scaling works best when you expect the pool size to performance function to be a convex function, with which you can find a global optimal by walking towards a better size. For example, a CPU bound service may have an optimal worker pool size tied to the CPU cores available. When your service is IO bound, the optimal size is bound to optimal number of concurrent connections to that IO service - e.g. a 4 node Elasticsearch cluster may handle 4-8 concurrent requests at optimal speed.
+This autothrottle works best when you expect the pool size to performance function to be a convex function, with which you can find a global optimal by walking towards a better size. For example, a CPU bound service may have an optimal worker pool size tied to the CPU cores available. When your service is IO bound, the optimal size is bound to optimal number of concurrent connections to that IO service - e.g. a 4 node Elasticsearch cluster may handle 4-8 concurrent requests at optimal speed.
 
 The dispatchers keep track of throughput at each pool size and perform the following three resizing operations (one at a time) periodically:
 
@@ -167,7 +167,7 @@ When the pool is fully-utilized (i.e. all workers are busy), it randomly chooses
 
 By constantly exploring and optimizing, the resizer will eventually walk to the optimal size and remain nearby. When the optimal size changes it will start walking towards the new one.
 
-If auto-scaling is all you need, you should consider using [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) in an Akka router. (The caveat is that you need to make sure that your routees block on handling messages, i.e. they can’t simply asynchronously pass work to the backend service).
+If autothrottle is all you need, you should consider using [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) in an Akka router. (The caveat is that you need to make sure that your routees block on handling messages, i.e. they can’t simply asynchronously pass work to the backend service).
 
 
 ### Contribute
@@ -177,7 +177,7 @@ Any contribution and feedback is more than welcome.
 
 ### Special Thanks
 
-The auto scaling algorithm was first suggested by @richdougherty. @ktoso kindly reviewed this library and provided valuable feedback.
+The autothrottle algorithm was first suggested by @richdougherty. @ktoso kindly reviewed this library and provided valuable feedback.
 
 
 
