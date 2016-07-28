@@ -1,13 +1,14 @@
 package com.iheart.kanaloa.stress.http
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.stream.ActorMaterializer
 import com.iheart.kanaloa.stress.backend.MockBackend
-import akka.pattern.{AskTimeoutException, ask}
+import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
-import scala.util.{Failure, Success}
+import kanaloa.reactive.dispatcher.ApiProtocol.WorkFailed
+import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
@@ -20,6 +21,8 @@ object StressHttpFrontend extends App {
   implicit val timeout = Timeout(100.seconds)
 
   val cfg = ConfigFactory.parseResources("stressTestInfra.conf")
+
+  case class Failed(msg: String)
 
   val backend = system.actorOf(
     Props(new MockBackend.BackendRouter(
@@ -35,7 +38,7 @@ object StressHttpFrontend extends App {
       backend
     ) {
       case MockBackend.Message(msg) ⇒ Right(msg)
-      case anythingElse             ⇒ Left("Dispatcher: MockBackend.Message() acceptable only. Recieved: " + anythingElse)
+      case other ⇒ Left("Dispatcher: MockBackend.Message() acceptable only. Received: " + other)
     })
 
   var destination: ActorRef = _
@@ -45,13 +48,12 @@ object StressHttpFrontend extends App {
       path(Segment) { msg ⇒
         if (destFlag) { destination = dispatcher }
         else { destination = backend }
-        val f = destination ? MockBackend.Message(msg) recover {
-          case a: AskTimeoutException ⇒ throw new Exception("backend did not respond: \n" + a.getMessage)
-        }
+        val f = destination ? MockBackend.Message(msg)
         onComplete(f) {
-          case Success(value) ⇒ complete("Success! " + value.toString)
-          case Failure(e)     ⇒ complete("Timeout from the backend: \n" + e.getMessage)
-          case anythingElse   ⇒ complete("Unrecognized response from MockBackend. Recieved: " + anythingElse)
+          case Success(WorkFailed(msg)) ⇒ failWith(new Exception(s"work failed: $msg"))
+          case Success(msg: String) ⇒ complete("Success! " + msg)
+          case Success(other) ⇒ failWith(new Exception(s"unexpected error from backend: $msg"))
+          case Failure(e) ⇒ failWith(e)
         }
       } ~
         path("crash") {
@@ -61,9 +63,5 @@ object StressHttpFrontend extends App {
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
 
-  println(s"Server online at http://localhost:8081/\nPress RETURN to stop...")
-  readLine()
-
-  bindingFuture.flatMap(_.unbind()).onComplete { _ ⇒ system.terminate() }
 }
 

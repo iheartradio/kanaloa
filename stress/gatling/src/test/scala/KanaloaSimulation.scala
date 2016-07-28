@@ -16,6 +16,7 @@ class KanaloaSimulation extends Simulation {
         http("flood")
           .get(Url)
           .check(status.is(200))
+          .check(responseTimeInMillis.lessThan(5000))
       )
     }
   }
@@ -24,5 +25,5 @@ class KanaloaSimulation extends Simulation {
     rampUsers(30) over (30)
   )).protocols(httpConf)
     .maxDuration(60.second)
-    .assertions(global.failedRequests.percent.is(0))
+    .assertions(global.failedRequests.percent.lessThan(50))
 }

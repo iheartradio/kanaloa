@@ -1,4 +1,3 @@
-
 package com.iheart.kanaloa.stress.backend
 
 import akka.actor.Props
@@ -24,16 +23,16 @@ object MockBackend {
     def reThrottle() = {
       if (EntryActor.counter < maxRoutees && EntryActor.counter > 0) {
         activeRoutees = throttlers.take(EntryActor.counter)
-        log.info("concurrent work: " + EntryActor.counter + ", new rate: " + EntryActor.counter)
+        log.debug("concurrent work: " + EntryActor.counter + ", new rate: " + EntryActor.counter)
       } else if (EntryActor.counter >= maxRoutees) {
         val rate = -math.pow(EntryActor.counter - maxRoutees, 2) / (0.5 * maxRoutees) + maxRoutees
         val newRate = rate.toInt
         if (newRate > 0) {
           activeRoutees = throttlers.take(newRate)
-          log.info("concurrent work: " + EntryActor.counter + ", new rate: " + newRate)
+          log.debug("concurrent work: " + EntryActor.counter + ", new rate: " + newRate)
         } else {
           activeRoutees = throttlers.take(1)
-          log.info("too much work, new rate: " + newRate)
+          log.debug("too much work, new rate: " + newRate)
         }
       }
     }
@@ -42,14 +41,14 @@ object MockBackend {
       case Message(msg) ⇒
         EntryActor.counter += 1
         reThrottle()
-        log.info("message() received in Router")
+        log.debug("message() received in Router")
         val random_index = rand.nextInt(activeRoutees.length)
         val responder = activeRoutees(random_index)
         responder ! Petition(msg, sender, this.self)
 
       case Appease(msg, replyTo) ⇒
         EntryActor.counter -= 1
-        log.info("appease() received in Router")
+        log.debug("appease() received in Router")
         replyTo ! Message(msg)
 
       case _ ⇒ sender ! Message("don't recognize!")
@@ -61,10 +60,10 @@ object MockBackend {
     def receive = {
       case Petition(msg, roundTrip, source) ⇒
         context.system.scheduler.scheduleOnce(50.milliseconds) {
-          log.info("petition() received in Responder")
+          log.debug("petition() received in Responder")
           source ! Appease(msg, roundTrip)
         }
-      case _ ⇒ log.info("received unknown message in Responder")
+      case _ ⇒ log.error("received unknown message in Responder")
     }
   }
 
