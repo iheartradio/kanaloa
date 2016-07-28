@@ -16,12 +16,12 @@ object Dependencies {
 
   val akkaCluster = Seq(
     "com.typesafe.akka" %% "akka-cluster" % Versions.akka,
-    "com.typesafe.akka" %% "akka-cluster-tools" % Versions.akka
+    "com.typesafe.akka" %% "akka-cluster-tools" % Versions.akka,
+    "com.typesafe.akka" %% "akka-contrib" % Versions.akka
   )
 
   val akkaHttp = Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % Versions.akka,
-    "com.typesafe.akka" %% "akka-http-spray-json-experimental" % Versions.akka
+    "com.typesafe.akka" %% "akka-http-experimental" % Versions.akka
   )
 
   val akkaThrottler = Seq(
@@ -30,8 +30,7 @@ object Dependencies {
 
   val gatlingDeps = Seq(
     "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.1" % Test,
-    "io.gatling"            % "gatling-test-framework"    % "2.2.1" % Test,
-    "com.typesafe.play" %% "play-ws" % "2.5.4" % Test
+    "io.gatling"            % "gatling-test-framework"    % "2.2.1" % Test
   )
 
   val (test, integration) = {
@@ -66,9 +65,9 @@ object Dependencies {
   )
 
   lazy val stressTestDeps = Seq(
-    libraryDependencies ++= akkaHttp ++
-      akkaThrottler ++
-      gatlingDeps
+    libraryDependencies ++= Dependencies.akkaHttp ++
+      Dependencies.akkaThrottler ++
+      Dependencies.gatlingDeps
   )
 
 }

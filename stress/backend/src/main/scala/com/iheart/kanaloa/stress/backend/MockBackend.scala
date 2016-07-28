@@ -20,14 +20,12 @@ object MockBackend {
     val throttlers = List.tabulate(maxRoutees)(n ⇒ context.actorOf(Props(classOf[TimerBasedThrottler], setRate msgsPer 1.second)))
 
     override def preStart() = {
-      for (thtlr ← throttlers) {
-        thtlr ! SetTarget(Some(context.actorOf(Props(classOf[BackendResponder]))))
-      }
+      throttlers.foreach(_ ! SetTarget(Some(context.actorOf(Props(classOf[BackendResponder])))))
       activeRoutees = throttlers.take(1)
     }
 
     def reThrottle() = {
-      if (EntryActor.counter < maxRoutees) {
+      if (EntryActor.counter < maxRoutees && EntryActor.counter > 0) {
         activeRoutees = throttlers.take(EntryActor.counter)
         log.info("concurrent work: " + EntryActor.counter + ", new rate: " + EntryActor.counter)
       } else if (EntryActor.counter >= maxRoutees) {

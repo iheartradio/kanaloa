@@ -13,7 +13,6 @@ import akka.pattern.{AskTimeoutException, ask}
 import akka.util.Timeout
 import scala.util.{Failure, Success}
 import scala.io.StdIn._
-import java.io.File
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
@@ -24,9 +23,7 @@ object StressHttpFrontend extends App {
   implicit val execCtx = system.dispatcher
   implicit val timeout = Timeout(100.seconds)
 
-  val cfg = ConfigFactory.parseFile(
-    new File("./stress/frontend/config/stressTestInfra.conf")
-  )
+  val cfg = ConfigFactory.parseResources("stressTestInfra.conf")
 
   val backend = system.actorOf(
     Props(new MockBackend.BackendRouter(
@@ -42,7 +39,7 @@ object StressHttpFrontend extends App {
       backend
     ) {
       case MockBackend.Message(msg) ⇒ Right(msg)
-      case _                        ⇒ Left("something fishy going on...")
+      case anythingElse             ⇒ Left("Dispatcher: MockBackend.Message() acceptable only. Recieved: " + anythingElse)
     })
 
   var destination: ActorRef = _
@@ -58,11 +55,11 @@ object StressHttpFrontend extends App {
         onComplete(f) {
           case Success(value) ⇒ complete("Success! " + value.toString)
           case Failure(e)     ⇒ complete("Timeout from the backend: \n" + e.getMessage)
-          case _              ⇒ complete("Other failure type")
+          case anythingElse   ⇒ complete("Unrecognized response from MockBackend. Recieved: " + anythingElse)
         }
       } ~
         path("crash") {
-          sys.error("BOOM!")
+          sys.error("Hitting the ../crash url deliberately causes a sys.error...why did you hit it?")
         }
     }
 
