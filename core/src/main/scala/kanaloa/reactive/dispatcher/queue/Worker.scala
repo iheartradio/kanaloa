@@ -66,10 +66,8 @@ private[queue] class Worker(
     //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
     case Terminated(`queue`) | NoWorkLeft ⇒ context become waitingToTerminate(outstanding)
 
-    //This is a fun state.  The Worker is told to stop, but needs to both wait for Unregister and for Work to complete
     case Worker.Retire ⇒
-      queue ! Unregister
-      context become unregisteringBusy(outstanding)
+      context become waitingToTerminate(outstanding) //when busy no need to unregister, because it's not in the queue's list.
   }
 
   //This state waits for Work to complete, and then stops the Actor
@@ -81,7 +79,8 @@ private[queue] class Worker(
 
     case w: Work                                   ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
-    case WorkFinished                              ⇒ finish() //work is done, terminate
+    case WorkFinished ⇒
+      finish() //work is done, terminate
   }
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
@@ -94,25 +93,8 @@ private[queue] class Worker(
     case w: Work                                    ⇒ sender ! Rejected(w, "Retiring") //safety first
 
     //Either we Unregistered successfully, or the Queue died.  terminate
-    case Unregistered | Terminated(`queue`)         ⇒ finish()
-
-  }
-
-  //in this state we are we waiting for 2 things to happen, Unregistration and Work completing
-  //the Worker will shift its state based on which one happens first
-  def unregisteringBusy(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, becomeUnregisteringIdle) orElse {
-    case qs: QueryStatus                    ⇒ qs reply UnregisteringBusy
-
-    //ignore these
-    case Retire | NoWorkLeft                ⇒
-
-    case w: Work                            ⇒ sender ! Rejected(w, "Retiring") //safety first
-
-    //Either Unregistration completed, or the Queue died, in either way, we just need to wait for Work to finish
-    case Unregistered | Terminated(`queue`) ⇒ context become waitingToTerminate(outstanding)
-
-    //work completed on way or another, just waiting for the Unregister ack
-    case WorkFinished                       ⇒ context become unregisteringIdle
+    case Unregistered | Terminated(`queue`) ⇒
+      finish()
   }
 
   def becomeUnregisteringIdle(): Unit = {
@@ -266,7 +248,6 @@ private[queue] object Worker {
 
   sealed trait WorkerStatus
   case object UnregisteringIdle extends WorkerStatus
-  case object UnregisteringBusy extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
   case object WaitingToTerminate extends WorkerStatus

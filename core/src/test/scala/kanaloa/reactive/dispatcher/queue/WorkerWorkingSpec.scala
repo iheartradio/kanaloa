@@ -86,10 +86,23 @@ class WorkerWorkingSpec extends WorkerSpec {
       assertWorkerStatus(worker, Worker.WaitingToTerminate)
     }
 
-    "transition to 'unregisteringBusy' if Retire'" in withWorkingWorker() { (worker, _, _, work, _) ⇒
+    "transition to 'WaitingToTerminate' if Retire'" in withWorkingWorker() { (worker, _, routeeProbe, work, _) ⇒
       worker ! Worker.Retire
-      assertWorkerStatus(worker, Worker.UnregisteringBusy)
+      assertWorkerStatus(worker, Worker.WaitingToTerminate)
     }
+
+    "terminate after work is done" in withWorkingWorker() { (worker, _, routeeProbe, work, _) ⇒
+      watch(worker)
+      worker ! Worker.Retire
+
+      expectNoMsg(50.milliseconds)
+
+      routeeProbe.reply(Result("done"))
+      expectMsg("done")
+      expectTerminated(worker)
+
+    }
+
     "should only send responses for the current executing Work" in {
       //create a new worker whose Routee is actually a Router which simply sends messages to a specific Actor
       //This is so that we can control the response order of who gets messages
@@ -119,6 +132,7 @@ class WorkerWorkingSpec extends WorkerSpec {
       expectMsg("B Result!")
       expectNoMsg(30.milliseconds)
     }
+
   }
 
   "A Working Worker with circuit breaker" should {
