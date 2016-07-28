@@ -56,7 +56,7 @@ package kanaloa.reactive.dispatcher.queue {
    */
   case class AutothrottleSettings(
     chanceOfScalingDownWhenFull:                    Double         = 0.1,
-    resizeInterval:                                FiniteDuration = 5.seconds,
+    resizeInterval:                                 FiniteDuration = 5.seconds,
     downsizeAfterUnderUtilization:                  FiniteDuration = 72.hours,
     numOfAdjacentSizesToConsiderDuringOptimization: Int            = 12,
     exploreStepSize:                                Double         = 0.1,

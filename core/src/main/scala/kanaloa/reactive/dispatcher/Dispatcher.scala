@@ -62,7 +62,7 @@ object Dispatcher {
     workerPool:     ProcessingWorkerPoolSettings,
     regulator:      Option[Regulator.Settings],
     circuitBreaker: Option[CircuitBreakerSettings],
-    autothrottle:    Option[AutothrottleSettings]
+    autothrottle:   Option[AutothrottleSettings]
   ) {
     val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
   }
