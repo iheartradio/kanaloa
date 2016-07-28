@@ -1,7 +1,3 @@
-/*
-* Copyright [2016] [iHeartMedia Inc]
-* All rights reserved
-*/
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
 

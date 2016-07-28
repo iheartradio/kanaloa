@@ -286,4 +286,3 @@ private[queue] object WorkSender {
   }
 
 }
-

@@ -220,4 +220,3 @@ object QueueProcessor {
     )).withDeploy(Deploy.local)
 
 }
-

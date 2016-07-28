@@ -16,4 +16,3 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-multi-jvm" % "0.3.11")
 
 addSbtPlugin("io.gatling" % "gatling-sbt" % "2.2.0")
 
-addSbtPlugin("com.iheart" % "substratum" % "1.0.21")

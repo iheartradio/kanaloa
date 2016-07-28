@@ -64,4 +64,3 @@ object Backend {
   implicit def backendAdaptorToBackend[T](t: T)(implicit adaptor: BackendAdaptor[T]): Backend = adaptor(t)
 
 }
-

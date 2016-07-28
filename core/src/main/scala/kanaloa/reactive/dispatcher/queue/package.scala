@@ -1,6 +1,4 @@
-
 import akka.actor.ActorRef
-
 import scala.concurrent.duration._
 
 package kanaloa.reactive.dispatcher {

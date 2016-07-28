@@ -85,4 +85,3 @@ object StatsDReporter {
     new StatsDReporter(prefix, settings)
   }
 }
-

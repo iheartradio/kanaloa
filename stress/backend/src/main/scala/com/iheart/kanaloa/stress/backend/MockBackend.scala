@@ -1,7 +1,4 @@
-/*
-* Copyright [2016] [iHeartMedia Inc]
-* All rights reserved
-*/
+
 package com.iheart.kanaloa.stress.backend
 
 import akka.actor.Props

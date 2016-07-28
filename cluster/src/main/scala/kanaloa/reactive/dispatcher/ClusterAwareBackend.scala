@@ -1,7 +1,3 @@
-/*
-* Copyright [2016] [iHeartMedia Inc]
-* All rights reserved
-*/
 package kanaloa.reactive.dispatcher
 
 import java.util.UUID

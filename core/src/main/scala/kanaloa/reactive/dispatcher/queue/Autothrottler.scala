@@ -166,4 +166,3 @@ object Autothrottler {
     metricsCollector: ActorRef
   ) = Props(Default(processor, settings, metricsCollector)).withDeploy(Deploy.local)
 }
-

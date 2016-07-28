@@ -26,7 +26,7 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-contrib" % Versions.akka
   )
 
-  val gatlingDeps = Seq(
+  val gatling = Seq(
     "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.1" % Test,
     "io.gatling"            % "gatling-test-framework"    % "2.2.1" % Test
   )
@@ -59,14 +59,8 @@ object Dependencies {
     libraryDependencies ++= Dependencies.akka ++
       Dependencies.test ++
       Dependencies.config
-
   )
 
-  lazy val stressTestDeps = Seq(
-    libraryDependencies ++= Dependencies.akkaHttp ++
-      Dependencies.akkaThrottler ++
-      Dependencies.gatlingDeps
-  )
 
 }
 

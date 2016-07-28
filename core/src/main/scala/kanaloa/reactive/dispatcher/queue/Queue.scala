@@ -255,4 +255,3 @@ object Queue {
     Props(new DefaultQueue(defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
 
 }
-
