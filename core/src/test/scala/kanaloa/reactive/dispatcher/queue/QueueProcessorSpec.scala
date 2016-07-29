@@ -7,6 +7,7 @@ import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownForcefully, QueryStatus, ShutdownSuccessfully}
 import kanaloa.reactive.dispatcher.metrics.Metric
+import kanaloa.reactive.dispatcher.metrics.Metric.PoolSize
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown}
 import kanaloa.reactive.dispatcher._
@@ -55,6 +56,10 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     "create Workers on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       qp.underlyingActor.workerPool should have size 5
       testBackend.timesInvoked shouldBe 5
+    }
+
+    "report pool size on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      metricsCollector.expectMsg(PoolSize(0))
     }
 
     "scale workers up" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒

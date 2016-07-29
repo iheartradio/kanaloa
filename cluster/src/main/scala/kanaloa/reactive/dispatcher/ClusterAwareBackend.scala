@@ -31,15 +31,18 @@ class ClusterAwareBackend(
   timeout: Timeout) extends Backend {
 
   private[dispatcher] lazy val router: ActorRef = {
+
+    val path = "/user/" + actorRefPath.stripPrefix("/user/")
     val routerProps: Props = ClusterRouterGroup(
-      RoundRobinGroup(List("/user/" + actorRefPath)),
+      RoundRobinGroup(List(path)),
       ClusterRouterGroupSettings(
         totalInstances = maxNumberOfBackendNodes,
-        routeesPaths = List("/user/" + actorRefPath),
+        routeesPaths = List(path),
         allowLocalRoutees = false, useRole = Some(role)
       )
     ).props()
-    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-$actorRefPath-$role-" + UUID.randomUUID().toString)
+    val prefix = s"clusterAwareBackendInternalRouter-$path-$role-"
+    system.actorOf(routerProps, prefix.replace('/', '-') + UUID.randomUUID().toString)
   }
 
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
