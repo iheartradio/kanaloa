@@ -21,8 +21,12 @@ class KanaloaSimulation extends Simulation {
   }
 
   setUp(scn.inject(
-    rampUsers(30) over (30.seconds)
-  )).protocols(httpConf)
-    .maxDuration(120.second)
+    rampUsers(100) over (3.minutes)
+  )).throttle(
+    jumpToRps(2000),
+    holdFor(5.minutes)
+  )
+    .protocols(httpConf)
+    .maxDuration(5.minutes)
     .assertions(global.failedRequests.percent.lessThan(50))
 }
