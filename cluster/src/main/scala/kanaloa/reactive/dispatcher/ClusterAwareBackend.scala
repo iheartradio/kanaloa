@@ -39,7 +39,7 @@ class ClusterAwareBackend(
         allowLocalRoutees = false, useRole = Some(role)
       )
     ).props()
-    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-$actorRefPath-$role-" + UUID.randomUUID().toString)
+    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-${actorRefPath.replace('/', '-')}-$role-" + UUID.randomUUID().toString)
   }
 
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
