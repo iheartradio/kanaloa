@@ -1,14 +1,11 @@
 package kanaloa.reactive.dispatcher.queue
 
-import java.time.LocalDateTime
-
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.Types.QueueLength
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.{Status, _}
-import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.annotation.tailrec
@@ -220,17 +217,10 @@ object Queue {
   private case object RetiringTimeout
 
   protected[queue] case class Status(
-    workBuffer:      ScalaQueue[Work]             = ScalaQueue.empty,
-    queuedWorkers:   ScalaQueue[ActorRef]         = ScalaQueue.empty,
-    countOfWorkSent: Long                         = 0,
-    dispatchHistory: Vector[DispatchHistoryEntry] = Vector.empty
+    workBuffer:      ScalaQueue[Work]     = ScalaQueue.empty,
+    queuedWorkers:   ScalaQueue[ActorRef] = ScalaQueue.empty,
+    countOfWorkSent: Long                 = 0
   )
-
-  private[queue] case class DispatchHistoryEntry(dispatched: Int, queueLength: Int, waitingWorkers: Int, time: LocalDateTime) {
-    def aggregate(that: DispatchHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
-
-    def allWorkerOccupied = queueLength > 0 || waitingWorkers == 0
-  }
 
   def ofIterable(
     iterable:           Iterable[_],
