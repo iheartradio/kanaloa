@@ -25,4 +25,3 @@ object Metric {
 
   case class WorkCompleted(processTime: Duration) extends Event with Status
 }
-

@@ -18,6 +18,19 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-cluster-tools" % Versions.akka
   )
 
+  val akkaHttp = Seq(
+    "com.typesafe.akka" %% "akka-http-experimental" % Versions.akka
+  )
+
+  val akkaThrottler = Seq(
+    "com.typesafe.akka" %% "akka-contrib" % Versions.akka
+  )
+
+  val gatling = Seq(
+    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.1" % Test,
+    "io.gatling"            % "gatling-test-framework"    % "2.2.1" % Test
+  )
+
   val (test, integration) = {
     val specs = Seq(
       "org.scalatest" %% "scalatest" % "2.2.6",
@@ -46,8 +59,8 @@ object Dependencies {
     libraryDependencies ++= Dependencies.akka ++
       Dependencies.test ++
       Dependencies.config
-
   )
+
 
 }
 

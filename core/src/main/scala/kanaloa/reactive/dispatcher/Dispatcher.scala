@@ -193,4 +193,3 @@ object PullingDispatcher {
     Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }
 }
-
