@@ -1,14 +1,11 @@
 package kanaloa.reactive.dispatcher.queue
 
-import java.time.LocalDateTime
-
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.Types.QueueLength
-import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
+import kanaloa.reactive.dispatcher.metrics.Metric
 import kanaloa.reactive.dispatcher.queue.Queue.{Status, _}
-import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler
 
 import scala.annotation.tailrec
