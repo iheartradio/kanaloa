@@ -104,7 +104,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
   private def optimize(currentSize: PoolSize): ScaleTo = {
 
-    val adjacentDispatchWaits: PerformanceLog = {
+    val adjacentPerformances: PerformanceLog = {
       def adjacency = (size: Int) ⇒ Math.abs(currentSize - size)
       val sizes = perfLog.keys.toSeq
       val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
@@ -113,13 +113,21 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
       perfLog.filter { case (size, _) ⇒ size >= leftBoundary && size <= rightBoundary }
     }
 
-    val optimalSize = adjacentDispatchWaits.maxBy(_._2)._1
+    log.debug("Optimizing based on performance table: " +
+      adjacentPerformances.toList.sortBy(_._2).takeRight(10).reverse.map(p ⇒ s"Sz: ${p._1} spd: ${p._2 * 100} ").mkString(" | "))
+
+    val optimalSize = adjacentPerformances.maxBy(_._2)._1
+
     val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2.0).toInt
+
+    if (scaleStep > 0)
+      log.debug("Optimized to " + (currentSize + scaleStep) + " from " + currentSize)
+
     ScaleTo(currentSize + scaleStep, Some("optimizing"))
   }
 
   private def explore(currentSize: PoolSize): ScaleTo = {
-    val change = Math.max(1, Random.nextInt(Math.ceil(currentSize * exploreStepSize).toInt))
+    val change = Math.max(1, Random.nextInt(Math.ceil(currentSize.toDouble * exploreStepSize).toInt))
     if (random.nextDouble() < chanceOfScalingDownWhenFull)
       ScaleTo(currentSize - change, Some("exploring"))
     else

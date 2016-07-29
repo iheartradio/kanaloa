@@ -27,7 +27,7 @@ class QueueProcessor(
   }
 
   var workerCount = 0
-  var workerPool = Set[ActorRef]()
+  var workerPool: WorkerPool = List[ActorRef]()
   var inflightCreations = 0
 
   //stop any children which failed.  Let the DeathWatch handle it
@@ -48,8 +48,9 @@ class QueueProcessor(
       val diff = toPoolSize - currentWorkers
 
       tryCreateWorkersIfNeeded(diff)
-      if (diff < 0)
+      if (diff < 0) {
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
+      }
 
     case RouteeRetrieved(routee) ⇒
       createWorker(routee)
@@ -119,7 +120,7 @@ class QueueProcessor(
 
   private def removeWorker(worker: ActorRef): Unit = {
     context.unwatch(worker)
-    workerPool = workerPool - worker
+    workerPool = workerPool.filter(_ != worker)
     metricsCollector ! Metric.PoolSize(workerPool.size)
   }
 
@@ -154,7 +155,7 @@ class QueueProcessor(
     val worker = workerFactory.createWorker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker, workerName)
     context watch worker
 
-    workerPool = workerPool + worker
+    workerPool = workerPool :+ worker
     inflightCreations -= 1
   }
 }
@@ -184,7 +185,7 @@ object DefaultWorkerFactory extends WorkerFactory {
 }
 
 object QueueProcessor {
-  private[queue]type WorkerPool = Set[WorkerRef]
+  private[queue]type WorkerPool = List[WorkerRef] //keep sequence of creation time
 
   case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) {
     assert(numOfWorkers >= 0)

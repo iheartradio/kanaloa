@@ -159,7 +159,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
   "pushing dispatcher move to the optimal pool size" in new TestScope {
 
     val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
-    val optimalSize = 8
+    val optimalSize = 10
 
     def test: Int = {
       val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
@@ -169,6 +169,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
         ConfigFactory.parseString(
           """
           kanaloa.dispatchers.test-pushing {
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 3
               minPoolSize = 1
@@ -179,9 +180,10 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
               maxHistoryLength = 3s
             }
             autothrottle {
-              chanceOfScalingDownWhenFull = 0.1
+              chanceOfScalingDownWhenFull = 0.3
               resizeInterval = 100ms
               downsizeAfterUnderUtilization = 72h
+
             }
           }
         """
@@ -193,7 +195,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
       val optimalSpeed = optimalSize.toDouble / processTime.toMillis
 
-      val sent = sendLoadsOfMessage(pd, duration = 5.seconds, msgPerMilli = optimalSpeed * 0.4, verbose)
+      val sent = sendLoadsOfMessage(pd, duration = 5.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
 
       val actualPoolSize = getPoolSize(pd.underlyingActor)
 
@@ -218,7 +220,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
     val optimalSize = 10
     val optimalSpeed = optimalSize.toDouble / processTime.toMillis
     val duration = 5.seconds
-    val msgPerMilli = optimalSpeed * 0.4
+    val msgPerMilli = optimalSpeed * 0.9
     val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
 
     def dispatcherProps(backend: ActorRef) = PullingDispatcher.props(
@@ -262,7 +264,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
       var lastPoolSize = 0
       import system.dispatcher
 
-      fishForMessage(duration * 2) {
+      fishForMessage(duration * 4) {
         case Terminated(`backend`) ⇒ true //it shutdowns itself after all messages are processed.
         case RunningStatus(pool) ⇒
           lastPoolSize = pool.size
@@ -423,11 +425,14 @@ object IntegrationTests {
       expectMsg(shutdownTimeout, ShutdownSuccessfully)
     }
 
-    def performMultipleTests(test: ⇒ Int, targetSize: Int, numberOfTests: Int = 4) = {
+    def performMultipleTests(test: ⇒ Int, optimalSize: Int, numberOfTests: Int = 4) = {
+
+      val targetSize = optimalSize + 1 //target pool size is a bit larger to fully utilize the optimal concurrency
       val sizeResults = (1 to numberOfTests).map(_ ⇒ test)
 
       //normalized distance from the optimal size
       def distanceFromOptimalSize(actualSize: Int): Double = {
+        println("actual size:" + actualSize + "  optimal size: " + targetSize)
         Math.abs(actualSize - targetSize).toDouble / targetSize
       }
 
@@ -436,8 +441,6 @@ object IntegrationTests {
       val failedTests = normalizedDistances.count(_ > 0.3)
 
       val failRatio = failedTests.toDouble / numberOfTests
-
-      println("Results are  " + normalizedDistances.mkString(","))
 
       failRatio
     }
