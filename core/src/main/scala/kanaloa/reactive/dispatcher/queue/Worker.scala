@@ -41,7 +41,10 @@ private[queue] class Worker(
     queue ! RequestWork(self)
   }
 
-  def finish(): Unit = context stop self
+  def finish(reason: String): Unit = {
+    log.debug(s"Stopping due to: $reason")
+    context stop self
+  }
 
   val waitingForWork: Receive = {
     case qs: QueryStatus                  ⇒ qs reply Idle
@@ -49,14 +52,14 @@ private[queue] class Worker(
     case work: Work                       ⇒ sendWorkToRoutee(work, 0)
 
     //If there is no work left, or if the Queue dies, the Worker stops as well
-    case NoWorkLeft | Terminated(`queue`) ⇒ finish()
+    case NoWorkLeft | Terminated(`queue`) ⇒ finish("Queue reports no Work left")
 
     //if the Routee dies or the Worker is told to Retire, it needs to Unregister from the Queue before terminating
     case Terminated(r) if r == routee     ⇒ becomeUnregisteringIdle()
     case Worker.Retire                    ⇒ becomeUnregisteringIdle()
   }
 
-  def working(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, becomeUnregisteringIdle) orElse {
+  def working(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
 
     //we are done with this Work, ask for more and wait for it
@@ -71,7 +74,7 @@ private[queue] class Worker(
   }
 
   //This state waits for Work to complete, and then stops the Actor
-  def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding, finish) orElse {
+  def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding) orElse {
     case qs: QueryStatus                           ⇒ qs reply WaitingToTerminate
 
     //ignore these, since all we care about is the Work completing one way or another
@@ -80,7 +83,7 @@ private[queue] class Worker(
     case w: Work                                   ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
     case WorkFinished ⇒
-      finish() //work is done, terminate
+      finish(s"Finished work, time to retire") //work is done, terminate
   }
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
@@ -93,8 +96,11 @@ private[queue] class Worker(
     case w: Work                                    ⇒ sender ! Rejected(w, "Retiring") //safety first
 
     //Either we Unregistered successfully, or the Queue died.  terminate
-    case Unregistered | Terminated(`queue`) ⇒
-      finish()
+    case Unregistered ⇒
+      finish(s"Idle worker finished unregistration.")
+
+    case Terminated(`queue`) ⇒
+      finish("Idle working detected Queue terminated")
   }
 
   def becomeUnregisteringIdle(): Unit = {
@@ -103,16 +109,15 @@ private[queue] class Worker(
   }
 
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
-  def handleRouteeResponse(outstanding: Outstanding, onRouteeFailure: () ⇒ Unit): Receive = {
+  def handleRouteeResponse(outstanding: Outstanding): Receive = {
     case Terminated(`routee`) ⇒ {
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
-      onRouteeFailure()
+      finish(s"Routee $routee died")
     }
 
     case Terminated(x) if x == outstanding.workSender ⇒
       log.warning("WorkSender failed!")
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
-      onRouteeFailure()
 
     case WorkSender.WorkResult(wId, x) if wId == outstanding.workId ⇒ {
       val result: Either[String, Any] = resultChecker.applyOrElse(x, failedResultMatch)

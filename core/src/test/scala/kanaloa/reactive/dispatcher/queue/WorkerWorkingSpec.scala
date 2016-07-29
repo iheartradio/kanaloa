@@ -69,11 +69,10 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
     }
 
-    "fail Work, transitions to 'unregisteringIdle' if Terminated(routee)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
+    "fail Work and terminate if Terminated(routee)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
       routeeProbe.ref ! PoisonPill
       expectMsgType[WorkFailed]
-      queueProbe.expectMsg(Unregister(worker))
-      assertWorkerStatus(worker, UnregisteringIdle)
+      expectTerminated(worker)
     }
 
     "transition to 'waitingToTerminate' if Terminated(queue)" in withWorkingWorker() { (worker, queueProbe, _, work, _) ⇒
