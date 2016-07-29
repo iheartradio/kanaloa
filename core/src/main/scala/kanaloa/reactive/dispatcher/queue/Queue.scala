@@ -220,17 +220,10 @@ object Queue {
   private case object RetiringTimeout
 
   protected[queue] case class Status(
-    workBuffer:      ScalaQueue[Work]             = ScalaQueue.empty,
-    queuedWorkers:   ScalaQueue[ActorRef]         = ScalaQueue.empty,
-    countOfWorkSent: Long                         = 0,
-    dispatchHistory: Vector[DispatchHistoryEntry] = Vector.empty
+    workBuffer:      ScalaQueue[Work]     = ScalaQueue.empty,
+    queuedWorkers:   ScalaQueue[ActorRef] = ScalaQueue.empty,
+    countOfWorkSent: Long                 = 0
   )
-
-  private[queue] case class DispatchHistoryEntry(dispatched: Int, queueLength: Int, waitingWorkers: Int, time: LocalDateTime) {
-    def aggregate(that: DispatchHistoryEntry) = copy(dispatched = dispatched + that.dispatched)
-
-    def allWorkerOccupied = queueLength > 0 || waitingWorkers == 0
-  }
 
   def ofIterable(
     iterable:           Iterable[_],
