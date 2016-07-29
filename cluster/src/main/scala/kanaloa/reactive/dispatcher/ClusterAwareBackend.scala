@@ -14,7 +14,7 @@ import scala.concurrent.duration._
 /**
  * A [[Backend]] that represent actor deployed on remote cluster members.
  *
- * @param actorRefPath the path with which the actor is deployed
+ * @param actorRefPath the path with which the actor is deployed, without the "/user/" part
  * @param role the role of the cluster member on which the actor is deployed.
  * @param routingLogic routing logic for routing between multiple remote actor deployments
  * @param maxNumberOfBackendNodes the maximum number of deployments
@@ -31,15 +31,17 @@ class ClusterAwareBackend(
   timeout: Timeout) extends Backend {
 
   private[dispatcher] lazy val router: ActorRef = {
+
+    val path = "/user/" + actorRefPath.stripPrefix("/user/")
     val routerProps: Props = ClusterRouterGroup(
-      RoundRobinGroup(List("/user/" + actorRefPath)),
+      RoundRobinGroup(List(path)),
       ClusterRouterGroupSettings(
         totalInstances = maxNumberOfBackendNodes,
-        routeesPaths = List("/user/" + actorRefPath),
+        routeesPaths = List(path),
         allowLocalRoutees = false, useRole = Some(role)
       )
     ).props()
-    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-${actorRefPath.replace('/', '-')}-$role-" + UUID.randomUUID().toString)
+    system.actorOf(routerProps, s"clusterAwareBackendInternalRouter-${path.replace('/', '-')}-$role-" + UUID.randomUUID().toString)
   }
 
   override def apply(f: ActorRefFactory): Future[ActorRef] = {
