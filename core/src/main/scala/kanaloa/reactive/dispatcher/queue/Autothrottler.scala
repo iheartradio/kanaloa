@@ -127,7 +127,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def explore(currentSize: PoolSize): ScaleTo = {
-    val change = Math.max(1, Random.nextInt(Math.ceil(currentSize * exploreStepSize).toInt))
+    val change = Math.max(1, Random.nextInt(Math.ceil(currentSize.toDouble * exploreStepSize).toInt))
     if (random.nextDouble() < chanceOfScalingDownWhenFull)
       ScaleTo(currentSize - change, Some("exploring"))
     else
