@@ -135,7 +135,7 @@ class QueueProcessor(
 
   private def healthCheck(): Unit = {
     if (tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers))
-      log.warning("Number of workers in pool is below minimum. Trying to replenish. ")
+      log.debug("Number of workers in pool is below minimum. Trying to replenish.")
   }
   /**
    *
