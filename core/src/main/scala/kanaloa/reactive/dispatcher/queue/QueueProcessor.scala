@@ -34,7 +34,9 @@ class QueueProcessor(
   override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
 
   override def preStart(): Unit = {
+
     super.preStart()
+    metricsCollector ! Metric.PoolSize(0)
     (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
     context watch queue
   }
@@ -135,7 +137,7 @@ class QueueProcessor(
 
   private def healthCheck(): Unit = {
     if (tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers))
-      log.warning("Number of workers in pool is below minimum. Trying to replenish. ")
+      log.debug("Number of workers in pool is below minimum. Trying to replenish.")
   }
   /**
    *
