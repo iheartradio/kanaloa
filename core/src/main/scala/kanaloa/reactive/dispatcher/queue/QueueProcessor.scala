@@ -34,7 +34,9 @@ class QueueProcessor(
   override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
 
   override def preStart(): Unit = {
+
     super.preStart()
+    metricsCollector ! Metric.PoolSize(0)
     (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
     context watch queue
   }
