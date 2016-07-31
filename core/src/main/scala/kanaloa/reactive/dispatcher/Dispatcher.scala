@@ -141,7 +141,7 @@ case class PushingDispatcher(
     if (droppingRate.value > 0 &&
       (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
       metricsCollector ! Metric.WorkRejected
-      sender ! WorkRejected(s"Over capacity, request dropped under random dropping rate ${droppingRate.value}")
+      sender ! WorkRejected(s"Over capacity or capacity is down, request dropped under random dropping rate ${droppingRate.value}")
     } else
       queue ! Enqueue(m, false, Some(replyTo))
   }
