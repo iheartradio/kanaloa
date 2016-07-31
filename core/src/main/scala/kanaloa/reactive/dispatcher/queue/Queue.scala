@@ -4,7 +4,7 @@ import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.Types.QueueLength
-import kanaloa.reactive.dispatcher.metrics.Metric
+import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Metric}
 import kanaloa.reactive.dispatcher.queue.Queue.{Status, _}
 import kanaloa.util.MessageScheduler
 
@@ -26,7 +26,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
         val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
         val newBuffer: ScalaQueue[Work] = status.workBuffer.enqueue(newWork)
         val newStatus: Status = dispatchWork(status.copy(workBuffer = newBuffer))
-        metricsCollector ! Metric.WorkEnqueued
         if (sendAcks) {
           sender() ! WorkEnqueued
         }
@@ -89,6 +88,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
    * queue should be empty.
    * Note that the workers left in the worker queue after dispatch are the only ones
    * that counts as idle workers.
+   *
    * @param status
    * @param dispatched
    * @param retiring
@@ -131,7 +131,7 @@ class QueueOfIterator(
 ) extends Queue {
   import QueueOfIterator._
 
-  val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self))
+  val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self, metricsCollector))
 
   /**
    * Determines if a status indicates the workers pool are fully utilized.
@@ -143,6 +143,7 @@ class QueueOfIterator(
    * with which we deem the queue as partially utilized.
    * Todo: Right now we lack the insight of how to set this up correctly so I'd rather have
    * it hard coded for now than allowing our users to tweak it without giving them any guidance
+   *
    * @param status
    * @return
    */
@@ -162,10 +163,16 @@ object QueueOfIterator {
 
   private case object EnqueueMore
 
-  private class Enqueuer(iterator: Iterator[_], sendResultsTo: Option[ActorRef], queue: ActorRef) extends Actor with ActorLogging {
+  private class Enqueuer(
+    iterator:         Iterator[_],
+    sendResultsTo:    Option[ActorRef],
+    queue:            ActorRef,
+    metricsCollector: ActorRef
+  ) extends Actor with ActorLogging {
     def receive = {
       case EnqueueMore ⇒
         if (iterator.hasNext) {
+          metricsCollector ! Metric.WorkReceived
           queue ! Enqueue(iterator.next, false, sendResultsTo)
         } else {
           log.debug("Iterator queue completes.")
@@ -174,7 +181,12 @@ object QueueOfIterator {
     }
   }
 
-  private def enqueueerProps(iterator: Iterator[_], sendResultsTo: Option[ActorRef], queue: ActorRef): Props = Props(new Enqueuer(iterator, sendResultsTo, queue)).withDeploy(Deploy.local)
+  private def enqueueerProps(
+    iterator:         Iterator[_],
+    sendResultsTo:    Option[ActorRef],
+    queue:            ActorRef,
+    metricsCollector: ActorRef
+  ): Props = Props(new Enqueuer(iterator, sendResultsTo, queue, metricsCollector)).withDeploy(Deploy.local)
 }
 
 object Queue {

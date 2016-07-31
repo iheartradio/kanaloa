@@ -43,7 +43,7 @@ class StatsDReporter(
   val failureSampleRate: Double = 1.0
 
   def report(metric: Metric): Unit = metric match {
-    case WorkEnqueued ⇒ increment("queue.enqueued")
+    case WorkReceived ⇒ increment("queue.enqueued")
     case WorkRejected ⇒ increment("queue.enqueueRejected", Math.min(1d, eventSampleRate * 3d))
 
     case WorkCompleted(processTime) ⇒

@@ -134,7 +134,9 @@ case class PushingDispatcher(
   override def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m                                 ⇒ dropOrEnqueue(m, sender)
+    case m ⇒
+      metricsCollector ! Metric.WorkReceived
+      dropOrEnqueue(m, sender)
   }
 
   private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {

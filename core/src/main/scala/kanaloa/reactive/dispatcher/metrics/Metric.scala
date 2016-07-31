@@ -7,7 +7,7 @@ sealed trait Metric
 object Metric {
   sealed trait Event extends Metric
 
-  case object WorkEnqueued extends Event
+  case object WorkReceived extends Event
   case object WorkRejected extends Event
 
   case object WorkTimedOut extends Event
