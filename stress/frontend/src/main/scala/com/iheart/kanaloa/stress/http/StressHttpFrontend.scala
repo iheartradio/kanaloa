@@ -15,9 +15,9 @@ import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
 
 object StressHttpFrontend extends App {
-  val cfg = ConfigFactory.parseResources("stressTestInfra.conf")
+  val cfg = ConfigFactory.load("stressTestInfra.conf")
 
-  implicit val system = ActorSystem("Stress-Tests", cfg)
+  implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
   implicit val timeout = Timeout(100.seconds)
