@@ -6,6 +6,8 @@ import kanaloa.reactive.dispatcher.PerformanceSampler._
 import kanaloa.reactive.dispatcher.Types.QueueLength
 import kanaloa.reactive.dispatcher.metrics.Metric._
 import kanaloa.reactive.dispatcher.metrics.{MetricsCollector, Reporter}
+import kanaloa.reactive.dispatcher.queue.Queue
+import kanaloa.reactive.dispatcher.queue.Queue.Status
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -24,14 +26,14 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       sampleInterval = sampleInterval,
       minSampleDurationRatio = minSampleDurationRatio
     )))
-    ps ! fullyUtilizedResult //set it in the busy mode
+    ps ! fullyUtilizedStatus //set it in the busy mode
     ps ! PoolSize(startingPoolSize)
     val subscriberProbe = TestProbe()
     ps ! Subscribe(subscriberProbe.ref)
     (ps, subscriberProbe)
   }
-  val partialUtilizedResult: DispatchResult = DispatchResult(1, QueueLength(0), false)
-  val fullyUtilizedResult: DispatchResult = DispatchResult(0, QueueLength(2), true)
+  val partialUtilizedStatus: Queue.Status = Queue.Status(1, QueueLength(0), false)
+  val fullyUtilizedStatus: Queue.Status = Queue.Status(0, QueueLength(2), true)
 
   "PerformanceSampler" should {
     "send Samples periodically" in {
@@ -53,7 +55,7 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
 
     "ignore metrics when pool isn't fully occupied" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
-      ps ! partialUtilizedResult
+      ps ! partialUtilizedStatus
 
       subscriberProbe.expectMsgType[Sample] //last sample when fully utilized
       subscriberProbe.expectMsgType[PartialUtilization].numOfBusyWorkers shouldBe 9
@@ -82,7 +84,7 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       val sample1 = subscriberProbe.expectMsgType[Sample]
 
       Thread.sleep(30) //add a distance between first and second sample
-      ps ! DispatchResult(0, QueueLength(4), true)
+      ps ! Queue.Status(0, QueueLength(4), true)
       ps ! AddSample
       val sample2 = subscriberProbe.expectMsgType[Sample]
       sample2.end.isAfter(sample1.end) shouldBe true
@@ -105,14 +107,14 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
 
     "resume to collect metrics once pool becomes busy again, but doesn't count old work" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
-      ps ! partialUtilizedResult
+      ps ! partialUtilizedStatus
       subscriberProbe.expectMsgType[Sample] //last sample when fully utilized
       subscriberProbe.expectMsgType[PartialUtilization]
 
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
 
-      ps ! fullyUtilizedResult
+      ps ! fullyUtilizedStatus
 
       ps ! WorkCompleted(1.millisecond)
 
@@ -147,7 +149,7 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
     "remember queue length when pool size changed" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
 
-      ps ! DispatchResult(0, QueueLength(11), true)
+      ps ! Queue.Status(0, QueueLength(11), true)
       ps ! AddSample
 
       subscriberProbe.expectMsgType[Sample].queueLength.value shouldBe 11
@@ -162,12 +164,12 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
     "register pool size when resting" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
 
-      ps ! partialUtilizedResult
+      ps ! partialUtilizedStatus
       subscriberProbe.expectMsgType[Sample]
       subscriberProbe.expectMsgType[PartialUtilization]
 
       ps ! PoolSize(15)
-      ps ! fullyUtilizedResult
+      ps ! fullyUtilizedStatus
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
       subscriberProbe.expectMsgType[Sample].poolSize shouldBe 15
@@ -177,7 +179,7 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
     "register queue length" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
 
-      ps ! DispatchResult(0, QueueLength(21), true)
+      ps ! Queue.Status(0, QueueLength(21), true)
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
 
@@ -225,14 +227,14 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
       val mc = system.actorOf(MetricsCollector.props(Some(reporter)))
 
       mc ! PoolSize(4)
-      mc ! fullyUtilizedResult
+      mc ! fullyUtilizedStatus
 
       mc ! AddSample
 
       eventually {
         verify(reporter).report(PoolSize(4))
         verify(reporter).report(PoolUtilized(4))
-        verify(reporter).report(WorkQueueLength(fullyUtilizedResult.queueLength.value))
+        verify(reporter).report(WorkQueueLength(fullyUtilizedStatus.queueLength.value))
         verifyNoMoreInteractions(reporter)
       }
 

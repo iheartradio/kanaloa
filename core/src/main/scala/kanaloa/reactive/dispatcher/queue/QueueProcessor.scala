@@ -56,7 +56,6 @@ class QueueProcessor(
 
     case RouteeRetrieved(routee) ⇒
       createWorker(routee)
-      metricsCollector ! Metric.PoolSize(workerPool.size)
 
     case RouteeFailed(ex) ⇒
       inflightCreations -= 1
@@ -123,7 +122,7 @@ class QueueProcessor(
   private def removeWorker(worker: ActorRef): Unit = {
     context.unwatch(worker)
     workerPool = workerPool.filter(_ != worker)
-    metricsCollector ! Metric.PoolSize(workerPool.size)
+    metricsCollector ! Metric.PoolSize(workerPool.length)
   }
 
   private def retrieveRoutee(): Unit = {
@@ -158,6 +157,7 @@ class QueueProcessor(
     context watch worker
 
     workerPool = workerPool :+ worker
+    metricsCollector ! Metric.PoolSize(workerPool.length)
     inflightCreations -= 1
   }
 }
