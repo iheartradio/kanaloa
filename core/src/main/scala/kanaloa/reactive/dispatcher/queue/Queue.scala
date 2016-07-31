@@ -16,9 +16,10 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   def defaultWorkSettings: WorkSettings
   def metricsCollector: ActorRef
 
-  final def receive = processing(InternalState())
+  val initialState = InternalState()
+  final def receive = processing(initialState)
 
-  metricsCollector ! Metric.WorkQueueLength(0)
+  metricsCollector ! statusOf(initialState)
 
   final def processing(state: InternalState): Receive =
     handleWork(state, processing) orElse {

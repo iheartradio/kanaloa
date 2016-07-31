@@ -107,14 +107,14 @@ private[dispatcher] trait PerformanceSampler extends Actor {
   }
 
   def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
-    case Queue.Status(idle, workLeft, isFullyUtilized) if isFullyUtilized ⇒
-      context become fullyUtilized(
-        QueueStatus(poolSize = poolSize, queueLength = workLeft)
-      )
-      reportQueueLength(workLeft)
-
-    case Queue.Status(idle, _, _) ⇒
-      publishUtilization(idle, poolSize)
+    case Queue.Status(idle, queueLength, isFullyUtilized) ⇒
+      if (isFullyUtilized) {
+        context become fullyUtilized(
+          QueueStatus(poolSize = poolSize, queueLength = queueLength)
+        )
+      } else
+        publishUtilization(idle, poolSize)
+      reportQueueLength(queueLength)
 
     case metric: Metric ⇒
       handle(metric) {
