@@ -3,6 +3,7 @@ package kanaloa.reactive.dispatcher.queue
 import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol._
 import kanaloa.reactive.dispatcher.metrics.Metric
+import kanaloa.reactive.dispatcher.metrics.Metric.PoolSize
 import kanaloa.reactive.dispatcher.queue.Queue.Retire
 import kanaloa.reactive.dispatcher.queue.QueueProcessor._
 import kanaloa.reactive.dispatcher.{Backend, ResultChecker}
@@ -66,7 +67,9 @@ class QueueProcessor(
       removeWorker(worker)
       healthCheck()
 
-    case HealthCheck ⇒ healthCheck()
+    case HealthCheck ⇒
+      metricsCollector ! PoolSize(workerPool.length) //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable
+      healthCheck()
 
     //if the Queue terminated, time to shut stuff down.
     case Terminated(`queue`) ⇒

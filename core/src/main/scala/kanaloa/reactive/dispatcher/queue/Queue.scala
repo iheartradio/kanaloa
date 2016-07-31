@@ -21,6 +21,16 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   metricsCollector ! statusOf(initialState)
 
+  val reportScheduler = {
+    import context.dispatcher
+    val reportInterval = 5.seconds
+    context.system.scheduler.schedule(reportInterval, reportInterval, self, SubmitReport) //this is needed because statsD metrics report is not reliable
+  }
+
+  override def postStop(): Unit = {
+    reportScheduler.cancel()
+  }
+
   final def processing(state: InternalState): Receive =
     handleWork(state, processing) orElse {
       case e @ Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
@@ -41,6 +51,8 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
           context unwatch qw
         }
         delayedMsg(timeout, RetiringTimeout)
+
+      case SubmitReport ⇒ metricsCollector ! statusOf(state)
     }
 
   final def retiring(state: InternalState): Receive =
@@ -79,8 +91,6 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       case Rejected(w, reason) ⇒
         log.debug(s"work rejected by worker, reason given by worker is '$reason'")
         dispatchWorkAndBecome(state.copy(workBuffer = state.workBuffer.enqueue(w)), nextContext)
-
-      case qs: QueryStatus ⇒ qs reply statusOf(state)
     }
   }
 
@@ -195,7 +205,7 @@ object QueueOfIterator {
 object Queue {
 
   case class RequestWork(requester: ActorRef)
-
+  private case object SubmitReport
   /**
    * Enqueue a message. If the message is enqueued successfully, a [[kanaloa.reactive.dispatcher.queue.Queue.WorkEnqueued]]
    * is sent to the sender if `sendAcks` is true.
@@ -239,6 +249,7 @@ object Queue {
 
   /**
    * Public status of the queue
+   *
    * @param idleWorkers workers that are waiting for work
    * @param queueLength work in the queue waiting to be picked up by workers
    * @param fullyUtilized are all workers in the worker pool utilized
