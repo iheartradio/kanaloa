@@ -21,7 +21,7 @@ object StressHttpFrontend extends App {
   implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
-  implicit val timeout: Timeout = cfg.getDuration("timeout").asScala.asInstanceOf[FiniteDuration]
+  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 2).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 

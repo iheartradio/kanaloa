@@ -16,17 +16,20 @@ class KanaloaSimulation extends Simulation {
         http("flood")
           .get(Url)
           .check(status.is(200))
+          .check(responseTimeInMillis.lessThan(3500))
+
       )
     }
   }
 
   setUp(scn.inject(
-    rampUsers(100) over (3.minutes)
+    rampUsers(300) over (3 minutes) //mainly by throttle below
   )).throttle(
-    jumpToRps(2000),
-    holdFor(5.minutes)
+    reachRps(100) in (1.minutes),
+    holdFor(1.minutes),
+    reachRps(400) in (3.minutes),
+    holdFor(1.minute)
   )
     .protocols(httpConf)
-    .maxDuration(5.minutes)
     .assertions(global.failedRequests.percent.lessThan(50))
 }
