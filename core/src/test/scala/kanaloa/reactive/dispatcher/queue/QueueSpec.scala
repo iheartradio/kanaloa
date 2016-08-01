@@ -244,16 +244,6 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     system.actorOf(processorProps)
   }
 
-  def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
-    queue ! QueryStatus()
-    fishForMessage(500.millisecond, "wait for workers to register") {
-      case qs: InternalState ⇒
-        val registered = qs.queuedWorkers.size == numberOfWorkers
-        if (!registered) queue ! QueryStatus()
-        registered
-    }
-  }
-
   def iteratorQueue(
     iterator:      Iterator[String],
     workSetting:   WorkSettings     = WorkSettings(),
