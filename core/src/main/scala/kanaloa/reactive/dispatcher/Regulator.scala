@@ -45,6 +45,8 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
   override def preStart(): Unit = {
     super.preStart()
     metricsCollector ! PerformanceSampler.Subscribe(self)
+    metricsCollector ! Metric.DropRate(0)
+
   }
 
   def receive: Receive = {
@@ -66,7 +68,8 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
         status.copy(
           droppingRate = DroppingRate(0),
           burstDurationLeft = settings.durationOfBurstAllowed,
-          recordedAt = Time.now
+          recordedAt = Time.now,
+          delay = estimateDelay(QueueLength(1), status.averageSpeed).getOrElse(Duration.Zero)
         )
       ) //reset to baseline when seeing a PartialUtilization
     case _: Report ⇒ //ignore other performance report
@@ -114,11 +117,16 @@ object Regulator {
     weightOfLatestMetric:   Double         = 0.5
   )
 
-  private[dispatcher] def estimateDelay(sample: Sample, avgSpeed: Speed): FiniteDuration =
-    if (avgSpeed.value > 0)
-      ((sample.queueLength.value / avgSpeed.value) * 1000d * 1000d).nanoseconds
-    else //if there is no speed at all, the best estimation is the current duration times queue length
+  private def estimateDelay(
+    queueLength: QueueLength,
+    speed:       Speed
+  ): Option[FiniteDuration] =
+    if (speed.value == 0) None else Some((queueLength.value.toDouble / speed.value).milliseconds)
+
+  private def estimateDelay(sample: Sample, avgSpeed: Speed): FiniteDuration =
+    estimateDelay(sample.queueLength, avgSpeed).getOrElse(
       (sample.start.until(sample.end) * sample.queueLength.value.toDouble).asInstanceOf[FiniteDuration]
+    )
 
   private[dispatcher] def update(sample: Sample, lastStatus: Status, settings: Settings): Status = {
     import settings._

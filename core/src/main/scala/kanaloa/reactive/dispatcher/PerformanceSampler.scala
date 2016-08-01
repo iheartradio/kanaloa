@@ -3,10 +3,13 @@ package kanaloa.reactive.dispatcher
 import java.time.{LocalDateTime ⇒ Time}
 
 import akka.actor.{Terminated, ActorRef, Actor}
+import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.Metric._
 import PerformanceSampler._
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector}
+import kanaloa.reactive.dispatcher.queue.Queue
+import kanaloa.reactive.dispatcher.queue.Queue.Status
 import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._
@@ -70,7 +73,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     report(WorkQueueLength(queueLength.value))
 
   def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft, isFullyUtilized) ⇒
+    case Queue.Status(idle, workLeft, isFullyUtilized) ⇒
       reportQueueLength(workLeft)
       if (!isFullyUtilized) {
         val (rpt, _) = tryComplete(s)
@@ -104,21 +107,21 @@ private[dispatcher] trait PerformanceSampler extends Actor {
   }
 
   def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
-    case DispatchResult(idle, workLeft, isFullyUtilized) if isFullyUtilized ⇒
-      context become fullyUtilized(
-        QueueStatus(poolSize = poolSize, queueLength = workLeft)
-      )
-      reportQueueLength(workLeft)
-
-    case DispatchResult(idle, _, _) ⇒
-      publishUtilization(idle, poolSize)
+    case Queue.Status(idle, queueLength, isFullyUtilized) ⇒
+      if (isFullyUtilized) {
+        context become fullyUtilized(
+          QueueStatus(poolSize = poolSize, queueLength = queueLength)
+        )
+      } else
+        publishUtilization(idle, poolSize)
+      reportQueueLength(queueLength)
 
     case metric: Metric ⇒
       handle(metric) {
         case PoolSize(s) ⇒
           context become partialUtilized(s)
       }
-    case AddSample ⇒
+    case AddSample ⇒ //no sample is produced in the partial utilized state
   }
 
   /**
@@ -147,8 +150,6 @@ private[dispatcher] object PerformanceSampler {
 
   case class Subscribe(actorRef: ActorRef)
   case class Unsubscribe(actorRef: ActorRef)
-
-  case class DispatchResult(workersLeft: Int, queueLength: QueueLength, fullyUtilized: Boolean)
 
   /**
    *

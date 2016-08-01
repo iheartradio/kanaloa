@@ -65,10 +65,9 @@ class QueueSpec extends SpecWithActorSystem {
     "does not retrieve work without workers" in new QueueScope with Backends with MockitoSugar with Eventually {
       import org.mockito.Mockito._
       val iterator = mock[Iterator[String]]
-      val queue = system.actorOf(Queue.ofIterator(iterator, metricsCollector, WorkSettings()))
-      queue ! QueryStatus()
-      expectMsgType[Queue.Status]
+      val queue = system.actorOf(Queue.ofIterator(iterator, metricsCollector, WorkSettings(), Some(self)))
 
+      expectNoMsg(40.milliseconds)
       verifyNoMoreInteractions(iterator)
 
     }
@@ -243,16 +242,6 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(processorProps)
-  }
-
-  def waitForWorkerRegistration(queue: QueueRef, numberOfWorkers: Int): Unit = {
-    queue ! QueryStatus()
-    fishForMessage(500.millisecond, "wait for workers to register") {
-      case qs: Status ⇒
-        val registered = qs.queuedWorkers.size == numberOfWorkers
-        if (!registered) queue ! QueryStatus()
-        registered
-    }
   }
 
   def iteratorQueue(

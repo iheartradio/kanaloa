@@ -39,15 +39,31 @@ class RegulatorSpec extends SpecWithActorSystem {
   "Regulator" should {
     import Regulator.update
 
-    "send metrics" in {
+    "send metrics when seeing samples" in {
       val metricsCollector = TestProbe()
       val regulator = system.actorOf(Regulator.props(settings(), metricsCollector.ref, TestProbe().ref))
       metricsCollector.expectMsgType[Subscribe]
+      metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
+
       regulator ! sample() //starts the regulator
       regulator ! sample()
 
       metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
       metricsCollector.expectMsgType[Metric.DropRate]
+    }
+
+    "send metrics when seeing PartialUtilization" in {
+      val metricsCollector = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(), metricsCollector.ref, TestProbe().ref))
+      metricsCollector.expectMsgType[Subscribe]
+      metricsCollector.expectMsgType[Metric.DropRate]
+
+      regulator ! sample() //starts the regulator
+
+      regulator ! PartialUtilization(0)
+
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 333
+      metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
     }
 
     "send dropRate when outside burst duration" in {
