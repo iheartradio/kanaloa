@@ -19,6 +19,7 @@ object Metric {
 
   case class PoolSize(size: Int) extends Status
   case class DropRate(value: Double) extends Status
+  case class BurstMode(inBurst: Boolean) extends Status
   case class PoolUtilized(numWorkers: Int) extends Status
   case class WorkQueueLength(length: Int) extends Status
   case class WorkQueueExpectedWaitTime(duration: Duration) extends Status

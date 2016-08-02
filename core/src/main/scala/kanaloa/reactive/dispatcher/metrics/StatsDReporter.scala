@@ -63,6 +63,9 @@ class StatsDReporter(
     case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
+    case BurstMode(inBurst) ⇒
+      gauge("queue.burstMode", if (inBurst) 1 else 0)
+
     case WorkQueueExpectedWaitTime(duration) ⇒
       statsd.timing("queue.waitTime", duration.toMillis.toInt)
 
