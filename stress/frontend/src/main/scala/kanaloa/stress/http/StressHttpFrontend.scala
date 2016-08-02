@@ -48,7 +48,7 @@ object StressHttpFrontend extends App {
     })
 
   val useKanaloa = cfg.getBoolean("use-kanaloa")
-  var destination: ActorRef = if (useKanaloa) dispatcher else backend
+  val destination: ActorRef = if (useKanaloa) dispatcher else backend
   val route =
     get {
       path(Segment) { msg ⇒
