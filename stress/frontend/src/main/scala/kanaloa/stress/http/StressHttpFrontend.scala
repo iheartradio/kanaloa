@@ -21,7 +21,7 @@ object StressHttpFrontend extends App {
   implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
-  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 2).asInstanceOf[FiniteDuration]
+  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 10).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 
@@ -47,11 +47,10 @@ object StressHttpFrontend extends App {
         Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
     })
 
-  val useKanaloa = cfg.getBoolean("use-kanaloa")
-  val destination: ActorRef = if (useKanaloa) dispatcher else backend
-  val route =
+  def testRoute(rootPath: String, destination: ActorRef) =
     get {
-      path(Segment) { msg ⇒
+      path(rootPath / (".+"r)) { msg ⇒
+
         val f = destination ? MockBackend.Request(msg)
         onComplete(f) {
           case Success(WorkRejected(msg)) ⇒ complete(503, "service unavailable")
@@ -61,11 +60,10 @@ object StressHttpFrontend extends App {
           case Success(unknown) ⇒ failWith(new Exception(s"unknown response: $unknown"))
           case Failure(e) ⇒ complete(408, e)
         }
-      } ~
-        path("crash") {
-          sys.error("Hitting the ../crash url deliberately causes a sys.error...why did you hit it?")
-        }
+      }
     }
+
+  val route = testRoute("kanaloa", dispatcher) ~ testRoute("straight", backend)
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
 

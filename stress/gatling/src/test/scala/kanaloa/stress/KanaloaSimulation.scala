@@ -1,14 +1,23 @@
+package kanaloa.stress
+
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class KanaloaSimulation extends Simulation {
-  val Url = "http://localhost:8081/kanaloa-test-1"
+class KanaloaSimulation extends OverflowSimulation("kanaloa")
 
-  val httpConf = http
-    .disableCaching
+/**
+ * Simulation against plain backend without kanaloa
+ */
+class StraightSimulation extends OverflowSimulation("straight")
+
+abstract class OverflowSimulation(path: String) extends Simulation {
+
+  val Url = s"http://localhost:8081/$path/test-1"
+
+  val httpConf = http.disableCaching
 
   val scn = scenario("stress-test").forever {
     group("kanaloa") {
@@ -30,4 +39,5 @@ class KanaloaSimulation extends Simulation {
   )
     .protocols(httpConf)
     .assertions(global.responseTime.percentile3.lessThan(5000)) //95% less than 5s
+
 }
