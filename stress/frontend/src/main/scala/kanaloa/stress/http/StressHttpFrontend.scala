@@ -13,7 +13,7 @@ import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
-import kanaloa.util.JavaDurationConverters._
+import JavaDurationConverters._
 
 object StressHttpFrontend extends App {
   val cfg = ConfigFactory.load("stressTestInfra.conf")

@@ -1,6 +1,7 @@
-package kanaloa.util
+package kanaloa.stress.http
 
-import java.time.{Duration ⇒ JDuration}
+import java.time.{Duration => JDuration}
+
 import scala.concurrent.duration.Duration
 
 private[kanaloa] object JavaDurationConverters {
