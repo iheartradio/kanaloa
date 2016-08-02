@@ -1,18 +1,19 @@
-package com.iheart.kanaloa.stress.http
+package kanaloa.stress.http
 
 import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.stream.ActorMaterializer
-import com.iheart.kanaloa.stress.backend.MockBackend
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
+import kanaloa.stress.backend.MockBackend
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
+import JavaDurationConverters._
 
 object StressHttpFrontend extends App {
   val cfg = ConfigFactory.load("stressTestInfra.conf")
@@ -20,19 +21,21 @@ object StressHttpFrontend extends App {
   implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
-  implicit val timeout = Timeout(100.seconds)
+  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 2).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 
   val backend = system.actorOf(
     Props(new MockBackend.BackendRouter(
       cfg.getInt("optimal-concurrency"),
-      cfg.getInt("optimal-throughput")
+      cfg.getInt("optimal-throughput"),
+      cfg.getInt("buffer-size"),
+      cfg.getDuration("base-latency").asScala
     )),
     name = "backend"
   )
 
-  val dispatcher =
+  lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "my-service1",
       backend,
@@ -44,21 +47,19 @@ object StressHttpFrontend extends App {
         Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
     })
 
-  var destination: ActorRef = _
-  val destFlag = cfg.getBoolean("use-kanaloa")
+  val useKanaloa = cfg.getBoolean("use-kanaloa")
+  val destination: ActorRef = if (useKanaloa) dispatcher else backend
   val route =
     get {
       path(Segment) { msg ⇒
-        if (destFlag) { destination = dispatcher }
-        else { destination = backend }
         val f = destination ? MockBackend.Request(msg)
         onComplete(f) {
-          case Success(WorkRejected(msg)) ⇒ failWith(new Exception(s"Rejected: $msg"))
+          case Success(WorkRejected(msg)) ⇒ complete(503, "service unavailable")
           case Success(WorkFailed(msg)) ⇒ failWith(new Exception(s"Failed: $msg"))
           case Success(WorkTimedOut(msg)) ⇒ failWith(new Exception(s"Timeout: $msg"))
           case Success(MockBackend.Respond(msg)) ⇒ complete("Success! " + msg)
           case Success(unknown) ⇒ failWith(new Exception(s"unknown response: $unknown"))
-          case Failure(e) ⇒ failWith(e)
+          case Failure(e) ⇒ complete(408, e)
         }
       } ~
         path("crash") {

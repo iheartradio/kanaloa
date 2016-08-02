@@ -79,6 +79,7 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
     context become regulating(status)
     metricsCollector ! Metric.WorkQueueExpectedWaitTime(status.delay)
     metricsCollector ! Metric.DropRate(status.droppingRate.value)
+    metricsCollector ! Metric.BurstMode(Duration.Zero < status.burstDurationLeft && status.burstDurationLeft < settings.durationOfBurstAllowed)
     val droppingRateToSend =
       if (status.burstDurationLeft > Duration.Zero)
         DroppingRate(0)

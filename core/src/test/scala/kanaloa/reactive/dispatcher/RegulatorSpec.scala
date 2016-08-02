@@ -50,6 +50,36 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
       metricsCollector.expectMsgType[Metric.DropRate]
+      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
+    }
+
+    "send metrics when in burst mode" in {
+      val metricsCollector = TestProbe()
+      val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 100.milliseconds), metricsCollector.ref, TestProbe().ref))
+      metricsCollector.expectMsgType[Subscribe]
+      metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
+
+      regulator ! sample() //starts the regulator
+      regulator ! sample(workDone = 1, duration = 10.seconds) //trigger burst mode
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
+      metricsCollector.expectMsgType[Metric.DropRate]
+      metricsCollector.expectMsgType[Metric.BurstMode]
+
+      metricsCollector.expectNoMsg(60.milliseconds) //wait for a bit to make sure burstLeft is consumed but still have some left
+
+      regulator ! sample(workDone = 1, duration = 10.seconds)
+
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
+      metricsCollector.expectMsgType[Metric.DropRate]
+      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe true
+
+      metricsCollector.expectNoMsg(60.milliseconds) //wait to make sure burstLeft is all sued
+
+      regulator ! sample(workDone = 1, duration = 10.seconds)
+
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
+      metricsCollector.expectMsgType[Metric.DropRate]
+      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
     }
 
     "send metrics when seeing PartialUtilization" in {
@@ -64,6 +94,7 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 333
       metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
+      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
     }
 
     "send dropRate when outside burst duration" in {
@@ -134,7 +165,7 @@ class RegulatorSpec extends SpecWithActorSystem {
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
-      result.value shouldBe 0.475 +- 0.00001
+      result.value shouldBe 0.475 +- 0.001
     }
 
     "update p using half of based factors when 1% < p < 10%" in {
