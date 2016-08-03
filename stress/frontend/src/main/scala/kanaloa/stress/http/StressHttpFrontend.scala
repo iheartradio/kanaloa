@@ -21,7 +21,7 @@ object StressHttpFrontend extends App {
   implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
-  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 10).asInstanceOf[FiniteDuration]
+  implicit val timeout: Timeout = (cfg.getDuration("frontend-timeout").asScala).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 
@@ -30,7 +30,7 @@ object StressHttpFrontend extends App {
       cfg.getInt("optimal-concurrency"),
       cfg.getInt("optimal-throughput"),
       cfg.getInt("buffer-size"),
-      cfg.getDuration("base-latency").asScala
+      Some(cfg.getDouble("overload-punish-factor"))
     )),
     name = "backend"
   )
@@ -51,11 +51,14 @@ object StressHttpFrontend extends App {
     get {
       path(rootPath / (".+"r)) { msg ⇒
 
-        val f = destination ? MockBackend.Request(msg)
+        val f = (destination ? MockBackend.Request(msg)).recover {
+          case e: akka.pattern.AskTimeoutException => WorkTimedOut(s"ask timeout after $timeout")
+        }
+
         onComplete(f) {
           case Success(WorkRejected(msg)) ⇒ complete(503, "service unavailable")
           case Success(WorkFailed(msg)) ⇒ failWith(new Exception(s"Failed: $msg"))
-          case Success(WorkTimedOut(msg)) ⇒ failWith(new Exception(s"Timeout: $msg"))
+          case Success(WorkTimedOut(msg)) ⇒ complete(408, msg)
           case Success(MockBackend.Respond(msg)) ⇒ complete("Success! " + msg)
           case Success(unknown) ⇒ failWith(new Exception(s"unknown response: $unknown"))
           case Failure(e) ⇒ complete(408, e)

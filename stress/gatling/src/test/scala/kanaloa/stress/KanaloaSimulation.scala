@@ -30,12 +30,10 @@ abstract class OverflowSimulation(path: String) extends Simulation {
   }
 
   setUp(scn.inject(
-    rampUsers(850) over (3 minutes) //mainly by throttle below
+    rampUsers(500) over (5 minutes) //mainly by throttle below
   )).throttle(
-    reachRps(100) in (1.minutes),
-    holdFor(1.minutes),
-    reachRps(400) in (3.minutes),
-    holdFor(1.minute)
+    reachRps(200) in (5.minutes),
+    holdFor(3.minute)
   )
     .protocols(httpConf)
     .assertions(global.responseTime.percentile3.lessThan(5000)) //95% less than 5s

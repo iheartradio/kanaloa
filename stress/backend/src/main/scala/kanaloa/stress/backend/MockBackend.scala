@@ -18,15 +18,17 @@ object MockBackend {
       optimalConcurrency: Int,
       optimalThroughput: Int,
       bufferSize: Int = 10000,
-      baseLatency: Duration = 30.milliseconds
+      overloadPunishmentFactor: Option[Double] = None
   ) extends Actor with ActorLogging {
 
     var requestsHandling = 0
 
     val rand = new Random(System.currentTimeMillis())
+    val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
+    val baseLatency = perResponderRate.duration / perResponderRate.numberOfCalls
 
     val responders: Array[ActorRef] = {
-      val perResponderRate = Math.round(optimalThroughput.toDouble / 20d / optimalConcurrency).toInt msgsPer 50.milliseconds
+
       log.info(s"Per responder rate is set as $perResponderRate")
       Array.tabulate(optimalConcurrency) { _ ⇒
         val throttler = context.actorOf(Props(classOf[TimerBasedThrottler], perResponderRate))
@@ -46,7 +48,7 @@ object MockBackend {
         }
 
         val overloadPunishment: Double = if (requestsHandling > optimalConcurrency)
-          (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble
+          overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
         else 0
 
         val index: Int = if (responders.length > 1)
