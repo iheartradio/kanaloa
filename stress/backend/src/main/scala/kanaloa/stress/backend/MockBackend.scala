@@ -4,10 +4,21 @@ import akka.actor.Props
 import akka.contrib.throttle.TimerBasedThrottler
 import akka.contrib.throttle.Throttler._
 import akka.actor._
+import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
 import scala.util.Random
 
 object MockBackend {
+
+  lazy val props = {
+    val cfg = ConfigFactory.load("backend.conf")
+    Props(new BackendRouter(
+      cfg.getInt("optimal-concurrency"),
+      cfg.getInt("optimal-throughput"),
+      cfg.getInt("buffer-size"),
+      Some(cfg.getDouble("overload-punish-factor"))
+    ))
+  }
 
   /**
    *

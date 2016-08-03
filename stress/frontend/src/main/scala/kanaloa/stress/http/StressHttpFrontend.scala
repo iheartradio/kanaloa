@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 import JavaDurationConverters._
 
 object StressHttpFrontend extends App {
-  val cfg = ConfigFactory.load("stressTestInfra.conf")
+  val cfg = ConfigFactory.load("frontend.conf")
 
   implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
   implicit val materializer = ActorMaterializer()
@@ -25,15 +25,7 @@ object StressHttpFrontend extends App {
 
   case class Failed(msg: String)
 
-  val backend = system.actorOf(
-    Props(new MockBackend.BackendRouter(
-      cfg.getInt("optimal-concurrency"),
-      cfg.getInt("optimal-throughput"),
-      cfg.getInt("buffer-size"),
-      Some(cfg.getDouble("overload-punish-factor"))
-    )),
-    name = "backend"
-  )
+  val backend = system.actorOf(MockBackend.props, name = "backend")
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
