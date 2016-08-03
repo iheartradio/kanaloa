@@ -30,7 +30,7 @@ abstract class OverflowSimulation(path: String) extends Simulation {
   }
 
   setUp(scn.inject(
-    rampUsers(500) over (5 minutes) //mainly by throttle below
+    rampUsers(2000) over (5 minutes) //mainly by throttle below
   )).throttle(
     reachRps(200) in (5.minutes),
     holdFor(3.minute)
