@@ -24,8 +24,8 @@ val noPublishing = Seq(publish := (), publishLocal := (), publishArtifact := fal
 lazy val root = project.in(file("."))
   .aggregate(core, cluster)
   .settings(moduleName := "kanaloa")
-  .settings(Publish.settings:_*)
-  .settings(Publish.extraReleaseStep:_*)
+  .settings(noPublishing:_*)
+  
 
 lazy val core = project
   .configs(Testing.Integration)
@@ -34,6 +34,7 @@ lazy val core = project
   .settings(Dependencies.settings:_*)
   .settings(Format.settings:_*)
   .settings(Publish.settings:_*)
+  .settings(Publish.extraReleaseStep:_*)
   .settings(Testing.settings:_*)
 
 lazy val cluster = project
