@@ -85,7 +85,16 @@ private[dispatcher] trait PerformanceSampler extends Actor {
 
     case metric: Metric ⇒
       handle(metric) {
-        case WorkCompleted(_) | WorkFailed ⇒
+        case WorkCompleted(processTime) ⇒
+          val newWorkDone = s.workDone + 1
+          val newAvgProcessTime = s.avgProcessTime.fold(processTime)(avg ⇒ ((avg * s.workDone.toDouble + processTime) / newWorkDone.toDouble))
+          context become fullyUtilized(
+            s.copy(
+              workDone = newWorkDone,
+              avgProcessTime = Some(newAvgProcessTime)
+            )
+          )
+        case WorkFailed ⇒
           context become fullyUtilized(s.copy(workDone = s.workDone + 1))
 
         case PoolSize(size) ⇒
@@ -133,7 +142,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     val sample = status.toSample(minSampleDuration)
 
     val newStatus = if (sample.fold(false)(_.workDone > 0))
-      status.copy(workDone = 0, start = Time.now) //if sample is valid and there is work done restart the counter
+      status.copy(workDone = 0, start = Time.now, avgProcessTime = None) //if sample is valid and there is work done restart the counter
     else status
 
     (sample, newStatus)
@@ -164,10 +173,11 @@ private[dispatcher] object PerformanceSampler {
   }
 
   case class QueueStatus(
-    queueLength: QueueLength,
-    workDone:    Int         = 0,
-    start:       Time        = Time.now,
-    poolSize:    Int         = 0
+    queueLength:    QueueLength,
+    workDone:       Int              = 0,
+    start:          Time             = Time.now,
+    poolSize:       Int              = 0,
+    avgProcessTime: Option[Duration] = None
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
@@ -176,7 +186,8 @@ private[dispatcher] object PerformanceSampler {
         start = start,
         end = Time.now,
         poolSize = poolSize,
-        queueLength = queueLength
+        queueLength = queueLength,
+        avgProcessTime = avgProcessTime
       ))
       else
         None
@@ -189,11 +200,12 @@ private[dispatcher] object PerformanceSampler {
   sealed trait Report
 
   case class Sample(
-    workDone:    Int,
-    start:       Time,
-    end:         Time,
-    poolSize:    Int,
-    queueLength: QueueLength
+    workDone:       Int,
+    start:          Time,
+    end:            Time,
+    poolSize:       Int,
+    queueLength:    QueueLength,
+    avgProcessTime: Option[Duration]
   ) extends Report {
     /**
      * Work done per milliseconds

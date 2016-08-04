@@ -18,8 +18,8 @@ import scala.concurrent.duration._
 
 class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually {
 
-  def sample(poolSize: PoolSize) =
-    Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14))
+  def sample(poolSize: PoolSize, avgProcessTime: Option[Duration] = None) =
+    Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14), avgProcessTime)
 
   "Autothrottle" should {
     "when no history" in new AutothrottleScope {
@@ -127,7 +127,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       scaleCmd.numOfWorkers should be < 45
     }
 
-    "ignore further away sample data when optmizing" in new AutothrottleScope {
+    "ignore further away sample data when optimizing" in new AutothrottleScope {
       val subject = autothrottlerRef(alwaysOptimizeSettings)
       mockBusyHistory(
         subject,
@@ -229,7 +229,8 @@ class AutothrottleScope(implicit system: ActorSystem)
           start = distance.seconds.ago,
           end = (distance - 1).seconds.ago,
           poolSize = size,
-          queueLength = QueueLength(14)
+          queueLength = QueueLength(14),
+          None
         )
     }
 
