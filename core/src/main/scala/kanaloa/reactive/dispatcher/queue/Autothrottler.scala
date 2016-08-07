@@ -6,6 +6,7 @@ import akka.actor._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.PerformanceSampler
 import kanaloa.reactive.dispatcher.PerformanceSampler._
+import kanaloa.reactive.dispatcher.Types.Speed
 import kanaloa.reactive.dispatcher.queue.Autothrottler._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.ScaleTo
 import kanaloa.util.Java8TimeExtensions._
@@ -28,7 +29,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
   val random: Random = new Random(23)
   var actionScheduler: Option[Cancellable] = None
-  var perfLog: PerformanceLog = Map.empty
+  var perfLog: PerformanceLogs = Map.empty
 
   override def preStart(): Unit = {
     super.preStart()
@@ -78,10 +79,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
     case s: Sample if s.poolSize > 0 ⇒
-      val toUpdate = perfLog.get(s.poolSize).fold(s.speed.value) { oldSpeed ⇒
-        oldSpeed * (1d - weightOfLatestMetric) + (s.speed.value * weightOfLatestMetric)
-      }
-      perfLog += (s.poolSize → toUpdate)
+      perfLog = updateLogs(perfLog, s, weightOfLatestMetric)
       context become fullyUtilized(s.poolSize)
 
     case PartialUtilization(u) ⇒
@@ -89,7 +87,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
     case OptimizeOrExplore ⇒
       val action = {
-        if (random.nextDouble() < explorationRatio)
+        if (random.nextDouble() < explorationRatio || perfLog.size < 2)
           explore(currentSize)
         else
           optimize(currentSize)
@@ -103,35 +101,16 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def optimize(currentSize: PoolSize): ScaleTo = {
-
-    val adjacentPerformances: PerformanceLog = {
-      def adjacency = (size: Int) ⇒ Math.abs(currentSize - size)
-      val sizes = perfLog.keys.toSeq
-      val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
-      val leftBoundary = sizes.filter(_ < currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
-      val rightBoundary = sizes.filter(_ >= currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
-      perfLog.filter { case (size, _) ⇒ size >= leftBoundary && size <= rightBoundary }
-    }
-
-    log.debug("Optimizing based on performance table: " +
-      adjacentPerformances.toList.sortBy(_._2).takeRight(10).reverse.map(p ⇒ s"Sz: ${p._1} spd: ${p._2 * 100} ").mkString(" | "))
-
-    val optimalSize = adjacentPerformances.maxBy(_._2)._1
-
-    val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2.0).toInt
-
-    if (scaleStep > 0)
-      log.debug("Optimized to " + (currentSize + scaleStep) + " from " + currentSize)
-
-    ScaleTo(currentSize + scaleStep, Some("optimizing"))
+    val newSize = Autothrottler.optimize(currentSize, perfLog, numOfAdjacentSizesToConsiderDuringOptimization, weightOfLatency)
+    ScaleTo(newSize, Some("optimizing"))
   }
 
   private def explore(currentSize: PoolSize): ScaleTo = {
     val change = Math.max(1, Random.nextInt(Math.ceil(currentSize.toDouble * exploreStepSize).toInt))
-    if (random.nextDouble() < chanceOfScalingDownWhenFull)
-      ScaleTo(currentSize - change, Some("exploring"))
-    else
-      ScaleTo(currentSize + change, Some("exploring"))
+    ScaleTo(
+      currentSize + (if (random.nextDouble() < chanceOfScalingDownWhenFull) -change else change),
+      Some("exploring")
+    )
   }
 
   private implicit def durationToJDuration(d: FiniteDuration): JDuration = JDuration.ofNanos(d.toNanos)
@@ -141,18 +120,75 @@ object Autothrottler {
   case object OptimizeOrExplore
 
   /**
+   *
+   * @param currentSize
+   * @param perfLog
+   * @param numOfAdjacentSizesToConsiderDuringOptimization
+   * @return change to pool
+   */
+  private[queue] def optimize(
+    currentSize:                                    PoolSize,
+    perfLog:                                        PerformanceLogs,
+    numOfAdjacentSizesToConsiderDuringOptimization: Int,
+    weightOfLatency:                                Double
+  ): PoolSize = {
+
+    val adjacentPerformances: PerformanceLogs = {
+      def adjacency = (size: Int) ⇒ Math.abs(currentSize - size)
+      val sizes = perfLog.keys.toSeq
+      val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
+      val leftBoundary = sizes.filter(_ < currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
+      val rightBoundary = sizes.filter(_ >= currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
+      perfLog.filter { case (size, _) ⇒ size >= leftBoundary && size <= rightBoundary }
+    }
+    val currentPerf = perfLog.get(currentSize).getOrElse(adjacentPerformances.head._2)
+    val normalized = adjacentPerformances.map {
+      case (size, that) ⇒
+        val speedImprovement = (that.speed.value - currentPerf.speed.value) / currentPerf.speed.value
+        val latencyImprovement = (for {
+          currentLatency ← currentPerf.processTime
+          thatLatency ← that.processTime
+        } yield (currentLatency - thatLatency).toNanos.toDouble / currentLatency.toNanos.toDouble) getOrElse 0d
+
+        val improvement = (latencyImprovement * weightOfLatency) + (speedImprovement * (1d - weightOfLatency))
+        (size, improvement)
+    }
+    val optimalSize = normalized.maxBy(_._2)._1
+
+    val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2.0).toInt
+
+    currentSize + scaleStep
+  }
+
+  private[queue] def updateLogs(logs: PerformanceLogs, sample: Sample, weightOfLatestMetric: Double): PerformanceLogs = {
+    val existingEntry = logs.get(sample.poolSize)
+    val newSpeed = existingEntry.fold(sample.speed) { e ⇒
+      Speed(e.speed.value * (1d - weightOfLatestMetric) + (sample.speed.value * weightOfLatestMetric))
+    }
+    val lastProcessTimeO = existingEntry.flatMap(_.processTime)
+    val newProcessTime = (for {
+      lastPT ← lastProcessTimeO
+      newPT ← sample.avgProcessTime
+    } yield lastPT * (1d - weightOfLatestMetric) + (newPT * weightOfLatestMetric)) orElse sample.avgProcessTime orElse lastProcessTimeO
+
+    logs + (sample.poolSize → PerformanceLogEntry(newSpeed, newProcessTime))
+  }
+
+  /**
    * Mostly for testing purpose
    */
   private[queue] case class AutothrottleStatus(
     partialUtilization:      Option[Int]      = None,
     partialUtilizationStart: Option[Time]     = None,
-    performanceLog:          PerformanceLog   = Map.empty,
+    performanceLog:          PerformanceLogs  = Map.empty,
     poolSize:                Option[PoolSize] = None
   )
 
   type PoolSize = Int
 
-  private[queue]type PerformanceLog = Map[PoolSize, Double]
+  private[queue] case class PerformanceLogEntry(speed: Speed, processTime: Option[Duration] = None)
+
+  private[queue]type PerformanceLogs = Map[PoolSize, PerformanceLogEntry]
 
   case class Default(
     processor:        QueueProcessorRef,

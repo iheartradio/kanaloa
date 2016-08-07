@@ -5,21 +5,24 @@ import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.DurationFunctions._
 import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
-import kanaloa.reactive.dispatcher.Types.QueueLength
+import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.MetricsCollector
-import kanaloa.reactive.dispatcher.queue.Autothrottler.{AutothrottleStatus, OptimizeOrExplore, PoolSize}
+import kanaloa.reactive.dispatcher.queue.Autothrottler._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
+import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
+import scala.util.Random
+import org.mockito.Mockito._
 
-class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually {
+class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually with MockitoSugar {
 
-  def sample(poolSize: PoolSize, avgProcessTime: Option[Duration] = None) =
-    Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14), avgProcessTime)
+  def sample(poolSize: PoolSize, avgProcessTime: Option[Duration] = None, workDone: Int = 3) =
+    Sample(workDone, 2.second.ago, 1.second.ago, poolSize, QueueLength(14), avgProcessTime)
 
   "Autothrottle" should {
     "when no history" in new AutothrottleScope {
@@ -33,6 +36,19 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val status = expectMsgType[AutothrottleStatus]
       status.poolSize should contain(30)
       status.performanceLog.keys should contain(30)
+    }
+
+    "record perfLog with avg process time" in new AutothrottleScope {
+      val target = autothrottlerRef(defaultSettings.copy(weightOfLatestMetric = 0.5))
+      as ! sample(poolSize = 30, avgProcessTime = Some(25.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(20.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(40.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(90.milliseconds))
+      as ! QueryStatus()
+      val status = expectMsgType[AutothrottleStatus]
+
+      status.performanceLog(30).processTime should contain(25.milliseconds)
+      status.performanceLog(31).processTime should contain(60.milliseconds)
     }
 
     "update poolsize" in new AutothrottleScope {
@@ -125,6 +141,28 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       scaleCmd.reason.value shouldBe "optimizing"
       scaleCmd.numOfWorkers should be > 35
       scaleCmd.numOfWorkers should be < 45
+    }
+
+    "optimize towards better latency when throughput plateau" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(22), Some(70.milliseconds)),
+        22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
+        24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
+      )
+      val result = Autothrottler.optimize(22, logs, 4, 0.3)
+      result shouldBe <(22)
+      result shouldBe >=(20)
+    }
+
+    "ignore latency when weight is set to low" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(22), Some(70.milliseconds)),
+        22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
+        24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
+      )
+      val result = Autothrottler.optimize(22, logs, 4, 0.01)
+      result shouldBe >(22)
+      result shouldBe <=(25)
     }
 
     "ignore further away sample data when optimizing" in new AutothrottleScope {

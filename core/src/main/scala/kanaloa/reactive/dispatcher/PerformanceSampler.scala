@@ -172,7 +172,7 @@ private[dispatcher] object PerformanceSampler {
     val minSampleDuration: Duration = sampleInterval * minSampleDurationRatio
   }
 
-  case class QueueStatus(
+  private case class QueueStatus(
     queueLength:    QueueLength,
     workDone:       Int              = 0,
     start:          Time             = Time.now,

@@ -13,13 +13,11 @@ import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, Shut
 import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
-import org.mockito.Mockito._
-import org.scalatest.mock.MockitoSugar
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
 
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends with MockitoSugar {
+class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
 
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 

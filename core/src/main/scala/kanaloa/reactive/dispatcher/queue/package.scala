@@ -55,14 +55,15 @@ package kanaloa.reactive.dispatcher.queue {
    * @param explorationRatio chance of doing a exploration vs an optimization
    */
   case class AutothrottleSettings(
-    chanceOfScalingDownWhenFull:                    Double         = 0.1,
+    chanceOfScalingDownWhenFull:                    Double         = 0.3,
     resizeInterval:                                 FiniteDuration = 5.seconds,
     downsizeAfterUnderUtilization:                  FiniteDuration = 72.hours,
     numOfAdjacentSizesToConsiderDuringOptimization: Int            = 12,
     exploreStepSize:                                Double         = 0.1,
     downsizeRatio:                                  Double         = 0.8,
     explorationRatio:                               Double         = 0.4,
-    weightOfLatestMetric:                           Double         = 0.5
+    weightOfLatestMetric:                           Double         = 0.5,
+    weightOfLatency:                                Double         = 0.2
   )
 
 }
