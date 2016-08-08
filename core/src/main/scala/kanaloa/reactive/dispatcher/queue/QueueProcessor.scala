@@ -65,7 +65,6 @@ class QueueProcessor(
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
-      healthCheck()
 
     case HealthCheck ⇒
       metricsCollector ! PoolSize(workerPool.length) //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable
