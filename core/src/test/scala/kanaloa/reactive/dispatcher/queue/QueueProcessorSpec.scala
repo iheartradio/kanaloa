@@ -23,7 +23,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
-  def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings())(test: QueueTest) {
+  def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
 
     val queueProbe = TestProbe("queue")
     val testBackend = new TestBackend()

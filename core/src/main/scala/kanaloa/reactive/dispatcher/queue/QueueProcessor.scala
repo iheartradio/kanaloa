@@ -69,7 +69,7 @@ class QueueProcessor(
         log.error("Worker death caused worker pool size drop below minimum.")
         if (workerPool.isEmpty && settings.shutdownOnAllWorkerDeath) {
           log.error("Dispatcher is shutdown because there are no workers left.")
-          context stop self //this will also shutdown the whole dispatcher
+          shutdown()
         }
       }
 
@@ -85,7 +85,7 @@ class QueueProcessor(
         context stop self
       } else {
         workerPool.foreach(_ ! Worker.Retire)
-        delayedMsg(3.minutes, ShutdownTimeout) //TODO: hardcoded it's a forced shutdown
+        delayedMsg(settings.defaultShutdownTimeout, ShutdownTimeout)
         context become shuttingDown(None)
       }
 
@@ -94,10 +94,14 @@ class QueueProcessor(
     //queue processor initiates shutdown of everyone.
     case Shutdown(reportTo, timeout) ⇒
       log.info("Commanded to shutdown. Shutting down")
-      queue ! Retire(timeout)
-      delayedMsg(timeout, ShutdownTimeout)
-      healthCheckSchedule.cancel()
-      context become shuttingDown(reportTo)
+      shutdown(reportTo, timeout)
+  }
+
+  def shutdown(reportTo: Option[ActorRef] = None, timeout: FiniteDuration = settings.defaultShutdownTimeout): Unit = {
+    queue ! Retire(timeout)
+    delayedMsg(timeout, ShutdownTimeout)
+    healthCheckSchedule.cancel()
+    context become shuttingDown(reportTo)
   }
 
   def shuttingDown(reportTo: Option[ActorRef]): Receive = {

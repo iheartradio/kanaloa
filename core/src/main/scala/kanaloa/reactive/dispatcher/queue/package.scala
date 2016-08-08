@@ -40,8 +40,8 @@ package kanaloa.reactive.dispatcher.queue {
     maxPoolSize:              Int            = 400,
     healthCheckInterval:      FiniteDuration = 1.seconds,
     logRouteeRetrievalError:  Boolean        = true,
-    shutdownOnAllWorkerDeath: Boolean        = true
-
+    shutdownOnAllWorkerDeath: Boolean        = true,
+    defaultShutdownTimeout:   FiniteDuration = 30.seconds
   )
 
   /**
