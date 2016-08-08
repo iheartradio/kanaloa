@@ -65,6 +65,13 @@ class QueueProcessor(
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
+      if (workerPool.length < settings.minPoolSize) {
+        log.error("Worker death caused worker pool size drop below minimum.")
+        if (workerPool.isEmpty && settings.shutdownOnAllWorkerDeath) {
+          log.error("Dispatcher is shutdown because there are no workers left.")
+          context stop self //this will also shutdown the whole dispatcher
+        }
+      }
 
     case HealthCheck ⇒
       metricsCollector ! PoolSize(workerPool.length) //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable

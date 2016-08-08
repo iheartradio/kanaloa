@@ -147,6 +147,12 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       }
     }
 
+    "shutdown itself when all worker dies" in withQueueProcessor() { (qp, _, _, _, workerFactory) ⇒
+      watch(qp)
+      workerFactory.killsAllWorkers()
+      expectTerminated(qp)
+    }
+
     "shutdown Queue and wait for Workers to terminate" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 30.seconds)
@@ -253,9 +259,13 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       probe.ref
     }
 
-    def killAndRemoveWorker(ref: ActorRef) {
+    def killAndRemoveWorker(ref: ActorRef): Unit = {
       probeMap.remove(ref)
       ref ! PoisonPill
+    }
+
+    def killsAllWorkers(): Unit = {
+      probeMap.keys.foreach(killAndRemoveWorker)
     }
   }
 
