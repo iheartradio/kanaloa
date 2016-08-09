@@ -3,6 +3,7 @@ package kanaloa.stress.http
 import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
+import akka.routing.FromConfig
 import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
@@ -18,19 +19,20 @@ import JavaDurationConverters._
 object StressHttpFrontend extends App {
   val cfg = ConfigFactory.load("frontend.conf")
 
-  implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
+  implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
   implicit val timeout: Timeout = (cfg.getDuration("frontend-timeout").asScala).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 
-  val backend = system.actorOf(MockBackend.props, name = "backend")
+  val localBackend = system.actorOf(MockBackend.props, name = "local-backend")
+  val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "my-service1",
-      backend,
+      localBackend,
       cfg
     ) {
       case r: MockBackend.Respond ⇒
@@ -58,7 +60,9 @@ object StressHttpFrontend extends App {
       }
     }
 
-  val route = testRoute("kanaloa", dispatcher) ~ testRoute("straight", backend)
+  val route = testRoute("kanaloa", dispatcher) ~
+    testRoute("straight", localBackend) ~
+    testRoute("round_robin", remoteBackendRouter)
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
 

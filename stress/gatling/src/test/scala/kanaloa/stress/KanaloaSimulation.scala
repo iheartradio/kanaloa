@@ -6,12 +6,20 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class KanaloaSimulation extends OverflowSimulation("kanaloa")
+/**
+ * Simulation against a local actor with kanaloa in front of it. 
+ */
+class KanaloaLocalSimulation extends OverflowSimulation("kanaloa")
 
 /**
  * Simulation against plain backend without kanaloa
  */
 class StraightSimulation extends OverflowSimulation("straight")
+
+/**
+ * Simulation against a round robin cluster router without kanaloa
+ */
+class RoundRobinSimulation extends OverflowSimulation("round_robin")
 
 abstract class OverflowSimulation(path: String) extends Simulation {
 
