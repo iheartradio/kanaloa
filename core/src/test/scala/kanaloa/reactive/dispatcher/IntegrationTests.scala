@@ -259,7 +259,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
       val optimalSpeed = optimalSize.toDouble / processTime.toMillis
 
-      val sent = sendLoadsOfMessage(pd, duration = 6.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
+      val sent = sendLoadsOfMessage(pd, duration = 7.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
 
       val actualPoolSize = getPoolSize(pd.underlyingActor)
 
