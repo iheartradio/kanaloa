@@ -4,7 +4,7 @@ import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.reactive.dispatcher.Backend.BackendAdaptor
-import kanaloa.reactive.dispatcher.Dispatcher.Settings
+import kanaloa.reactive.dispatcher.Dispatcher.{UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
 import kanaloa.reactive.dispatcher.Regulator.DroppingRate
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.reactive.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
@@ -47,6 +47,8 @@ trait Dispatcher extends Actor {
 
   def receive: Receive = ({
     case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout)
+    case SubscribePerformanceMetrics(actor)      ⇒ metricsCollector ! PerformanceSampler.Subscribe(actor)
+    case UnSubscribePerformanceMetrics(actor)    ⇒ metricsCollector ! PerformanceSampler.Unsubscribe(actor)
     case Terminated(`processor`)                 ⇒ context stop self
   }: Receive) orElse extraReceive
 
@@ -54,6 +56,9 @@ trait Dispatcher extends Actor {
 }
 
 object Dispatcher {
+
+  private[kanaloa] case class SubscribePerformanceMetrics(actor: ActorRef)
+  private[kanaloa] case class UnSubscribePerformanceMetrics(actor: ActorRef)
 
   case class Settings(
     workTimeout:    FiniteDuration                 = 1.minute,

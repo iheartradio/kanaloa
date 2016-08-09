@@ -4,9 +4,11 @@ import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
-import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
+import akka.testkit.{TestProbe, ImplicitSender, TestActorRef, TestKit}
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.ApiProtocol.{QueryStatus, ShutdownGracefully, ShutdownSuccessfully}
+import kanaloa.reactive.dispatcher.Dispatcher.SubscribePerformanceMetrics
+import kanaloa.reactive.dispatcher.PerformanceSampler.{Report, Sample, Subscribe}
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{RunningStatus, ShuttingDown}
 
 import scala.concurrent.duration._
@@ -45,6 +47,20 @@ trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
       }
     """
   ))
+
+  lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
+  lazy val metricsConfig = statsDHostO.map { host ⇒
+    s"""
+      metrics {
+        enabled = on // turn it off if you don't have a statsD server and hostname set as an env var
+        statsd {
+          namespace = kanaloa-integration
+          host = $host //todo do not commit this
+          eventSampleRate = 0.25
+        }
+      }
+    """
+  }.getOrElse("")
 
   def afterAll(): Unit = system.terminate()
 
@@ -154,6 +170,55 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
 }
 
+class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
+
+  "can remain sane when all workers are failing" in new TestScope with Backends {
+    val backend = suicidal(1.milliseconds)
+    val iterator = Stream.continually("a").iterator
+
+    val pd = system.actorOf(PullingDispatcher.props(
+      "test-pulling",
+      iterator,
+      backend,
+      None,
+      ConfigFactory.parseString(
+        s"""
+          kanaloa.dispatchers.test-pulling {
+           updateInterval = 100ms
+            workerPool {
+              startingPoolSize = 30
+              minPoolSize = 30
+            }
+            $metricsConfig
+          }
+        """
+      )
+    )(resultChecker))
+
+    watch(pd)
+
+    val prob = TestProbe()
+    pd ! SubscribePerformanceMetrics(prob.ref)
+
+    var samples = List[Sample]()
+    val r = prob.fishForMessage(10.seconds) {
+      case s: Sample ⇒
+        samples = s :: samples
+        samples.length > 30
+      case p: Report ⇒
+        false
+    }
+
+    samples.forall(_.queueLength.value <= 30) shouldBe true
+    samples.map(_.workDone).sum shouldBe <=(30)
+
+    pd ! ShutdownGracefully(timeout = 100.milliseconds)
+    expectTerminated(pd, shutdownTimeout)
+
+  }
+
+}
+
 class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
   "pushing dispatcher move to the optimal pool size" in new TestScope {
@@ -219,7 +284,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
     val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
     val optimalSize = 10
     val optimalSpeed = optimalSize.toDouble / processTime.toMillis
-    val duration = 5.seconds
+    val duration = 20.seconds
     val msgPerMilli = optimalSpeed * 0.9
     val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
 
@@ -229,7 +294,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
       backend,
       None,
       ConfigFactory.parseString(
-        """
+        s"""
           kanaloa.dispatchers.test-pulling {
             updateInterval = 100ms
             workerPool {
@@ -246,6 +311,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
               resizeInterval = 100ms
               downsizeAfterUnderUtilization = 72h
             }
+            $metricsConfig
           }
         """
       )

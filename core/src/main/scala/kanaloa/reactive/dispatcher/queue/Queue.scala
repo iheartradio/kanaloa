@@ -32,7 +32,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   final def processing(state: InternalState): Receive =
-    handleWork(state, processing) orElse {
+    handleWork(state, false) orElse {
       case e @ Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
         val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
         val newBuffer: ScalaQueue[Work] = state.workBuffer.enqueue(newWork)
@@ -59,7 +59,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     if (state.workBuffer.isEmpty) {
       finish(state, s"Queue successfully retired")
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
-    } else handleWork(state, retiring) orElse {
+    } else handleWork(state, true) orElse {
       case e @ Enqueue(_, _, _) ⇒ sender() ! EnqueueRejected(e, Queue.EnqueueRejected.Retiring)
       case RetiringTimeout      ⇒ finish(state, "Forcefully retire after timed out")
     }
@@ -70,27 +70,33 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     context stop self
   }
 
-  private def handleWork(state: InternalState, nextContext: InternalState ⇒ Receive): Receive = {
-    def dispatchWorkAndBecome(state: InternalState, newContext: InternalState ⇒ Receive): Unit = {
-      val newStatus = dispatchWork(state)
-      context become newContext(newStatus)
+  private def handleWork(state: InternalState, isRetiring: Boolean): Receive = {
+    def dispatchWorkAndBecome(state: InternalState): InternalState = {
+      val newState = dispatchWork(state)
+      next(newState)
+      newState
     }
+
+    def next(newState: InternalState): Unit =
+      context become (if (isRetiring) retiring(newState) else processing(newState))
 
     {
       case RequestWork(requester) ⇒
         context watch requester
-        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)), nextContext)
+        val newState = dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)))
+        if (newState.workBuffer.isEmpty && !newState.queuedWorkers.isEmpty && !isRetiring)
+          onQueuedWorkExhausted()
 
       case Unregister(worker) ⇒
-        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ == worker)), nextContext)
+        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ == worker)))
         worker ! Unregistered
 
       case Terminated(worker) ⇒
-        context become nextContext(state.copy(queuedWorkers = state.queuedWorkers.filter(_ != worker)))
+        next(state.copy(queuedWorkers = state.queuedWorkers.filter(_ != worker)))
 
       case Rejected(w, reason) ⇒
         log.debug(s"work rejected by worker, reason given by worker is '$reason'")
-        dispatchWorkAndBecome(state.copy(workBuffer = state.workBuffer.enqueue(w)), nextContext)
+        dispatchWorkAndBecome(state.copy(workBuffer = state.workBuffer.enqueue(w)))
     }
   }
 
@@ -107,7 +113,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
    */
   @tailrec
   protected final def dispatchWork(state: InternalState, dispatched: Int = 0, retiring: Boolean = false): InternalState = {
-    if (state.workBuffer.isEmpty && !state.queuedWorkers.isEmpty && !retiring) onQueuedWorkExhausted()
+
     (for {
       (worker, queuedWorkers) ← state.queuedWorkers.dequeueOption
       (work, workBuffer) ← state.workBuffer.dequeueOption

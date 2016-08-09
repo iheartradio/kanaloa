@@ -168,7 +168,6 @@ private[dispatcher] object PerformanceSampler {
     workDone:    Int         = 0,
     start:       Time        = Time.now,
     poolSize:    Int         = 0
-
   ) {
 
     def toSample(minSampleDuration: Duration): Option[Sample] = {
