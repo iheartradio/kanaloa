@@ -9,7 +9,7 @@ import kanaloa.reactive.dispatcher.PerformanceSampler._
 import kanaloa.reactive.dispatcher.Types.Speed
 import kanaloa.reactive.dispatcher.queue.Autothrottler._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.ScaleTo
-import kanaloa.util.Java8TimeExtensions._
+import kanaloa.util.JavaDurationConverters._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
@@ -69,7 +69,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
       context become fullyUtilized(s.poolSize)
       self forward s
     case OptimizeOrExplore ⇒
-      if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization)))
+      if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization.asJava)))
         processor ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
@@ -107,13 +107,13 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
   private def explore(currentSize: PoolSize): ScaleTo = {
     val change = Math.max(1, Random.nextInt(maxExploreStepSize))
+    val newSize = currentSize + (if (random.nextDouble() < chanceOfScalingDownWhenFull) -change else change)
     ScaleTo(
-      currentSize + (if (random.nextDouble() < chanceOfScalingDownWhenFull) -change else change),
+      Math.max(1, newSize),
       Some("exploring")
     )
   }
 
-  private implicit def durationToJDuration(d: FiniteDuration): JDuration = JDuration.ofNanos(d.toNanos)
 }
 
 object Autothrottler {

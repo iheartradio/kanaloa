@@ -9,12 +9,12 @@ import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
 import kanaloa.stress.backend.MockBackend
+import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
-import JavaDurationConverters._
 
 object StressHttpFrontend extends App {
   val cfg = ConfigFactory.load("frontend.conf")
