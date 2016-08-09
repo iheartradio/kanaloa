@@ -137,8 +137,6 @@ object Autothrottler {
       perfLog.filter { case (size, _) ⇒ size >= leftBoundary && size <= rightBoundary }
     }
 
-    println(adjacentPerformances)
-
     val currentPerf = perfLog.get(currentSize).getOrElse(adjacentPerformances.head._2)
     val normalized = adjacentPerformances.map {
       case (size, that) ⇒
