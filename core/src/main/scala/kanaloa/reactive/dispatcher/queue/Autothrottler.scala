@@ -101,7 +101,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def optimize(currentSize: PoolSize): ScaleTo = {
-    val newSize = Autothrottler.optimize(currentSize, perfLog, numOfAdjacentSizesToConsiderDuringOptimization, weightOfLatency)
+    val newSize = Autothrottler.optimize(currentSize, perfLog, settings)
     ScaleTo(newSize, Some("optimizing"))
   }
 
@@ -120,27 +120,25 @@ object Autothrottler {
   case object OptimizeOrExplore
 
   /**
-   *
-   * @param currentSize
-   * @param perfLog
-   * @param numOfAdjacentSizesToConsiderDuringOptimization
    * @return change to pool
    */
   private[queue] def optimize(
-    currentSize:                                    PoolSize,
-    perfLog:                                        PerformanceLogs,
-    numOfAdjacentSizesToConsiderDuringOptimization: Int,
-    weightOfLatency:                                Double
+    currentSize: PoolSize,
+    perfLog:     PerformanceLogs,
+    settings:    AutothrottleSettings
   ): PoolSize = {
-
+    import settings.{weightOfLatency, optimizationMinRange, optimizationRangeRatio}
     val adjacentPerformances: PerformanceLogs = {
       def adjacency = (size: Int) ⇒ Math.abs(currentSize - size)
+      val numOfSizesEachSide = Math.max(optimizationMinRange, (currentSize.toDouble * optimizationRangeRatio).toInt)
       val sizes = perfLog.keys.toSeq
-      val numOfSizesEachSide = numOfAdjacentSizesToConsiderDuringOptimization / 2
       val leftBoundary = sizes.filter(_ < currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
-      val rightBoundary = sizes.filter(_ >= currentSize).sortBy(adjacency).take(numOfSizesEachSide).lastOption.getOrElse(currentSize)
+      val rightBoundary = sizes.filter(_ >= currentSize).sortBy(adjacency).take(numOfSizesEachSide + 1).lastOption.getOrElse(currentSize)
       perfLog.filter { case (size, _) ⇒ size >= leftBoundary && size <= rightBoundary }
     }
+
+    println(adjacentPerformances)
+
     val currentPerf = perfLog.get(currentSize).getOrElse(adjacentPerformances.head._2)
     val normalized = adjacentPerformances.map {
       case (size, that) ⇒
@@ -155,7 +153,7 @@ object Autothrottler {
     }
     val optimalSize = normalized.maxBy(_._2)._1
 
-    val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2.0).toInt
+    val scaleStep = Math.ceil((optimalSize - currentSize).toDouble / 2d).toInt
 
     currentSize + scaleStep
   }

@@ -149,9 +149,27 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
         24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
       )
-      val result = Autothrottler.optimize(22, logs, 4, 0.3)
+      val result = Autothrottler.optimize(22, logs, AutothrottleSettings(weightOfLatency = 0.3))
       result shouldBe <(22)
       result shouldBe >=(20)
+    }
+
+    "optimize towards a more distant one at larger pool size" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(30)),
+        21 → PerformanceLogEntry(Speed(22)),
+        22 → PerformanceLogEntry(Speed(21)),
+        23 → PerformanceLogEntry(Speed(25)),
+        24 → PerformanceLogEntry(Speed(23)),
+        25 → PerformanceLogEntry(Speed(23)),
+        26 → PerformanceLogEntry(Speed(26))
+      )
+      val result1 = Autothrottler.optimize(24, logs, AutothrottleSettings(optimizationMinRange = 2, optimizationRangeRatio = 0.1))
+      result1 shouldBe <=(26) //with limited sight, it only sees the nearby optimal pool size
+      result1 shouldBe >(24)
+      val result2 = Autothrottler.optimize(24, logs, AutothrottleSettings(optimizationMinRange = 2, optimizationRangeRatio = 0.3))
+      result2 shouldBe <(24) //by looking further, it should see the further optimal pool size
+      result2 shouldBe >=(20)
     }
 
     "ignore latency when weight is set to low" in {
@@ -160,13 +178,13 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
         24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
       )
-      val result = Autothrottler.optimize(22, logs, 4, 0.01)
+      val result = Autothrottler.optimize(22, logs, AutothrottleSettings(weightOfLatency = 0.1))
       result shouldBe >(22)
       result shouldBe <=(25)
     }
 
     "ignore further away sample data when optimizing" in new AutothrottleScope {
-      val subject = autothrottlerRef(alwaysOptimizeSettings)
+      val subject = autothrottlerRef(alwaysOptimizeSettings.copy(optimizationMinRange = 4, optimizationRangeRatio = 0.1))
       mockBusyHistory(
         subject,
         (10, 1999), //should be ignored
@@ -185,8 +203,8 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val scaleCmd = tProcessor.expectMsgType[ScaleTo]
 
       scaleCmd.reason.value shouldBe "optimizing"
-      scaleCmd.numOfWorkers should be > 35
-      scaleCmd.numOfWorkers should be < 44
+      scaleCmd.numOfWorkers should be <= 41
+      scaleCmd.numOfWorkers should be > 37
     }
 
     "downsize if hasn't maxed out for more than relevant period of hours" in new AutothrottleScope {
@@ -241,7 +259,7 @@ class AutothrottleScope(implicit system: ActorSystem)
     explorationRatio = 0.5,
     downsizeRatio = 0.8,
     downsizeAfterUnderUtilization = 72.hours,
-    numOfAdjacentSizesToConsiderDuringOptimization = 6
+    optimizationMinRange = 6
   )
 
   val alwaysOptimizeSettings = defaultSettings.copy(explorationRatio = 0)
