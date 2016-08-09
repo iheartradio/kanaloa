@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 
 /**
- * Simulation against a local actor with kanaloa in front of it. 
+ * Simulation against a local actor with kanaloa in front of it.
  */
 class KanaloaLocalSimulation extends OverflowSimulation("kanaloa")
 
@@ -37,14 +37,17 @@ abstract class OverflowSimulation(path: String) extends Simulation {
     }
   }
 
+  val duration = 30.minutes
+  val rampUp = 1.minutes
+
   setUp(scn.inject(
     rampUsers(2000) over (5 minutes) //mainly by throttle below
   )).throttle(
-    reachRps(200) in (1.minutes),
-    holdFor(19.minute)
+    reachRps(200) in rampUp,
+    holdFor(duration)
   )
     .protocols(httpConf)
-    .maxDuration(19.minutes)
+    .maxDuration(duration + rampUp)
     .assertions(global.responseTime.percentile3.lessThan(5000)) //95% less than 5s
 
 }

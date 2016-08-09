@@ -31,7 +31,7 @@ object StressHttpFrontend extends App {
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
-      name = "my-service1",
+      name = "with-local-backend",
       localBackend,
       cfg
     ) {
