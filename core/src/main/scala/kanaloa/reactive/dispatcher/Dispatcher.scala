@@ -69,15 +69,17 @@ object Dispatcher {
   private[kanaloa] case class UnSubscribePerformanceMetrics(actor: ActorRef)
 
   case class Settings(
-    workTimeout:    FiniteDuration                 = 1.minute,
-    workRetry:      Int                            = 0,
-    updateInterval: FiniteDuration                 = 1.second,
-    workerPool:     ProcessingWorkerPoolSettings,
-    regulator:      Option[Regulator.Settings],
-    circuitBreaker: Option[CircuitBreakerSettings],
-    autothrottle:   Option[AutothrottleSettings]
+    workTimeout:               FiniteDuration                 = 1.minute,
+    workRetry:                 Int                            = 0,
+    updateInterval:            FiniteDuration                 = 1.second,
+    lengthOfDisplayForMessage: Int                            = 200,
+    workerPool:                ProcessingWorkerPoolSettings,
+    regulator:                 Option[Regulator.Settings],
+    circuitBreaker:            Option[CircuitBreakerSettings],
+    autothrottle:              Option[AutothrottleSettings]
   ) {
     val performanceSamplerSettings = PerformanceSampler.PerformanceSamplerSettings(updateInterval)
+    lazy val workSettings = WorkSettings(workRetry, workTimeout, lengthOfDisplayForMessage)
   }
 
   private[dispatcher] def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) = {
@@ -131,7 +133,7 @@ case class PushingDispatcher(
   extends Dispatcher {
   val random = new Random(23)
   var droppingRate: DroppingRate = DroppingRate(0)
-  protected lazy val queueProps = Queue.default(metricsCollector, WorkSettings(settings.workRetry, settings.workTimeout))
+  protected lazy val queueProps = Queue.default(metricsCollector, settings.workSettings)
 
   settings.regulator.foreach { rs ⇒
     context.actorOf(Regulator.props(rs, metricsCollector, self), "regulator")
@@ -187,7 +189,7 @@ case class PullingDispatcher(
 ) extends Dispatcher {
   protected def queueProps = QueueOfIterator.props(
     iterator,
-    WorkSettings(settings.workRetry, settings.workTimeout),
+    settings.workSettings,
     metricsCollector,
     sendResultsTo
   )

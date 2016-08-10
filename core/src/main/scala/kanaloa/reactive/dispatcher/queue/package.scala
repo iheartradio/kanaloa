@@ -17,7 +17,11 @@ package kanaloa.reactive.dispatcher.queue {
 
   private[queue] case class Rejected(work: Work, reason: String)
 
-  case class WorkSettings(retry: Int = 0, timeout: FiniteDuration = 30.seconds)
+  case class WorkSettings(
+    retry:                     Int            = 0,
+    timeout:                   FiniteDuration = 30.seconds,
+    lengthOfDisplayForMessage: Int            = 300
+  )
 
   /**
    * see reference.conf
