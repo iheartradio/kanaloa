@@ -3,42 +3,36 @@ package kanaloa.stress.http
 import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
+import akka.routing.FromConfig
 import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
 import kanaloa.stress.backend.MockBackend
+import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.PushingDispatcher
 import scala.concurrent.duration._
-import JavaDurationConverters._
 
 object StressHttpFrontend extends App {
-  val cfg = ConfigFactory.load("stressTestInfra.conf")
+  val cfg = ConfigFactory.load("frontend.conf")
 
-  implicit val system = ActorSystem("Stress-Tests", cfg.resolve())
+  implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
-  implicit val timeout: Timeout = (cfg.getDuration("timeout").asScala * 2).asInstanceOf[FiniteDuration]
+  implicit val timeout: Timeout = (cfg.getDuration("frontend-timeout").asScala).asInstanceOf[FiniteDuration]
 
   case class Failed(msg: String)
 
-  val backend = system.actorOf(
-    Props(new MockBackend.BackendRouter(
-      cfg.getInt("optimal-concurrency"),
-      cfg.getInt("optimal-throughput"),
-      cfg.getInt("buffer-size"),
-      cfg.getDuration("base-latency").asScala
-    )),
-    name = "backend"
-  )
+  val localBackend = system.actorOf(MockBackend.props, name = "local-backend")
+  val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
-      name = "my-service1",
-      backend,
+      name = "with-local-backend",
+      localBackend,
       cfg
     ) {
       case r: MockBackend.Respond ⇒
@@ -47,25 +41,28 @@ object StressHttpFrontend extends App {
         Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
     })
 
-  val useKanaloa = cfg.getBoolean("use-kanaloa")
-  val destination: ActorRef = if (useKanaloa) dispatcher else backend
-  val route =
+  def testRoute(rootPath: String, destination: ActorRef) =
     get {
-      path(Segment) { msg ⇒
-        val f = destination ? MockBackend.Request(msg)
+      path(rootPath / (".+"r)) { msg ⇒
+
+        val f = (destination ? MockBackend.Request(msg)).recover {
+          case e: akka.pattern.AskTimeoutException => WorkTimedOut(s"ask timeout after $timeout")
+        }
+
         onComplete(f) {
           case Success(WorkRejected(msg)) ⇒ complete(503, "service unavailable")
           case Success(WorkFailed(msg)) ⇒ failWith(new Exception(s"Failed: $msg"))
-          case Success(WorkTimedOut(msg)) ⇒ failWith(new Exception(s"Timeout: $msg"))
+          case Success(WorkTimedOut(msg)) ⇒ complete(408, msg)
           case Success(MockBackend.Respond(msg)) ⇒ complete("Success! " + msg)
           case Success(unknown) ⇒ failWith(new Exception(s"unknown response: $unknown"))
           case Failure(e) ⇒ complete(408, e)
         }
-      } ~
-        path("crash") {
-          sys.error("Hitting the ../crash url deliberately causes a sys.error...why did you hit it?")
-        }
+      }
     }
+
+  val route = testRoute("kanaloa", dispatcher) ~
+    testRoute("straight", localBackend) ~
+    testRoute("round_robin", remoteBackendRouter)
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
 

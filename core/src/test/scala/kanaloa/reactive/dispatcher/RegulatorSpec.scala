@@ -16,7 +16,7 @@ class RegulatorSpec extends SpecWithActorSystem {
     queueLength: Int            = 5,
     duration:    FiniteDuration = 1.second
   ): Sample =
-    Sample(workDone, duration.ago, Time.now, poolSize = 14, queueLength = QueueLength(queueLength))
+    Sample(workDone, duration.ago, Time.now, poolSize = 14, queueLength = QueueLength(queueLength), None)
 
   def status(
     delay:             FiniteDuration = 1.second,

@@ -1,5 +1,6 @@
 package kanaloa.reactive.dispatcher
 
+import akka.actor.SupervisorStrategy.Escalate
 import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
@@ -16,7 +17,7 @@ import net.ceedubs.ficus.readers.ValueReader
 import scala.concurrent.duration._
 import scala.util.Random
 
-trait Dispatcher extends Actor {
+trait Dispatcher extends Actor with ActorLogging {
   def name: String
   def settings: Dispatcher.Settings
   def backend: Backend
@@ -26,6 +27,13 @@ trait Dispatcher extends Actor {
   protected def queueProps: Props
 
   protected lazy val queue = context.actorOf(queueProps, "queue")
+
+  override val supervisorStrategy =
+    OneForOneStrategy() {
+      case e ⇒
+        log.error(s"Dispatcher $name one of the children actor died due to $e")
+        Escalate
+    }
 
   private[dispatcher] val processor = {
     val props = QueueProcessor.default(

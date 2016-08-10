@@ -53,6 +53,23 @@ class PerformanceSamplerSpec extends SpecWithActorSystem with MockitoSugar with 
 
     }
 
+    "collects avgProcess time" in {
+      val (ps, subscriberProbe) = initPerformanceSampler(sampleInterval = 100.milliseconds)
+      ps ! WorkCompleted(1.millisecond)
+      ps ! WorkCompleted(5.millisecond)
+
+      val sample1 = subscriberProbe.expectMsgType[Sample]
+      sample1.avgProcessTime should contain(3.milliseconds)
+
+      ps ! WorkCompleted(5.millisecond)
+      ps ! WorkCompleted(9.millisecond)
+      ps ! WorkCompleted(4.millisecond)
+
+      val sample2 = subscriberProbe.expectMsgType[Sample]
+      sample2.avgProcessTime should contain(6.milliseconds)
+
+    }
+
     "ignore metrics when pool isn't fully occupied" in {
       val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! partialUtilizedStatus

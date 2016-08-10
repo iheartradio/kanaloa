@@ -29,7 +29,8 @@ class QueueProcessor(
 
   var workerCount = 0
   var workerPool: WorkerPool = List[ActorRef]()
-  var inflightCreations = 0
+  var inflightWorkerCreation = 0
+  var inflightWorkerRemoval = 0
 
   //stop any children which failed.  Let the DeathWatch handle it
   override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
@@ -42,24 +43,27 @@ class QueueProcessor(
     context watch queue
   }
 
-  def currentWorkers = workerPool.size + inflightCreations
+  def currentWorkers = workerPool.size + inflightWorkerCreation - inflightWorkerRemoval
 
   def receive: Receive = {
-    case ScaleTo(newPoolSize, reason) ⇒
+    case ScaleTo(newPoolSize, reason) if inflightWorkerCreation == 0 && inflightWorkerRemoval == 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
       val diff = toPoolSize - currentWorkers
 
       tryCreateWorkersIfNeeded(diff)
       if (diff < 0) {
+        inflightWorkerRemoval -= diff
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
       }
+
+    case ScaleTo(_, _) ⇒ //ignore when there is inflight creation or removal going on.
 
     case RouteeRetrieved(routee) ⇒
       createWorker(routee)
 
     case RouteeFailed(ex) ⇒
-      inflightCreations -= 1
+      inflightWorkerCreation = Math.max(0, inflightWorkerCreation - 1)
       if (settings.logRouteeRetrievalError)
         log.warning("Failed to retrieve Routee: " + ex.getMessage)
 
@@ -133,6 +137,7 @@ class QueueProcessor(
   }
 
   private def removeWorker(worker: ActorRef): Unit = {
+    inflightWorkerRemoval = Math.max(0, inflightWorkerRemoval - 1)
     context.unwatch(worker)
     workerPool = workerPool.filter(_ != worker)
     metricsCollector ! Metric.PoolSize(workerPool.length)
@@ -140,7 +145,7 @@ class QueueProcessor(
 
   private def retrieveRoutee(): Unit = {
     import context.dispatcher //do we want to pass this in?
-    inflightCreations += 1
+    inflightWorkerCreation += 1
     backend(context).onComplete {
       case Success(routee) ⇒ self ! RouteeRetrieved(routee)
       case Failure(ex)     ⇒ self ! RouteeFailed(ex)
@@ -171,7 +176,7 @@ class QueueProcessor(
 
     workerPool = workerPool :+ worker
     metricsCollector ! Metric.PoolSize(workerPool.length)
-    inflightCreations -= 1
+    inflightWorkerCreation = Math.max(0, inflightWorkerCreation - 1)
   }
 }
 

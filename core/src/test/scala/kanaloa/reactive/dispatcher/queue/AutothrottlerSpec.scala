@@ -5,21 +5,24 @@ import akka.testkit._
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.DurationFunctions._
 import kanaloa.reactive.dispatcher.PerformanceSampler.{PartialUtilization, Sample}
-import kanaloa.reactive.dispatcher.Types.QueueLength
+import kanaloa.reactive.dispatcher.Types.{Speed, QueueLength}
 import kanaloa.reactive.dispatcher.metrics.MetricsCollector
-import kanaloa.reactive.dispatcher.queue.Autothrottler.{AutothrottleStatus, OptimizeOrExplore, PoolSize}
+import kanaloa.reactive.dispatcher.queue.Autothrottler._
 import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.reactive.dispatcher.queue.Worker.{Idle, Working}
 import kanaloa.reactive.dispatcher.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
+import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
+import scala.util.Random
+import org.mockito.Mockito._
 
-class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually {
+class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually with MockitoSugar {
 
-  def sample(poolSize: PoolSize) =
-    Sample(3, 2.second.ago, 1.second.ago, poolSize, QueueLength(14))
+  def sample(poolSize: PoolSize, avgProcessTime: Option[Duration] = None, workDone: Int = 3) =
+    Sample(workDone, 2.second.ago, 1.second.ago, poolSize, QueueLength(14), avgProcessTime)
 
   "Autothrottle" should {
     "when no history" in new AutothrottleScope {
@@ -33,6 +36,19 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val status = expectMsgType[AutothrottleStatus]
       status.poolSize should contain(30)
       status.performanceLog.keys should contain(30)
+    }
+
+    "record perfLog with avg process time" in new AutothrottleScope {
+      val target = autothrottlerRef(defaultSettings.copy(weightOfLatestMetric = 0.5))
+      as ! sample(poolSize = 30, avgProcessTime = Some(25.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(20.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(40.milliseconds))
+      as ! sample(poolSize = 31, avgProcessTime = Some(90.milliseconds))
+      as ! QueryStatus()
+      val status = expectMsgType[AutothrottleStatus]
+
+      status.performanceLog(30).processTime should contain(25.milliseconds)
+      status.performanceLog(31).processTime should contain(60.milliseconds)
     }
 
     "update poolsize" in new AutothrottleScope {
@@ -127,8 +143,48 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       scaleCmd.numOfWorkers should be < 45
     }
 
-    "ignore further away sample data when optmizing" in new AutothrottleScope {
-      val subject = autothrottlerRef(alwaysOptimizeSettings)
+    "optimize towards better latency when throughput plateau" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(22), Some(70.milliseconds)),
+        22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
+        24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
+      )
+      val result = Autothrottler.optimize(22, logs, AutothrottleSettings(weightOfLatency = 0.3))
+      result shouldBe <(22)
+      result shouldBe >=(20)
+    }
+
+    "optimize towards a more distant one at larger pool size" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(30)),
+        21 → PerformanceLogEntry(Speed(22)),
+        22 → PerformanceLogEntry(Speed(21)),
+        23 → PerformanceLogEntry(Speed(25)),
+        24 → PerformanceLogEntry(Speed(23)),
+        25 → PerformanceLogEntry(Speed(23)),
+        26 → PerformanceLogEntry(Speed(26))
+      )
+      val result1 = Autothrottler.optimize(24, logs, AutothrottleSettings(optimizationMinRange = 2, optimizationRangeRatio = 0.1))
+      result1 shouldBe <=(26) //with limited sight, it only sees the nearby optimal pool size
+      result1 shouldBe >(24)
+      val result2 = Autothrottler.optimize(24, logs, AutothrottleSettings(optimizationMinRange = 2, optimizationRangeRatio = 0.3))
+      result2 shouldBe <(24) //by looking further, it should see the further optimal pool size
+      result2 shouldBe >=(20)
+    }
+
+    "ignore latency when weight is set to low" in {
+      val logs = Map(
+        20 → PerformanceLogEntry(Speed(22), Some(70.milliseconds)),
+        22 → PerformanceLogEntry(Speed(22), Some(100.milliseconds)),
+        24 → PerformanceLogEntry(Speed(23), Some(110.milliseconds))
+      )
+      val result = Autothrottler.optimize(22, logs, AutothrottleSettings(weightOfLatency = 0.1))
+      result shouldBe >(22)
+      result shouldBe <=(25)
+    }
+
+    "ignore further away sample data when optimizing" in new AutothrottleScope {
+      val subject = autothrottlerRef(alwaysOptimizeSettings.copy(optimizationMinRange = 4, optimizationRangeRatio = 0.1))
       mockBusyHistory(
         subject,
         (10, 1999), //should be ignored
@@ -147,8 +203,8 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val scaleCmd = tProcessor.expectMsgType[ScaleTo]
 
       scaleCmd.reason.value shouldBe "optimizing"
-      scaleCmd.numOfWorkers should be > 35
-      scaleCmd.numOfWorkers should be < 44
+      scaleCmd.numOfWorkers should be <= 41
+      scaleCmd.numOfWorkers should be > 37
     }
 
     "downsize if hasn't maxed out for more than relevant period of hours" in new AutothrottleScope {
@@ -203,7 +259,7 @@ class AutothrottleScope(implicit system: ActorSystem)
     explorationRatio = 0.5,
     downsizeRatio = 0.8,
     downsizeAfterUnderUtilization = 72.hours,
-    numOfAdjacentSizesToConsiderDuringOptimization = 6
+    optimizationMinRange = 6
   )
 
   val alwaysOptimizeSettings = defaultSettings.copy(explorationRatio = 0)
@@ -229,7 +285,8 @@ class AutothrottleScope(implicit system: ActorSystem)
           start = distance.seconds.ago,
           end = (distance - 1).seconds.ago,
           poolSize = size,
-          queueLength = QueueLength(14)
+          queueLength = QueueLength(14),
+          None
         )
     }
 

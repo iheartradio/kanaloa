@@ -40,10 +40,7 @@ trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
       }
 
       kanaloa.default-dispatcher {
-        dispatchHistory {
-          maxHistoryLength = 200ms
-          historySampleRate = 20ms
-        }
+
       }
     """
   ))
@@ -232,7 +229,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
         "test-pushing",
         backend,
         ConfigFactory.parseString(
-          """
+          s"""
           kanaloa.dispatchers.test-pushing {
             updateInterval = 100ms
             workerPool {
@@ -246,10 +243,12 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
             }
             autothrottle {
               chanceOfScalingDownWhenFull = 0.3
-              resizeInterval = 100ms
-              downsizeAfterUnderUtilization = 72h
-
+              resizeInterval = 200ms
+              weightOfLatency = 0.1
+              explorationRatio = 0.5
+              maxExploreStepSize = 1
             }
+            $metricsConfig
           }
         """
         )
@@ -260,7 +259,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
       val optimalSpeed = optimalSize.toDouble / processTime.toMillis
 
-      val sent = sendLoadsOfMessage(pd, duration = 5.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
+      val sent = sendLoadsOfMessage(pd, duration = 7.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
 
       val actualPoolSize = getPoolSize(pd.underlyingActor)
 
@@ -390,7 +389,7 @@ class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
 }
 
 object IntegrationTests {
-  val shutdownTimeout = 30.seconds
+  val shutdownTimeout = 60.seconds
 
   case class Reply(to: ActorRef, delay: Duration, scheduled: LocalDateTime = LocalDateTime.now)
 

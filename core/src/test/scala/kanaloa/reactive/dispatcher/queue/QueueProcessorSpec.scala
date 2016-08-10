@@ -13,13 +13,11 @@ import kanaloa.reactive.dispatcher.queue.QueueProcessor.{ScaleTo, Shutdown, Shut
 import kanaloa.reactive.dispatcher._
 import kanaloa.reactive.dispatcher.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
-import org.mockito.Mockito._
-import org.scalatest.mock.MockitoSugar
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
 
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends with MockitoSugar {
+class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
 
   type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
 
@@ -30,6 +28,11 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
     val qp = TestActorRef[QueueProcessor](QueueProcessor.default(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, None, testWorkerFactory)(SimpleResultChecker))
+
+    eventually {
+      qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize
+    }
+
     watch(qp)
     try {
       test(qp, queueProbe, metricsCollector, testBackend, testWorkerFactory)
@@ -53,8 +56,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
   "The QueueProcessor" should {
 
-    "create Workers on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      qp.underlyingActor.workerPool should have size 5
+    "create Workers on startup" in withQueueProcessor(ProcessingWorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       testBackend.timesInvoked shouldBe 5
     }
 
@@ -68,6 +70,30 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         qp.underlyingActor.workerPool should have size 10
         testBackend.timesInvoked shouldBe 10
       }
+    }
+
+    "does not scale workers when there is already workers creation in flight" in new Backends {
+      import system.dispatcher
+      val promise = Promise[ActorRef]
+      val backend = promiseBackend(promise)
+      val metricsCollectorProbe = TestProbe()
+      val qp = TestActorRef[QueueProcessor](QueueProcessor.default(
+        TestProbe().ref,
+        backend,
+        ProcessingWorkerPoolSettings(startingPoolSize = 1),
+        metricsCollectorProbe.ref
+      )(
+          SimpleResultChecker
+        ))
+
+      qp ! ScaleTo(10) //this should be ignored
+
+      promise.success(TestProbe().ref)
+
+      metricsCollectorProbe.expectMsg(PoolSize(0))
+      metricsCollectorProbe.expectMsg(PoolSize(1))
+      metricsCollectorProbe.expectNoMsg(30.milliseconds)
+
     }
 
     "scale workers down" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
