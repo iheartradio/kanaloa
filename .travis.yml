@@ -26,10 +26,10 @@ cache:
   - $HOME/.nvm
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test
+  - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test coverageReport
 
 after_success:
-  - sbt ++$TRAVIS_SCALA_VERSION coverageReport coverageAggregate codacyCoverage
+  - sbt ++$TRAVIS_SCALA_VERSION coverageAggregate coveralls
 
 before_cache:
   - du -h -d 1 $HOME/.ivy2/cache

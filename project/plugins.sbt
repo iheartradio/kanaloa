@@ -10,7 +10,7 @@ addSbtPlugin("com.github.gseitz" % "sbt-release" % "1.0.1")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.3.5")
 
-addSbtPlugin("com.codacy" % "sbt-codacy-coverage" % "1.3.4")
+addSbtPlugin("org.scoverage" % "sbt-coveralls" % "1.1.0")
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-multi-jvm" % "0.3.11")
 
