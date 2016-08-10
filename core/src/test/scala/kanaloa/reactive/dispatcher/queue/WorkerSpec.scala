@@ -5,7 +5,7 @@ import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.reactive.dispatcher.ApiProtocol.QueryStatus
 import kanaloa.reactive.dispatcher.queue.Queue.RequestWork
 import kanaloa.reactive.dispatcher.{ResultChecker, SpecWithActorSystem}
-import org.scalatest.OptionValues
+import org.scalatest.{ShouldMatchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 case class Result(value: Any)
@@ -66,6 +66,23 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
       queueProbe.send(worker, work) //send it work, to put it into the Working state
       routeeProbe.expectMsg(work.messageToDelegatee) //work should always get sent to a Routee from an Idle Worker
       test(worker, queueProbe, routeeProbe, work, metricCollectorProbe)
+    }
+  }
+}
+
+class WorkerFunctionSpec extends WordSpecLike with ShouldMatchers {
+  import Worker.descriptionOf
+  "descriptionOf" should {
+    "not truncate if it's below maxLength" in {
+      descriptionOf("this is a short message", 100) shouldBe "this is a short message"
+    }
+
+    "truncate at the first whitespace after maxLength" in {
+      descriptionOf("this is a short message", 12) shouldBe "this is a short..."
+    }
+
+    "truncate at maxLength if there is no whitespace within" in {
+      descriptionOf("thisisashortmessage", 4) shouldBe "this..."
     }
   }
 }

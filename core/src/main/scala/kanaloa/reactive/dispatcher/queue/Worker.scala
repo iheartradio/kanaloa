@@ -120,6 +120,10 @@ private[queue] class Worker(
       outstanding.fail(WorkFailed(s"due ${routee.path} is terminated"))
 
     case WorkSender.WorkResult(wId, x) if wId == outstanding.workId ⇒ {
+      def failedResultMatch(x: Any): Either[String, Any] = {
+        Left(s"Unmatched Result '${descriptionOf(x, outstanding.work.settings.lengthOfDisplayForMessage)}' from the backend service, update your ResultChecker if you want to prevent it from being treated as an error.")
+      }
+
       val result: Either[String, Any] = resultChecker.applyOrElse(x, failedResultMatch)
       result match {
         case Right(res) ⇒
@@ -142,10 +146,6 @@ private[queue] class Worker(
 
   }
 
-  def failedResultMatch(x: Any): Either[String, Any] = {
-    Left(s"Unmatched Result '${descriptionOf(x)}' from the backend service, update your ResultChecker if you want to prevent it from being treated as an error.")
-  }
-
   private def retryOrAbandon(outstanding: Outstanding, error: Any): Unit = {
     outstanding.cancel()
     if (outstanding.retried < outstanding.work.settings.retry) {
@@ -157,7 +157,7 @@ private[queue] class Worker(
         s"Processing of '${outstanding.workDescription}' failed $retryMessage"
       }
       log.warning(s"$message, work abandoned")
-      outstanding.fail(WorkFailed(message + s" due to ${descriptionOf(error)}"))
+      outstanding.fail(WorkFailed(message + s" due to ${descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage)}"))
       self ! WorkFinished
     }
   }
@@ -175,14 +175,6 @@ private[queue] class Worker(
   private def askMoreWork(): Unit = {
     maybeDelayedMsg(delayBeforeNextWork, RequestWork(self), queue)
     context become waitingForWork
-  }
-
-  protected def descriptionOf(any: Any, maxLength: Int = 100): String = {
-    val msgString = any.toString
-    if (msgString.length < maxLength)
-      msgString
-    else
-      msgString.take(msgString.lastIndexWhere(_.isWhitespace, maxLength)).trim + "..."
   }
 
   private class CircuitBreaker(settings: CircuitBreakerSettings) {
@@ -239,7 +231,7 @@ private[queue] class Worker(
       context.unwatch(workSender)
       workSender ! PoisonPill
     }
-    lazy val workDescription = descriptionOf(work.messageToDelegatee)
+    lazy val workDescription = descriptionOf(work.messageToDelegatee, work.settings.lengthOfDisplayForMessage)
 
     def reportResult(result: Any): Unit = work.replyTo.foreach(_ ! result)
 
@@ -266,6 +258,17 @@ private[queue] object Worker {
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None
   )(resultChecker: ResultChecker): Props = {
     Props(new Worker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker)).withDeploy(Deploy.local)
+  }
+
+  private[queue] def descriptionOf(any: Any, maxLength: Int): String = {
+    val msgString = any.toString
+    if (msgString.length < maxLength)
+      msgString
+    else {
+      val firstWhitespaceAfterMax = msgString.indexWhere(c ⇒ (c.isWhitespace || !c.isLetterOrDigit), maxLength)
+      val truncateAt = if (firstWhitespaceAfterMax < 0) maxLength else firstWhitespaceAfterMax
+      msgString.take(truncateAt).trim + "..."
+    }
   }
 }
 
