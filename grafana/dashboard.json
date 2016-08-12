@@ -212,11 +212,11 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueued.rate, '.*$namespace.(.*).queue.enqueued.rate', '\\1 (accepted)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.received.rate, '.*$namespace.(.*).work.received.rate', '\\1 (accepted)')",
               "textEditor": true
             },
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.enqueueRejected.rate, '.*$namespace.(.*).queue.enqueueRejected.rate', '\\1 (rejected)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.rejected.rate, '.*$namespace.(.*).work.rejected.rate', '\\1 (rejected)')",
               "textEditor": true
             }
           ],
@@ -415,7 +415,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.avgProcessTime.mean, '.*$namespace.(.*).queue.*','\\1')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.work.processTime.mean, '.*$namespace.(.*).queue.*','\\1')",
               "textEditor": true
             }
           ],
@@ -485,7 +485,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.queue.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": true
             }
           ],
