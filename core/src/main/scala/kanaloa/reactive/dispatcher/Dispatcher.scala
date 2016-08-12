@@ -90,8 +90,13 @@ object Dispatcher {
       .withFallback(referenceConfig)
   }
 
-  def defaultDispatcherConfig(config: Config = kanaloaConfig()): Config =
-    config.as[Config]("default-dispatcher")
+  def defaultDispatcherConfig(
+    config:            Config         = kanaloaConfig(),
+    defaultConfigName: Option[String] = None
+  ): Config = {
+    val rootDefaultCfg = config.as[Config]("default-dispatcher")
+    defaultConfigName.fold(rootDefaultCfg)(config.as[Config](_).withFallback(rootDefaultCfg))
+  }
 
   def defaultDispatcherSettings(config: Config = kanaloaConfig()): Dispatcher.Settings =
     toDispatcherSettings(defaultDispatcherConfig(config))
@@ -112,9 +117,9 @@ object Dispatcher {
       settings ← componentCfg.atPath("root").as[Option[SettingT]]("root") if enabled
     } yield settings
 
-  def readConfig(dispatcherName: String, rootConfig: Config)(implicit system: ActorSystem): (Settings, Option[Reporter]) = {
+  def readConfig(dispatcherName: String, rootConfig: Config, defaultConfigName: Option[String] = None)(implicit system: ActorSystem): (Settings, Option[Reporter]) = {
     val cfg = kanaloaConfig(rootConfig)
-    val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg))
+    val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg, defaultConfigName))
 
     val settings = toDispatcherSettings(dispatcherCfg)
 
@@ -203,7 +208,7 @@ object PullingDispatcher {
     sendResultsTo: Option[ActorRef] = None,
     rootConfig:    Config           = ConfigFactory.load()
   )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, Some("default-pulling-dispatcher"))
     //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
     val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings)
     val toBackend = implicitly[BackendAdaptor[T]]
