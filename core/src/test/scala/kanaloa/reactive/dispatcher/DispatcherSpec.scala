@@ -263,7 +263,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       reporter shouldBe empty
     }
 
-    "use specifi default settings" in {
+    "use a specific default settings" in {
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.empty, Some("default-pulling-dispatcher"))
       settings.workerPool.shutdownOnAllWorkerDeath shouldBe true
       settings.autothrottle shouldBe defined
