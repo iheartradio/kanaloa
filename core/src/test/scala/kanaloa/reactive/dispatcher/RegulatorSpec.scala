@@ -92,7 +92,7 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       regulator ! PartialUtilization(0)
 
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 333
+      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 0
       metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
       metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
     }
