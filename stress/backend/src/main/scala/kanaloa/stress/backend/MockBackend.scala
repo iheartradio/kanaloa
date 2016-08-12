@@ -4,17 +4,22 @@ import akka.actor.Props
 import akka.contrib.throttle.TimerBasedThrottler
 import akka.contrib.throttle.Throttler._
 import akka.actor._
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ Config, ConfigFactory }
 import scala.concurrent.duration._
 import scala.util.Random
 
 object MockBackend {
 
-  lazy val props = {
-    val cfg = ConfigFactory.load("backend.conf")
+  def props(maxThroughput: Option[Int], cfg: Config = ConfigFactory.load("backend.conf")) = {
+
+    val optimalConcurrency = cfg.getInt("optimal-concurrency")
+    maxThroughput.foreach { op =>
+      assert(op / 10d / optimalConcurrency >= 1, s"throughput $op too low to manager should be at least ${10 * optimalConcurrency}")
+
+    }
     Props(new BackendRouter(
-      cfg.getInt("optimal-concurrency"),
-      cfg.getInt("optimal-throughput"),
+      optimalConcurrency,
+      maxThroughput.getOrElse(cfg.getInt("optimal-throughput")),
       cfg.getInt("buffer-size"),
       Some(cfg.getDouble("overload-punish-factor"))
     ))
@@ -50,6 +55,9 @@ object MockBackend {
     }
 
     val receive: Receive = {
+      case Request("overflow") ⇒
+        log.warning("Overflow command received. Switching to unresponsive mode.")
+        context become bufferOverflow
       case Request(msg) ⇒
         requestsHandling += 1
 
@@ -58,8 +66,11 @@ object MockBackend {
           context become bufferOverflow
         }
 
-        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency)
+        // the overload punishment is caped at 0.5 (50% of the throughput)
+        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) Math.min(
+          0.5,
           overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
+        )
         else 0
 
         val index: Int = if (responders.length > 1)
@@ -81,6 +92,9 @@ object MockBackend {
     }
 
     val bufferOverflow: Receive = {
+      case Request("back") ⇒
+        log.info("Back command received. Switching back to normal mode.")
+        context become receive
       case _ => //just pretend to be dead
     }
   }

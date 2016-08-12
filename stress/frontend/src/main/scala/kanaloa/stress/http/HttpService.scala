@@ -13,10 +13,10 @@ import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.PushingDispatcher
+import kanaloa.reactive.dispatcher.{ ResultChecker, ClusterAwareBackend, PushingDispatcher }
 import scala.concurrent.duration._
 
-object StressHttpFrontend extends App {
+object HttpService extends App {
   val cfg = ConfigFactory.load("frontend.conf")
 
   implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
@@ -26,20 +26,29 @@ object StressHttpFrontend extends App {
 
   case class Failed(msg: String)
 
-  val localBackend = system.actorOf(MockBackend.props, name = "local-backend")
+  val localBackend = system.actorOf(MockBackend.props(None), name = "local-backend")
   val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
+
+  val resultChecker: ResultChecker = {
+    case r: MockBackend.Respond ⇒
+      Right(r)
+    case other ⇒
+      Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
+  }
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "with-local-backend",
       localBackend,
       cfg
-    ) {
-      case r: MockBackend.Respond ⇒
-        Right(r)
-      case other ⇒
-        Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
-    })
+    )(resultChecker), "local-dispatcher")
+
+  lazy val clusterDispatcher =
+    system.actorOf(PushingDispatcher.props(
+      name = "with-remote-backend",
+      ClusterAwareBackend("backend", "backend"),
+      cfg
+    )(resultChecker), "cluster-dispatcher")
 
   def testRoute(rootPath: String, destination: ActorRef) =
     get {
@@ -62,7 +71,8 @@ object StressHttpFrontend extends App {
 
   val route = testRoute("kanaloa", dispatcher) ~
     testRoute("straight", localBackend) ~
-    testRoute("round_robin", remoteBackendRouter)
+    testRoute("round_robin", remoteBackendRouter) ~
+    testRoute("cluster_kanaloa", clusterDispatcher)
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
 

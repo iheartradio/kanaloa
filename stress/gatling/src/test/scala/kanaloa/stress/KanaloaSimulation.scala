@@ -9,41 +9,70 @@ import scala.language.postfixOps
 /**
  * Simulation against a local actor with kanaloa in front of it.
  */
-class KanaloaLocalSimulation extends OverflowSimulation("kanaloa")
+class KanaloaLocalSimulation extends StressSimulation(SimulationSettings(
+  duration = 5.minutes,
+  rampUp = 1.minutes,
+  path = "kanaloa",
+  name = "Overflow a local service with kanaloa"
+))
 
 /**
  * Simulation against plain backend without kanaloa
  */
-class StraightSimulation extends OverflowSimulation("straight")
+class StraightSimulation extends StressSimulation(SimulationSettings(
+  duration = 5.minutes,
+  rampUp = 1.minutes,
+  path = "straight",
+  name = "Overflow a local service without kanaloa"
+))
 
 /**
  * Simulation against a round robin cluster router without kanaloa
  */
-class RoundRobinSimulation extends OverflowSimulation("round_robin")
+class RoundRobinSimulation extends StressSimulation(
+  SimulationSettings(
+    duration = 5.minutes,
+    rampUp = 1.minutes,
+    path = "round_robin",
+    name = "Overflow a cluster with round robin router"
+  )
+)
 
-abstract class OverflowSimulation(path: String) extends Simulation {
+/**
+ * Simulation against a kanaloa enabled cluster backend
+ */
+class KanaloaClusterSimulation extends StressSimulation(
+  SimulationSettings(
+    duration = 5.minutes,
+    rampUp = 1.minutes,
+    path = "cluster_kanaloa",
+    name = "Overflow a cluster with kanaloa in front"
+  )
+)
+
+abstract class StressSimulation(settings: SimulationSettings) extends Simulation {
+  import settings._
 
   val Url = s"http://localhost:8081/$path/test-1"
 
   val httpConf = http.disableCaching
 
-  val scn = scenario("stress-test").forever {
+  val scn = scenario(name).forever {
     group("kanaloa") {
       exec(
         http("flood")
           .get(Url)
           .check(status.is(200))
+          .check(responseTimeInMillis lessThan (responseTimeout.toMillis.toInt))
+
       )
     }
   }
 
-  val duration = 30.minutes
-  val rampUp = 1.minutes
-
   setUp(scn.inject(
-    rampUsers(2000) over (5 minutes) //mainly by throttle below
+    rampUsers(users) over (rampUp) //mainly by throttle below
   )).throttle(
-    reachRps(200) in rampUp,
+    reachRps(capRps) in rampUp,
     holdFor(duration)
   )
     .protocols(httpConf)
@@ -51,3 +80,13 @@ abstract class OverflowSimulation(path: String) extends Simulation {
     .assertions(global.responseTime.percentile3.lessThan(5000)) //95% less than 5s
 
 }
+
+case class SimulationSettings(
+  duration: FiniteDuration,
+  rampUp: FiniteDuration,
+  path: String,
+  name: String,
+  capRps: Int = 200,
+  users: Int = 1000,
+  responseTimeout: FiniteDuration = 6.seconds
+)
