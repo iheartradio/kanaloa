@@ -69,7 +69,7 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
           droppingRate = DroppingRate(0),
           burstDurationLeft = settings.durationOfBurstAllowed,
           recordedAt = Time.now,
-          delay = estimateDelay(QueueLength(1), status.averageSpeed).getOrElse(Duration.Zero)
+          delay = Duration.Zero
         )
       ) //reset to baseline when seeing a PartialUtilization
     case _: Report ⇒ //ignore other performance report
