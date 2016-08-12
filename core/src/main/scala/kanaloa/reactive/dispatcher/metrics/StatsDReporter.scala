@@ -43,16 +43,16 @@ class StatsDReporter(
   val failureSampleRate: Double = 1.0
 
   def report(metric: Metric): Unit = metric match {
-    case WorkReceived ⇒ increment("queue.enqueued")
-    case WorkRejected ⇒ increment("queue.enqueueRejected", Math.min(1d, eventSampleRate * 3d))
+    case WorkReceived ⇒ increment("work.received")
+    case WorkRejected ⇒ increment("work.rejected", Math.min(1d, eventSampleRate * 3d))
 
     case WorkCompleted(processTime) ⇒
       increment("work.completed")
-      statsd.timing("queue.avgProcessTime", processTime.toMillis.toInt, eventSampleRate)
+      statsd.timing("work.processTime", processTime.toMillis.toInt, eventSampleRate)
 
     case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
     case WorkTimedOut         ⇒ increment("work.timedOut", failureSampleRate)
-    case CircuitBreakerOpened ⇒ increment("queue.circuitBreakerOpened", failureSampleRate)
+    case CircuitBreakerOpened ⇒ increment("worker.circuitBreakerOpened", failureSampleRate)
 
     case PoolSize(size) ⇒
       gauge("pool.size", size)
