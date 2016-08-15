@@ -1,6 +1,6 @@
 {
-  "title": "Reactive Dispatcher",
-  "originalTitle": "Reactive Dispatcher",
+  "title": "Kanaloa Dispatcher",
+  "originalTitle": "Kanaloa Dispatcher",
   "tags": [],
   "style": "dark",
   "timezone": "browser",
@@ -23,25 +23,20 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
             "threshold2Color": "rgba(234, 112, 112, 0.22)"
           },
           "id": 5,
-          "leftYAxisLabel": "per second",
           "legend": {
+            "alignAsTable": false,
             "avg": false,
             "current": true,
             "hideEmpty": true,
             "max": false,
             "min": false,
+            "rightSide": false,
             "show": true,
             "total": false,
             "values": true
@@ -60,6 +55,7 @@
           "steppedLine": false,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
               "textEditor": true
             }
@@ -68,15 +64,30 @@
           "timeShift": null,
           "title": "Throughput",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": "per second",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
@@ -89,25 +100,20 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
             "threshold2Color": "rgba(234, 112, 112, 0.22)"
           },
           "id": 6,
-          "leftYAxisLabel": "per second",
           "legend": {
+            "alignAsTable": false,
             "avg": false,
             "current": true,
             "hideEmpty": true,
             "max": false,
             "min": false,
+            "rightSide": false,
             "show": true,
             "total": false,
             "values": true
@@ -120,17 +126,27 @@
           "pointradius": 5,
           "points": false,
           "renderer": "flot",
-          "rightYAxisLabel": "",
-          "seriesOverrides": [],
+          "seriesOverrides": [
+            {
+              "alias": "/error/",
+              "color": "#C15C17"
+            },
+            {
+              "alias": "/timeout/",
+              "color": "#962D82"
+            }
+          ],
           "span": 6,
           "stack": false,
           "steppedLine": false,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
               "textEditor": true
             },
             {
+              "refId": "B",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
               "textEditor": true
             }
@@ -139,15 +155,31 @@
           "timeShift": null,
           "title": "Failures",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": "per second",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": "",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -174,25 +206,20 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
             "threshold2Color": "rgba(234, 112, 112, 0.22)"
           },
           "id": 2,
-          "leftYAxisLabel": "per second",
           "legend": {
+            "alignAsTable": false,
             "avg": false,
             "current": true,
             "hideEmpty": true,
             "max": false,
             "min": false,
+            "rightSide": false,
             "show": true,
             "total": false,
             "values": true
@@ -200,22 +227,33 @@
           "lines": true,
           "linewidth": 2,
           "links": [],
-          "nullPointMode": "null",
+          "nullPointMode": "connected",
           "percentage": false,
           "pointradius": 5,
           "points": false,
           "renderer": "flot",
-          "rightYAxisLabel": "",
-          "seriesOverrides": [],
+          "seriesOverrides": [
+            {
+              "alias": "/accepted/",
+              "color": "#DEDAF7"
+            },
+            {
+              "alias": "/rejected/",
+              "color": "#C15C17",
+              "linewidth": 5
+            }
+          ],
           "span": 6,
           "stack": false,
           "steppedLine": false,
           "targets": [
             {
+             "refId": "A",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.received.rate, '.*$namespace.(.*).work.received.rate', '\\1 (accepted)')",
               "textEditor": true
             },
             {
+              "refId": "B",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.rejected.rate, '.*$namespace.(.*).work.rejected.rate', '\\1 (rejected)')",
               "textEditor": true
             }
@@ -224,32 +262,42 @@
           "timeShift": null,
           "title": "Inbound Requests",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": "per second",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": "",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
-          "bars": false,
+          "bars": true,
           "datasource": null,
           "decimals": 0,
           "editable": true,
           "error": false,
-          "fill": 1,
+          "fill": 2,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -266,10 +314,10 @@
             "total": false,
             "values": true
           },
-          "lines": true,
-          "linewidth": 2,
+          "lines": false,
+          "linewidth": 1,
           "links": [],
-          "nullPointMode": "null",
+          "nullPointMode": "null as zero",
           "percentage": false,
           "pointradius": 5,
           "points": false,
@@ -281,6 +329,7 @@
           "targets": [
             {
               "hide": false,
+              "refId": "A",
               "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.length, '.*$namespace.(.*).queue.length', '\\1')",
               "textEditor": true
             }
@@ -289,15 +338,29 @@
           "timeShift": null,
           "title": "Queue Length",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -316,90 +379,23 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
-            "threshold1": null,
+            "threshold1": 256,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
             "threshold2Color": "rgba(234, 112, 112, 0.22)"
           },
           "id": 4,
           "legend": {
+            "alignAsTable": false,
             "avg": false,
             "current": true,
             "hideEmpty": false,
             "max": false,
             "min": false,
+            "rightSide": false,
             "show": true,
             "total": false,
             "values": true
-          },
-          "lines": true,
-          "linewidth": 2,
-          "links": [],
-          "nullPointMode": "null as zero",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "span": 6,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "hide": false,
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', '\\1')",
-              "textEditor": false
-            }
-          ],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Expected Wait time",
-          "tooltip": {
-            "shared": true,
-            "value_type": "cumulative"
-          },
-          "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "ms",
-            "short"
-          ]
-        },
-        {
-          "aliasColors": {},
-          "bars": false,
-          "datasource": null,
-          "editable": true,
-          "error": false,
-          "fill": 1,
-          "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
-            "threshold1": null,
-            "threshold1Color": "rgba(216, 200, 27, 0.27)",
-            "threshold2": null,
-            "threshold2Color": "rgba(234, 112, 112, 0.22)"
-          },
-          "id": 7,
-          "legend": {
-            "avg": false,
-            "current": false,
-            "max": false,
-            "min": false,
-            "show": true,
-            "total": false,
-            "values": false
           },
           "lines": true,
           "linewidth": 2,
@@ -415,6 +411,81 @@
           "steppedLine": false,
           "targets": [
             {
+              "hide": false,
+              "refId": "A",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', '\\1')",
+              "textEditor": false
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Expected Wait time",
+          "tooltip": {
+            "msResolution": false,
+            "shared": true,
+            "value_type": "cumulative"
+          },
+          "type": "graph",
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "ms",
+              "logBase": 2,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "datasource": null,
+          "editable": true,
+          "error": false,
+          "fill": 1,
+          "grid": {
+            "threshold1": null,
+            "threshold1Color": "rgba(216, 200, 27, 0.27)",
+            "threshold2": null,
+            "threshold2Color": "rgba(234, 112, 112, 0.22)"
+          },
+          "id": 7,
+          "legend": {
+            "alignAsTable": false,
+            "avg": false,
+            "current": true,
+            "max": false,
+            "min": false,
+            "rightSide": false,
+            "show": true,
+            "total": false,
+            "values": true
+          },
+          "lines": true,
+          "linewidth": 2,
+          "links": [],
+          "nullPointMode": "connected",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 6,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "refId": "A",
               "target": "aliasSub(stats.timers.$namespace.$dispatcherName.work.processTime.mean, '.*$namespace.(.*).queue.*','\\1')",
               "textEditor": true
             }
@@ -423,15 +494,29 @@
           "timeShift": null,
           "title": "Process Time",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "ms",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "ms",
+              "logBase": 2,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -450,12 +535,6 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -464,12 +543,12 @@
           "id": 9,
           "legend": {
             "avg": false,
-            "current": false,
+            "current": true,
             "max": false,
             "min": false,
             "show": true,
             "total": false,
-            "values": false
+            "values": true
           },
           "lines": true,
           "linewidth": 2,
@@ -482,9 +561,10 @@
           "seriesOverrides": [],
           "span": 6,
           "stack": false,
-          "steppedLine": false,
+          "steppedLine": true,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": true
             }
@@ -493,15 +573,29 @@
           "timeShift": null,
           "title": "Circuit Breaker Opens",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
@@ -516,12 +610,6 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -553,10 +641,12 @@
           "steppedLine": true,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
               "textEditor": true
             },
             {
+              "refId": "B",
               "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
               "textEditor": true
             }
@@ -565,15 +655,29 @@
           "timeShift": null,
           "title": "Pool size",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -592,12 +696,6 @@
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -606,12 +704,12 @@
           "id": 12,
           "legend": {
             "avg": false,
-            "current": false,
+            "current": true,
             "max": false,
             "min": false,
             "show": true,
             "total": false,
-            "values": false
+            "values": true
           },
           "lines": true,
           "linewidth": 2,
@@ -627,6 +725,7 @@
           "steppedLine": false,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.dropRate, '.*$namespace.(.*).queue.dropRate', '\\1')",
               "textEditor": true
             }
@@ -635,15 +734,29 @@
           "timeShift": null,
           "title": "Back pressure drop rate",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
@@ -652,31 +765,26 @@
           "datasource": null,
           "editable": true,
           "error": false,
-          "fill": 1,
+          "fill": 3,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
-            "threshold1": null,
+            "threshold1": 1,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
-            "threshold2Color": "rgba(234, 112, 112, 0.22)"
+            "threshold2Color": "rgba(234, 112, 112, 0.22)",
+            "thresholdLine": true
           },
           "id": 13,
           "legend": {
             "avg": false,
-            "current": false,
+            "current": true,
             "max": false,
             "min": false,
             "show": true,
             "total": false,
-            "values": false
+            "values": true
           },
           "lines": true,
-          "linewidth": 2,
+          "linewidth": 3,
           "links": [],
           "nullPointMode": "connected",
           "percentage": false,
@@ -686,9 +794,10 @@
           "seriesOverrides": [],
           "span": 6,
           "stack": false,
-          "steppedLine": false,
+          "steppedLine": true,
           "targets": [
             {
+              "refId": "A",
               "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.burstMode, '.*$namespace.(.*).queue.burstMode', '\\1')",
               "textEditor": true
             }
@@ -697,67 +806,81 @@
           "timeShift": null,
           "title": "Queue in burst mode",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
             "value_type": "cumulative"
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "bits",
+              "label": "",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": false
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
       "title": "Row 5"
     }
   ],
-  "nav": [
-    {
-      "collapse": false,
-      "enable": true,
-      "notice": false,
-      "now": true,
-      "refresh_intervals": [
-        "5s",
-        "10s",
-        "30s",
-        "1m",
-        "5m",
-        "15m",
-        "30m",
-        "1h",
-        "2h",
-        "1d"
-      ],
-      "status": "Stable",
-      "time_options": [
-        "5m",
-        "15m",
-        "1h",
-        "6h",
-        "12h",
-        "24h",
-        "2d",
-        "7d",
-        "30d"
-      ],
-      "type": "timepicker"
-    }
-  ],
   "time": {
     "from": "now-1h",
     "to": "now"
+  },
+  "timepicker": {
+    "collapse": false,
+    "enable": true,
+    "notice": false,
+    "now": true,
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ],
+    "status": "Stable",
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
+    ],
+    "type": "timepicker"
   },
   "templating": {
     "list": [
       {
         "allFormat": "glob",
         "current": {
-          "text": "reactiveDispatcher",
-          "value": "reactiveDispatcher"
+          "text": "kanaloa",
+          "value": "kanaloa"
         },
         "datasource": null,
+        "hide": 0,
         "includeAll": false,
         "label": "Namespace",
         "multi": false,
@@ -766,8 +889,8 @@
         "options": [
           {
             "selected": true,
-            "text": "reactiveDispatcher",
-            "value": "reactiveDispatcher"
+            "text": "kanaloa",
+            "value": "kanaloa"
           },
           {
             "selected": false,
@@ -776,6 +899,7 @@
           }
         ],
         "query": "stats.timers.*",
+        "refresh": 0,
         "refresh_on_load": false,
         "regex": "",
         "type": "query"
@@ -784,9 +908,10 @@
         "allFormat": "wildcard",
         "current": {
           "text": "All",
-          "value": "*"
+          "value": "$__all"
         },
         "datasource": null,
+        "hide": 0,
         "includeAll": true,
         "label": "Dispatcher",
         "multi": false,
@@ -795,12 +920,12 @@
         "options": [
           {
             "text": "All",
-            "value": "*",
+            "value": "$__all",
             "selected": true
           }
         ],
         "query": "stats.timers.$namespace.*",
-        "refresh": true,
+        "refresh": 1,
         "refresh_on_load": false,
         "regex": "",
         "type": "query",
@@ -812,7 +937,7 @@
     "list": []
   },
   "refresh": "5s",
-  "schemaVersion": 6,
-  "version": 15,
+  "schemaVersion": 12,
+  "version": 0,
   "links": []
 }
