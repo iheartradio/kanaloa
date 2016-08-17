@@ -1,4 +1,4 @@
-package kanaloa.stress.http
+package kanaloa.stress.frontend
 
 import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.http.scaladsl.Http
@@ -8,6 +8,7 @@ import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
+import kanaloa.stress.backend.BackendApp._
 import kanaloa.stress.backend.MockBackend
 import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
@@ -16,8 +17,10 @@ import com.typesafe.config.ConfigFactory
 import kanaloa.reactive.dispatcher.{ ResultChecker, ClusterAwareBackend, PushingDispatcher }
 import scala.concurrent.duration._
 
-object HttpService extends App {
-  val cfg = ConfigFactory.load("frontend.conf")
+class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
+
+  val baseCfg = ConfigFactory.load("frontend.conf")
+  val cfg = if (inCluster) baseCfg else baseCfg.withoutPath("akka.actor.provider").withoutPath("akka.cluster").withoutPath("akka.remote")
 
   implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
   implicit val materializer = ActorMaterializer()
@@ -26,9 +29,14 @@ object HttpService extends App {
 
   case class Failed(msg: String)
 
-  val localBackend = system.actorOf(MockBackend.props(), name = "local-backend")
-  val localUnThrottledBackend = system.actorOf(MockBackend.props(false), name = "local-direct-backend")
-  val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
+  lazy val localBackend = system.actorOf(MockBackend.props(
+    maxThroughput = maxThroughputRPS
+  ), name = "local-backend")
+
+  lazy val localUnThrottledBackend = system.actorOf(MockBackend.props(false), name = "local-direct-backend")
+
+  lazy val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
+
   val resultChecker: ResultChecker = {
     case r: MockBackend.Respond ⇒
       Right(r)
@@ -43,7 +51,7 @@ object HttpService extends App {
       cfg
     )(resultChecker), "local-dispatcher")
 
-  val localUnThrottledBackendWithKanaloa = system.actorOf(PushingDispatcher.props(
+  lazy val localUnThrottledBackendWithKanaloa = system.actorOf(PushingDispatcher.props(
     name = "with-local-unthrottled-backend",
     localUnThrottledBackend,
     ConfigFactory.parseString(
@@ -84,19 +92,33 @@ object HttpService extends App {
       }
     }
 
-  val route = testRoute("kanaloa", dispatcher) ~
+  val localRoutes = testRoute("kanaloa", dispatcher) ~
     testRoute("straight", localBackend) ~
-    testRoute("round_robin", remoteBackendRouter) ~
     testRoute("straight_unthrottled", localUnThrottledBackend) ~
-    testRoute("kanaloa_unthrottled", localUnThrottledBackendWithKanaloa) ~
-    testRoute("cluster_kanaloa", clusterDispatcher)
+    testRoute("kanaloa_unthrottled", localUnThrottledBackendWithKanaloa)
 
-  val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
+  lazy val clusterEnabledRoutes =
+    testRoute("round_robin", remoteBackendRouter) ~
+      testRoute("cluster_kanaloa", clusterDispatcher)
 
+  val routes = if (inCluster) clusterEnabledRoutes ~ localRoutes else localRoutes
+  val bindingFuture = Http().bindAndHandle(routes, "localhost", 8081)
+
+  def close(): Unit = {
+    bindingFuture.flatMap(_.unbind()).onComplete { _ ⇒ system.terminate() }
+  }
+}
+
+object HttpService extends App {
+  val inCluster = args.headOption.map(_.toBoolean).getOrElse(true)
+  println("Starting http service " + (if (inCluster) " in cluster" else ""))
+
+  val service = new HttpService(inCluster, None)
   println(s"Server online at http://localhost:8081/\nPress RETURN to stop...")
 
   readLine()
 
-  bindingFuture.flatMap(_.unbind()).onComplete { _ ⇒ system.terminate() }
+  service.close()
+
 }
 

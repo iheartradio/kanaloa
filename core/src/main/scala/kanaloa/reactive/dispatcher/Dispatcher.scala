@@ -49,8 +49,8 @@ trait Dispatcher extends Actor with ActorLogging {
 
   context watch processor
 
-  private val autothrottler = settings.autothrottle.foreach { s ⇒
-    context.actorOf(Autothrottler.default(processor, s, metricsCollector), "auto-scaler")
+  private val _ = settings.autothrottle.foreach { s ⇒
+    context.actorOf(Autothrottler.default(processor, s, metricsCollector), "autothrottler")
   }
 
   def receive: Receive = ({

@@ -27,8 +27,8 @@ object Dependencies {
   )
 
   val gatling = Seq(
-    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.2" % Test,
-    "io.gatling"            % "gatling-test-framework"    % "2.2.2" % Test
+    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.3-SNAPSHOT" % Test,
+    "io.gatling"            % "gatling-test-framework"    % "2.2.3-SNAPSHOT" % Test
   )
 
   val (test, integration) = {
@@ -53,7 +53,7 @@ object Dependencies {
       Resolver.typesafeRepo("releases"),
       Resolver.jcenterRepo,
       Resolver.bintrayRepo("scalaz", "releases"),
-      "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/"
+      Resolver.sonatypeRepo("releases")
     ),
 
     libraryDependencies ++= Dependencies.akka ++

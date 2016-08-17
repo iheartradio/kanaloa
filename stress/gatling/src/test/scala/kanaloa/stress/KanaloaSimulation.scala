@@ -2,6 +2,7 @@ package kanaloa.stress
 
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
+import kanaloa.stress.frontend.HttpService
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -11,6 +12,16 @@ class KanaloaLocalSimulation extends StressSimulation(SimulationSettings(
   rampUp = 1.minutes,
   path = "kanaloa",
   name = "Overflow a local service with kanaloa"
+))
+
+class AutomatedKanaloaSimulation extends AutomatedSimulation(SimulationSettings.automaticOverflow(
+  path = "kanaloa",
+  name = "Overflow a local service with kanaloa"
+))
+
+class AutomatedStraightSimulation extends AutomatedSimulation(SimulationSettings.automaticOverflow(
+  path = "straight",
+  name = "Overflow a local service without kanaloa"
 ))
 
 class StraightSimulation extends StressSimulation(SimulationSettings(
@@ -79,8 +90,18 @@ abstract class StressSimulation(settings: SimulationSettings) extends Simulation
   )
     .protocols(httpConf)
     .maxDuration(duration + rampUp + 1.minute)
-    .assertions(global.responseTime.percentile3.lessThan(ninetyFivePctResponseTimeAssertion.toMillis.toInt))
+    .assertions(
+      global.responseTime.percentile3.lessThan(ninetyFivePctResponseTimeAssertion.toMillis.toInt),
+      global.responseTime.percentile2.lessThan(seventyFivePctResponseTimeAssertion.toMillis.toInt),
+      global.requestsPerSec.greaterThan((maxBackendThroughputRPS * 0.75).toInt)
+    )
 
+}
+
+abstract class AutomatedSimulation(settings: SimulationSettings) extends StressSimulation(settings) {
+  val service = new HttpService(false, maxThroughputRPS = Some(settings.maxBackendThroughputRPS))
+
+  after(service.close())
 }
 
 case class SimulationSettings(
@@ -90,8 +111,10 @@ case class SimulationSettings(
   name: String,
   capRps: Int = 200,
   users: Int = 1000,
-  responseTimeout: FiniteDuration = 6.seconds,
-  ninetyFivePctResponseTimeAssertion: FiniteDuration = 5.seconds
+  responseTimeout: FiniteDuration = 15.seconds,
+  ninetyFivePctResponseTimeAssertion: FiniteDuration = 4.seconds,
+  seventyFivePctResponseTimeAssertion: FiniteDuration = 2.seconds,
+  maxBackendThroughputRPS: Int = 200
 )
 
 object SimulationSettings {
@@ -112,4 +135,15 @@ object SimulationSettings {
     name = name,
     path = path
   )
+
+  def automaticOverflow(name: String, path: String) = new SimulationSettings(
+    duration = 5.minutes,
+    rampUp = 1.minutes,
+    capRps = 300,
+    users = 3000,
+    maxBackendThroughputRPS = 200,
+    name = name,
+    path = path
+  )
+
 }
