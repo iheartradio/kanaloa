@@ -79,7 +79,7 @@ abstract class StressSimulation(settings: SimulationSettings) extends Simulation
   )
     .protocols(httpConf)
     .maxDuration(duration + rampUp + 1.minute)
-    .assertions(global.responseTime.percentile3.lessThan(5000)) //95% less than 5s
+    .assertions(global.responseTime.percentile3.lessThan(ninetyFivePctResponseTimeAssertion.toMillis.toInt))
 
 }
 
@@ -90,7 +90,8 @@ case class SimulationSettings(
   name: String,
   capRps: Int = 200,
   users: Int = 1000,
-  responseTimeout: FiniteDuration = 6.seconds
+  responseTimeout: FiniteDuration = 6.seconds,
+  ninetyFivePctResponseTimeAssertion: FiniteDuration = 5.seconds
 )
 
 object SimulationSettings {
