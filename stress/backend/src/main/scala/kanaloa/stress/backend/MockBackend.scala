@@ -10,7 +10,12 @@ import scala.util.Random
 
 object MockBackend {
 
-  def props(maxThroughput: Option[Int], cfg: Config = ConfigFactory.load("backend.conf")) = {
+  def props(
+    throttle: Boolean = true,
+    maxThroughput: Option[Int] = None,
+    minLatency: Option[FiniteDuration] = None,
+    cfg: Config = ConfigFactory.load("backend.conf")
+  ) = {
 
     val optimalConcurrency = cfg.getInt("optimal-concurrency")
     maxThroughput.foreach { op =>
@@ -18,9 +23,11 @@ object MockBackend {
 
     }
     Props(new BackendRouter(
+      throttle,
       optimalConcurrency,
       maxThroughput.getOrElse(cfg.getInt("optimal-throughput")),
       cfg.getInt("buffer-size"),
+      minLatency,
       Some(cfg.getDouble("overload-punish-factor"))
     ))
   }
@@ -31,9 +38,11 @@ object MockBackend {
    * @param optimalThroughput maximum number of requests can handle per second
    */
   class BackendRouter(
+      throttle: Boolean,
       optimalConcurrency: Int,
       optimalThroughput: Int,
       bufferSize: Int = 10000,
+      minLatency: Option[FiniteDuration] = None,
       overloadPunishmentFactor: Option[Double] = None
   ) extends Actor with ActorLogging {
 
@@ -41,7 +50,11 @@ object MockBackend {
 
     val rand = new Random(System.currentTimeMillis())
     val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
-    val baseLatency = perResponderRate.duration / perResponderRate.numberOfCalls
+
+    val baseLatency = {
+      val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
+      if (minLatency.fold(false)(_ > latencyFromThroughput)) minLatency.get else latencyFromThroughput
+    }
 
     val responders: Array[ActorRef] = {
 
@@ -54,16 +67,18 @@ object MockBackend {
       }
     }
 
-    val receive: Receive = {
+    def receive = if (throttle) throttled else direct
+
+    val throttled: Receive = {
       case Request("overflow") ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
-        context become bufferOverflow
+        context become overflow
       case Request(msg) ⇒
         requestsHandling += 1
 
         if (requestsHandling > bufferSize) {
           log.error("!!!! Buffer overflow at, declare dead" + bufferSize)
-          context become bufferOverflow
+          context become overflow
         }
 
         // the overload punishment is caped at 0.5 (50% of the throughput)
@@ -91,11 +106,18 @@ object MockBackend {
       case other ⇒ log.error("unknown msg received " + other)
     }
 
-    val bufferOverflow: Receive = {
-      case Request("back") ⇒
+    val overflow: Receive = {
+      case Request("throttled") ⇒
         log.info("Back command received. Switching back to normal mode.")
-        context become receive
+        context become throttled
       case _ => //just pretend to be dead
+    }
+
+    val direct: Receive = {
+      case Request("overflow") ⇒
+        log.warning("Overflow command received. Switching to unresponsive mode.")
+        context become overflow
+      case Request(m) => sender ! Respond(m)
     }
   }
 

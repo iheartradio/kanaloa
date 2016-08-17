@@ -26,9 +26,9 @@ object HttpService extends App {
 
   case class Failed(msg: String)
 
-  val localBackend = system.actorOf(MockBackend.props(None), name = "local-backend")
+  val localBackend = system.actorOf(MockBackend.props(), name = "local-backend")
+  val localUnThrottledBackend = system.actorOf(MockBackend.props(false), name = "local-direct-backend")
   val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
-
   val resultChecker: ResultChecker = {
     case r: MockBackend.Respond ⇒
       Right(r)
@@ -42,6 +42,21 @@ object HttpService extends App {
       localBackend,
       cfg
     )(resultChecker), "local-dispatcher")
+
+  val localUnThrottledBackendWithKanaloa = system.actorOf(PushingDispatcher.props(
+    name = "with-local-unthrottled-backend",
+    localUnThrottledBackend,
+    ConfigFactory.parseString(
+      """
+        |kanaloa.default-dispatcher {
+        |  workerPool {
+        |    startingPoolSize = 1000
+        |    maxPoolSize = 3000
+        |  }
+        |}
+      """.stripMargin
+    ).withFallback(cfg)
+  )(resultChecker), "local-unthrottled-dispatcher")
 
   lazy val clusterDispatcher =
     system.actorOf(PushingDispatcher.props(
@@ -72,6 +87,8 @@ object HttpService extends App {
   val route = testRoute("kanaloa", dispatcher) ~
     testRoute("straight", localBackend) ~
     testRoute("round_robin", remoteBackendRouter) ~
+    testRoute("straight_unthrottled", localUnThrottledBackend) ~
+    testRoute("kanaloa_unthrottled", localUnThrottledBackendWithKanaloa) ~
     testRoute("cluster_kanaloa", clusterDispatcher)
 
   val bindingFuture = Http().bindAndHandle(route, "localhost", 8081)
