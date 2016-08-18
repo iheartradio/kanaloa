@@ -17,10 +17,15 @@ Right now we are at 0.4.0, the plan is the stablize the API from 0.5.0 going on.
 When you hit a service that has a max capacity of 100 request per second with 200 requests per second, you get:
 
 **Without Kanaloa**
+Latency increases until few requests get handled within accetable time
 ![Without](https://cloud.githubusercontent.com/assets/83257/17779409/8bc82d2e-6535-11e6-8917-f54ef634ad80.png)
 
 **With Kanaloa**
+Latency is controlled, half of requests are handled timely, the other half are rejected immediately. 
 ![withKanaloa](https://cloud.githubusercontent.com/assets/83257/17779483/c88e3f5a-6535-11e6-8594-4df40771372c.png)
+
+Kanaloa let your service handles at maximum capacity and rejects requests above it. 
+![rejections](https://cloud.githubusercontent.com/assets/83257/17779633/55339568-6536-11e6-9bdd-27723927f076.png)
 
 ### Motivation
  Kanaloa work dispatchers sit in front of your service and provides auto back pressure through the following means:
