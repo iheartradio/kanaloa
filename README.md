@@ -26,6 +26,7 @@ Latency is controlled, half of requests are handled timely, the other half are r
 
 Kanaloa automatically figures out the capacity of your service and let it handles at maximum capacity, rejects requests above it. 
 ![rejections](https://cloud.githubusercontent.com/assets/83257/17779633/55339568-6536-11e6-9bdd-27723927f076.png)
+
 Kanaloa also adaptes to your backend capacity change automatically. 
 
 ### Behind the scene
