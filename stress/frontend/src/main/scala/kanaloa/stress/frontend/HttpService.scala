@@ -19,7 +19,21 @@ import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
 
-  val baseCfg = ConfigFactory.load("frontend.conf")
+  lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
+  lazy val metricsConfig = statsDHostO.map { host ⇒
+    s"""
+      metrics {
+        enabled = on // turn it off if you don't have a statsD server and hostname set as an env var
+        statsd {
+          namespace = kanaloa-stress
+          host = $host //todo do not commit this
+          eventSampleRate = 0.25
+        }
+      }
+    """
+  }.getOrElse("")
+
+  val baseCfg = ConfigFactory.load("frontend.conf").withFallback(ConfigFactory.parseString(metricsConfig))
   val cfg = if (inCluster) baseCfg else baseCfg.withoutPath("akka.actor.provider").withoutPath("akka.cluster").withoutPath("akka.remote")
 
   implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
