@@ -24,10 +24,12 @@ Latency increases until few requests get handled within accetable time
 Latency is controlled, half of requests are handled timely, the other half are rejected immediately. 
 ![withKanaloa](https://cloud.githubusercontent.com/assets/83257/17779483/c88e3f5a-6535-11e6-8594-4df40771372c.png)
 
-Kanaloa let your service handles at maximum capacity and rejects requests above it. 
+Kanaloa automatically figures out the capacity of your service and let it handles at maximum capacity, rejects requests above it. 
 ![rejections](https://cloud.githubusercontent.com/assets/83257/17779633/55339568-6536-11e6-9bdd-27723927f076.png)
+Kanaloa also adaptes to your backend capacity change automatically. 
 
-### Motivation
+### Behind the scene
+
  Kanaloa work dispatchers sit in front of your service and provides auto back pressure through the following means:
   1. **Autothrottle** - it dynamically figures out the optimal number of concurreny your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See [details of the algorithm below](#implAutothrottle).
   2. **PIE** - A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced) suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.  See [details of the algorithm below](#implPIE).
@@ -181,8 +183,10 @@ If autothrottle is all you need, you should consider using [OptimalSizeExploring
 ### <a name="implPIE"></a>Implementation cetail for PIE
 A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced)
 suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.
-The algo drop request with a probability, here is the pseudocode
-Every update interval Tupdate
+The algo drop request with a probability, here is the pseudocode:
+
+Every update interval `Tupdate`
+
   1. Estimation current queueing delay
     
      ```
@@ -219,7 +223,7 @@ The regulator allows for a burst, here is the calculation
      if burstAllowed > 0
        enqueue request bypassing random drop
      ```
-  2. upon Tupdate
+  2. upon `Tupdate`
   
      ```
        if p == 0 and currentDelay < referenceDelay / 2 and oldDelay < referenceDelay / 2
