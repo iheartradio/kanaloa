@@ -14,16 +14,6 @@ class KanaloaLocalSimulation extends StressSimulation(SimulationSettings(
   name = "Overflow a local service with kanaloa"
 ))
 
-class AutomatedKanaloaSimulation extends AutomatedSimulation(SimulationSettings.automaticOverflow(
-  path = "kanaloa",
-  name = "Overflow a local service with kanaloa"
-))
-
-class AutomatedStraightSimulation extends AutomatedSimulation(SimulationSettings.automaticOverflow(
-  path = "straight",
-  name = "Overflow a local service without kanaloa"
-))
-
 class StraightSimulation extends StressSimulation(SimulationSettings(
   duration = 5.minutes,
   rampUp = 1.minutes,
@@ -98,11 +88,6 @@ abstract class StressSimulation(settings: SimulationSettings) extends Simulation
 
 }
 
-abstract class AutomatedSimulation(settings: SimulationSettings) extends StressSimulation(settings) {
-  val service = new HttpService(false, maxThroughputRPS = Some(settings.maxBackendThroughputRPS))
-
-  after(service.close())
-}
 
 case class SimulationSettings(
   duration: FiniteDuration,
