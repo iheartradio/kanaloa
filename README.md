@@ -13,10 +13,19 @@ Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.
 ### This library is still pre-beta
 Right now we are at 0.4.0, the plan is the stablize the API from 0.5.0 going on. So there will still be major API changes coming. 
 
+### TLDR
+When you hit a service that has a max capacity of 100 request per second with 200 requests per second, you get:
+
+**Without Kanaloa**
+![Without](https://cloud.githubusercontent.com/assets/83257/17779409/8bc82d2e-6535-11e6-8917-f54ef634ad80.png)
+
+**With Kanaloa**
+![withKanaloa](https://cloud.githubusercontent.com/assets/83257/17779483/c88e3f5a-6535-11e6-8594-4df40771372c.png)
+
 ### Motivation
- Kanaloa work dispatchers sit in front of your service and provide auto back pressure through the following means:
-  1. **Autothrottle** - it dynamically figures out the optimal number of concurreny your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See details of the algorithm below.
-  2. **PIE** - A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced) suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.
+ Kanaloa work dispatchers sit in front of your service and provides auto back pressure through the following means:
+  1. **Autothrottle** - it dynamically figures out the optimal number of concurreny your service can handle, and make sure that at any given time your service handles no more than that number of concurrent requests. This simple mechanism was also ported and contributed to Akka as [Optimal Size Exploring Resizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) with some limitations. See [details of the algorithm below](#implAutothrottle).
+  2. **PIE** - A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced) suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.  See [details of the algorithm below](#implPIE).
   3. **Circuit breaker** - when error rate from your service goes above a certain threshold, the kanaloa will slow down sending work to them for a short period of time to give your service a chance to "cool down".
   4. **Real-time monitoring** - a built-in statsD reporter allows you to monitor a set of critical metrics (throughput, failure rate, queue length, expected wait time, service process time, number of concurrent requests, etc) in real time. It also provides real-time insights into how kanaloa dispatchers are working. An example on Grafana:
   ![Dashboard](https://cloud.githubusercontent.com/assets/83257/17714327/449e09d2-63cd-11e6-8527-3ee9e9bbf755.png)
@@ -143,7 +152,7 @@ We provide a [grafana dashboard](grafana/dashboard.json) if you are using grafan
 We also provide a [docker image](https://github.com/iheartradio/docker-grafana-graphite) with which you can quickly get up and running a statsD server and visualization web app. Please follow the instructions there.
 
 
-### <a name="impl"></a>Implementation Detail for Autothrottle
+### <a name="implAutothrottle"></a>Implementation detail for Autothrottle
 
 *Disclosure: some of the following descriptions were adapted from the documentation of Akka's [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer), which was also written by the original author of this document.*
 
@@ -164,7 +173,7 @@ By constantly exploring and optimizing, the resizer will eventually walk to the 
 If autothrottle is all you need, you should consider using [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer) in an Akka router. (The caveat is that you need to make sure that your routees block on handling messages, i.e. they can’t simply asynchronously pass work to the backend service).
 
 
-### <a name="implPIE"></a>Implementation Detail for PIE
+### <a name="implPIE"></a>Implementation cetail for PIE
 A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced)
 suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.
 The algo drop request with a probability, here is the pseudocode
@@ -195,18 +204,22 @@ Every update interval Tupdate
      ```
      OldDelay - currentDelay
      ```
-     
+
+
 The regulator allows for a burst, here is the calculation
 
-  1. ```if burstAllowed > 0
+  1. When enqueueing
+     ```
+     if burstAllowed > 0
        enqueue request bypassing random drop
+     ```
   2. upon Tupdate
-     if p == 0 and currentDelay < referenceDelay / 2 and oldDelay < referenceDelay / 2
+     ```
+       if p == 0 and currentDelay < referenceDelay / 2 and oldDelay < referenceDelay / 2
         burstAllowed = maxBurst
      else
         burstAllowed = burstAllowed - timePassed (roughly Tupdate)
-
-
+     ```
 
 
 ### Contribute
