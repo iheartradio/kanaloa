@@ -209,11 +209,13 @@ Every update interval Tupdate
 The regulator allows for a burst, here is the calculation
 
   1. When enqueueing
+  
      ```
      if burstAllowed > 0
        enqueue request bypassing random drop
      ```
   2. upon Tupdate
+  
      ```
        if p == 0 and currentDelay < referenceDelay / 2 and oldDelay < referenceDelay / 2
         burstAllowed = maxBurst
