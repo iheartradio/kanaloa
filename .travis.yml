@@ -28,7 +28,7 @@ cache:
 before_script:
   - sbt ++$TRAVIS_SCALA_VERSION clean compile
   - sbt ++$TRAVIS_SCALA_VERSION "stressFrontend/run false" &
-  - sleep 5 #git it time to start
+  - sleep 5 #give it time to start
 script:
   - sbt ++$TRAVIS_SCALA_VERSION compile coverage test integration:test coverageReport
   - sbt ++$TRAVIS_SCALA_VERSION stress

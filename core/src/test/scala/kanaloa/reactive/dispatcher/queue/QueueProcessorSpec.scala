@@ -30,7 +30,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     val qp = TestActorRef[QueueProcessor](QueueProcessor.default(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, None, testWorkerFactory)(SimpleResultChecker))
 
     eventually {
-      qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize
+      qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
     }
 
     watch(qp)

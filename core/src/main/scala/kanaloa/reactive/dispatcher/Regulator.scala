@@ -60,7 +60,7 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
     case _: Report ⇒ //ignore other performance report
   }
 
-  def regulating(status: Status): Receive = {
+  private def regulating(status: Status): Receive = {
     case s: Sample ⇒
       continueWith(update(s, status, settings))
     case PartialUtilization(_) ⇒
