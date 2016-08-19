@@ -155,7 +155,7 @@ class RegulatorSpec extends SpecWithActorSystem {
       )
 
       newStatus.averageSpeed.value shouldBe 0
-      newStatus.delay shouldBe 175.seconds
+      newStatus.delay.toSeconds.toInt shouldBe 175 +- 1
     }
 
     "update p using based factors when p > 10%" in {
