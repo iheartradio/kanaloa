@@ -3,7 +3,7 @@ package kanaloa.reactive.dispatcher
 import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, Props}
 import akka.testkit.{TestActors, ImplicitSender, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
-import kanaloa.reactive.dispatcher.ApiProtocol.{ShutdownGracefully, ShutdownSuccessfully, WorkFailed, WorkRejected}
+import kanaloa.reactive.dispatcher.ApiProtocol._
 import kanaloa.reactive.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
 import kanaloa.reactive.dispatcher.queue._
 import kanaloa.reactive.dispatcher.queue.TestUtils.MessageProcessed
@@ -62,6 +62,36 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       dispatcher ! ShutdownGracefully(Some(self))
 
       expectMsg(ShutdownSuccessfully)
+      expectTerminated(dispatcher)
+    }
+
+    "shutdown forcefully when timeout" in new ScopeWithActor {
+
+      val iterator = Stream.continually(1).iterator
+      val resultProbe = TestProbe()
+      val backendProb = TestProbe()
+      val dispatcher = system.actorOf(
+        PullingDispatcher.props(
+          "test",
+          iterator,
+          backendProb.ref,
+          Some(resultProbe.ref),
+          ConfigFactory.parseString("kanaloa.default-dispatcher.workerPool.startingPoolSize = 20")
+        )(ResultChecker.complacent)
+      )
+
+      backendProb.expectMsg(1)
+      backendProb.reply(1)
+      resultProbe.expectMsg(1)
+      backendProb.expectMsg(1)
+
+      resultProbe.expectNoMsg(30.milliseconds)
+
+      watch(dispatcher)
+
+      dispatcher ! ShutdownGracefully(Some(self), 20.milliseconds)
+
+      expectMsg(ShutdownForcefully)
       expectTerminated(dispatcher)
     }
 
