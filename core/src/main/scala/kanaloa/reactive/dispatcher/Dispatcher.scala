@@ -57,7 +57,9 @@ trait Dispatcher extends Actor with ActorLogging {
     case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout)
     case SubscribePerformanceMetrics(actor)      ⇒ metricsCollector ! PerformanceSampler.Subscribe(actor)
     case UnSubscribePerformanceMetrics(actor)    ⇒ metricsCollector ! PerformanceSampler.Unsubscribe(actor)
-    case Terminated(`processor`)                 ⇒ context stop self
+    case Terminated(`processor`) ⇒
+      context stop self
+      log.info(s"Dispatcher $name is shutdown")
   }: Receive) orElse extraReceive
 
   def extraReceive: Receive = PartialFunction.empty

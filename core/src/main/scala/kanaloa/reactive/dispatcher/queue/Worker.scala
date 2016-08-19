@@ -131,7 +131,6 @@ private[queue] class Worker(
           self ! WorkFinished
 
         case Left(e) ⇒
-          log.warning(s"Error $e returned by routee in regards to running work $outstanding")
           retryOrAbandon(outstanding, e)
       }
     }
@@ -148,16 +147,17 @@ private[queue] class Worker(
 
   private def retryOrAbandon(outstanding: Outstanding, error: Any): Unit = {
     outstanding.cancel()
+    val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage)
     if (outstanding.retried < outstanding.work.settings.retry) {
-      log.debug(s"Retry work $outstanding")
+      log.info(s"Retry work $outstanding due to error $errorDesc")
       sendWorkToRoutee(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
         val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
-        s"Processing of '${outstanding.workDescription}' failed $retryMessage"
+        s"Processing of '${outstanding.workDescription}' failed $retryMessage due to error $errorDesc"
       }
       log.warning(s"$message, work abandoned")
-      outstanding.fail(WorkFailed(message + s" due to ${descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage)}"))
+      outstanding.fail(WorkFailed(message + s" due to $errorDesc"))
       self ! WorkFinished
     }
   }
