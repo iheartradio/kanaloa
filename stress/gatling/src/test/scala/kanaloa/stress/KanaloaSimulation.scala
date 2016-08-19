@@ -81,7 +81,8 @@ abstract class StressSimulation(settings: SimulationSettings) extends Simulation
     .assertions(
       global.responseTime.percentile3.lessThan(ninetyFivePctResponseTimeAssertion.toMillis.toInt),
       global.responseTime.percentile2.lessThan(seventyFivePctResponseTimeAssertion.toMillis.toInt),
-      global.requestsPerSec.greaterThan((maxBackendThroughputRPS * 0.75).toInt)
+      global.requestsPerSec.greaterThan((maxBackendThroughputRPS * 0.75).toInt),
+      global.successfulRequests.percent.greaterThan(20)
     )
 
 }
@@ -96,6 +97,7 @@ case class SimulationSettings(
   responseTimeout: FiniteDuration = 15.seconds,
   ninetyFivePctResponseTimeAssertion: FiniteDuration = 4.seconds,
   seventyFivePctResponseTimeAssertion: FiniteDuration = 2.seconds,
+  successfulRequestPercentAssertion: Int = 20,
   maxBackendThroughputRPS: Int = 200
 )
 
