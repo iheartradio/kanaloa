@@ -53,7 +53,7 @@ object MockBackend {
 
     val baseLatency = {
       val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
-      if (minLatency.fold(false)(_ > latencyFromThroughput)) minLatency.get else latencyFromThroughput
+      minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
     }
 
     val responders: Array[ActorRef] = {
