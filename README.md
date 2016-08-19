@@ -6,9 +6,7 @@
 
 # Kanaloa
 
-
-#### A set of work dispatchers implemented using Akka actors
-Note: kanaloa work dispatchers are not Akka [MessageDispatcher](http://doc.akka.io/docs/akka/snapshot/scala/dispatchers.html).
+Add auto backpressure, proportional load balancer and realtime monitor to your service. 
 
 ### This library is still pre-beta
 Right now we are at 0.4.0, the plan is the stablize the API from 0.5.0 going on. So there will still be major API changes coming. 
@@ -45,7 +43,7 @@ Kanaloa also adaptes to your backend capacity change automatically.
 ```
 resolvers += Resolver.jcenterRepo
 
-libraryDependencies +=  "com.iheart" %% "kanaloa" % "0.4.0"
+libraryDependencies +=  "com.iheart" %% "kanaloa-core" % "0.4.0"
 ```
 
 #### Config
