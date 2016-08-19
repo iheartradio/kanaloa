@@ -164,15 +164,13 @@ We also provide a [docker image](https://github.com/iheartradio/docker-grafana-g
 
 *Disclosure: some of the following descriptions were adapted from the documentation of Akka's [OptimalSizeExploringResizer](http://doc.akka.io/docs/akka/2.4.1/scala/routing.html#Optimal_Size_Exploring_Resizer), which was also written by the original author of this document.*
 
-Behind the scene kanaloa dispatchers create a set of workers that work with your services. These workers wait for result coming back from the service before they accept more work from the dispatcher. This way it controls the number of concurrent requests dispatchers send to services. It auto-scales the work pool to an optimal size that provides the highest throughput.
+Behind the scene kanaloa dispatchers create a set of workers that pull work on behave of your service. These workers wait for result coming back from the service before they accept more work from the dispatcher. This way it thorttles the number of concurrent requests the service handles. The autothrottle constantly search for the optimal concurrency, i.e. the just right concurrency that allows backend to provide maximum capactity. For example, if the service achieves maximum output by handling 30 requests at the same time, kanaloa will make sure it doesn't handle more than 30 requests concurrently. Typcially, hitting a service with above its optimum  concurrency will result in either higher latency (the extra requests have to wait in a queue) or lower throughput (extra concucrrent requests have to compete for limited resource causing contention.) 
 
-This autothrottle works best when you expect the pool size to performance function to be a convex function, with which you can find a global optimal by walking towards a better size. For example, a CPU bound service may have an optimal worker pool size tied to the CPU cores available. When your service is IO bound, the optimal size is bound to optimal number of concurrent connections to that IO service - e.g. a 4 node Elasticsearch cluster may handle 4-8 concurrent requests at optimal speed.
-
-The dispatchers keep track of throughput at each pool size and perform the following three resizing operations (one at a time) periodically:
+The autothrottle keeps track of throughput and latency at each pool size and perform the following three resizing operations (one at a time) periodically:
 
 1. Downsize if it hasn't seen all workers ever fully utilized for a period of time.
 2. Explore to a random nearby pool size to try and collect throughput metrics.
-3. Optimize to a nearby pool size with a better (than any other nearby sizes) throughput metrics.
+3. Optimize to a nearby pool size with a better (than any other nearby sizes) throughput and latency metrics.
 
 When the pool is fully-utilized (i.e. all workers are busy), it randomly chooses between exploring and optimizing. When the pool has not been fully-utilized for a period of time, it will downsize the pool to the last seen max utilization multiplied by a configurable ratio.
 
