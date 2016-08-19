@@ -7,9 +7,7 @@ import kanaloa.stress.frontend.HttpService
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class KanaloaLocalSimulation extends StressSimulation(SimulationSettings(
-  duration = 5.minutes,
-  rampUp = 1.minutes,
+class KanaloaLocalSimulation extends StressSimulation(SimulationSettings.overflow(
   path = "kanaloa",
   name = "Overflow a local service with kanaloa"
 ))
@@ -88,7 +86,6 @@ abstract class StressSimulation(settings: SimulationSettings) extends Simulation
 
 }
 
-
 case class SimulationSettings(
   duration: FiniteDuration,
   rampUp: FiniteDuration,
@@ -121,7 +118,7 @@ object SimulationSettings {
     path = path
   )
 
-  def automaticOverflow(name: String, path: String) = new SimulationSettings(
+  def overflow(name: String, path: String) = new SimulationSettings(
     duration = 5.minutes,
     rampUp = 1.minutes,
     capRps = 300,
