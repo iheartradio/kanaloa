@@ -149,7 +149,7 @@ private[queue] class Worker(
     outstanding.cancel()
     val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage)
     if (outstanding.retried < outstanding.work.settings.retry) {
-      log.info(s"Retry work $outstanding due to Error $errorDesc")
+      log.info(s"Retry work $outstanding due to error $errorDesc")
       sendWorkToRoutee(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
