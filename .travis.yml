@@ -25,11 +25,12 @@ cache:
   - $HOME/.ivy2/cache
   - $HOME/.nvm
 
-  
+before_script:
+  - sbt ++$TRAVIS_SCALA_VERSION clean compile
+  - sbt ++$TRAVIS_SCALA_VERSION "stressFrontend/run false" &
+  - sleep 5 #git it time to start
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION coverage test integration:test coverageReport
-  - sbt ++$TRAVIS_SCALA_VERSION clean stressFrontend/run &
-  - sleep 10
+  - sbt ++$TRAVIS_SCALA_VERSION compile coverage test integration:test coverageReport
   - sbt ++$TRAVIS_SCALA_VERSION stress
 
 after_success:
