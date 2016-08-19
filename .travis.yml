@@ -28,7 +28,9 @@ cache:
 script:
   - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test coverageReport
   - sbt ++$TRAVIS_SCALA_VERSION stressFrontend/compile
-  - sbt ++$TRAVIS_SCALA_VERSION "stressFrontend/run false" & sleep 5 && sbt ++$TRAVIS_SCALA_VERSION stress
+  - sbt ++$TRAVIS_SCALA_VERSION "stressFrontend/run false" &
+  - sleep 5 #make sure stressFrontend starts
+  - sbt ++$TRAVIS_SCALA_VERSION stress
 
 after_success:
   - sbt ++$TRAVIS_SCALA_VERSION coverageAggregate coveralls

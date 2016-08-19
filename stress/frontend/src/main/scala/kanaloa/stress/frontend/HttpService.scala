@@ -128,9 +128,10 @@ object HttpService extends App {
   println("Starting http service " + (if (inCluster) " in cluster" else ""))
 
   val service = new HttpService(inCluster, None)
-  println(s"Server online at http://localhost:8081/\nPress RETURN to stop...")
+  println(s"Server online at http://localhost:8081/\nPress 'c' and RETURN to stop...")
 
-  readLine()
+  while (readLine() != "c") {}
+  println(s"Shutting down http service.")
 
   service.close()
 
