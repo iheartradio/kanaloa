@@ -31,11 +31,11 @@ private[dispatcher] trait PerformanceSampler extends Actor {
 
   val settings: PerformanceSamplerSettings
 
-  var subscribers: Set[ActorRef] = Set.empty
+  private var subscribers: Set[ActorRef] = Set.empty
 
   import settings._
 
-  val scheduledSampling = {
+  private val scheduledSampling = {
     import context.dispatcher
     context.system.scheduler.schedule(
       sampleInterval,
@@ -52,7 +52,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
 
   def receive = partialUtilized(0)
 
-  def handleSubscriptions: Receive = {
+  private def handleSubscriptions: Receive = {
     case Subscribe(s) ⇒
       subscribers += s
       context watch s
@@ -63,16 +63,16 @@ private[dispatcher] trait PerformanceSampler extends Actor {
       subscribers -= s
   }
 
-  def publishUtilization(idle: Int, poolSize: Int): Unit = {
+  private def publishUtilization(idle: Int, poolSize: Int): Unit = {
     val utilization = poolSize - idle
     publish(PartialUtilization(utilization))
     report(PoolUtilized(utilization))
   }
 
-  def reportQueueLength(queueLength: QueueLength): Unit =
+  private def reportQueueLength(queueLength: QueueLength): Unit =
     report(WorkQueueLength(queueLength.value))
 
-  def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
+  private def fullyUtilized(s: QueueStatus): Receive = handleSubscriptions orElse {
     case Queue.Status(idle, workLeft, isFullyUtilized) ⇒
       reportQueueLength(workLeft)
       if (!isFullyUtilized) {
@@ -115,7 +115,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
       report(PoolUtilized(s.poolSize)) //take the chance to report utilization to reporter
   }
 
-  def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
+  private def partialUtilized(poolSize: Int): Receive = handleSubscriptions orElse {
     case Queue.Status(idle, queueLength, isFullyUtilized) ⇒
       if (isFullyUtilized) {
         context become fullyUtilized(
@@ -148,7 +148,7 @@ private[dispatcher] trait PerformanceSampler extends Actor {
     (sample, newStatus)
   }
 
-  def publish(report: Report): Unit = {
+  private def publish(report: Report): Unit = {
     subscribers.foreach(_ ! report)
   }
 

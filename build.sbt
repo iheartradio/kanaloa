@@ -72,15 +72,19 @@ lazy val stressFrontend = project.in(file("./stress/frontend"))
   )
 
 lazy val stressGatling = project.in(file("./stress/gatling"))
+  .aggregate(stressFrontend)
+  .dependsOn(stressFrontend)
   .enablePlugins(GatlingPlugin)
   .settings(moduleName := "kanaloa-stress-gatling")
   .settings(noPublishing:_*)
   .settings(
+    resolvers += Resolver.sonatypeRepo("snapshots"),
     libraryDependencies ++= Dependencies.gatling
   )
 
 
-
-addCommandAlias("validate", ";root;clean;compile;test;integration:test;multi-jvm:test")
+addCommandAlias("root", ";project root")
+addCommandAlias("stress", ";stressGatling/gatling:test-only kanaloa.stress.KanaloaLocalSimulation")
+addCommandAlias("validate", ";root;clean;compile;test;integration:test")
 addCommandAlias("root", ";project root")
 

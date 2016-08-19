@@ -169,7 +169,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
 class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
 
-  "can remain sane when all workers are failing" in new TestScope with Backends {
+  "can remain sane when all workers are constantly failing" in new TestScope with Backends {
     val backend = suicidal(1.milliseconds)
     val iterator = Stream.continually("a").iterator
 
@@ -197,11 +197,11 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
     val prob = TestProbe()
     pd ! SubscribePerformanceMetrics(prob.ref)
 
-    var samples = List[Sample]()
+    var samples = List[Sample]() //collect 20 samples
     val r = prob.fishForMessage(10.seconds) {
       case s: Sample ⇒
         samples = s :: samples
-        samples.length > 30
+        samples.length > 20
       case p: Report ⇒
         false
     }
