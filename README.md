@@ -2,7 +2,7 @@
 [![Join the chat at https://gitter.im/iheartradio/kanaloa](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/iheartradio/kanaloa?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Build Status](https://travis-ci.org/iheartradio/kanaloa.svg)](https://travis-ci.org/iheartradio/kanaloa)
 [![Coverage Status](https://coveralls.io/repos/github/iheartradio/kanaloa/badge.svg?branch=master)](https://coveralls.io/github/iheartradio/kanaloa?branch=master)
-[![Download](https://api.bintray.com/packages/iheartradio/maven/kanaloa/images/download.svg)](https://bintray.com/iheartradio/maven/kanaloa/_latestVersion)
+[![Download](https://api.bintray.com/packages/iheartradio/maven/kanaloa-core/images/download.svg)](https://bintray.com/iheartradio/maven/kanaloa-core/_latestVersion)
 
 # Kanaloa
 
@@ -45,7 +45,7 @@ Kanaloa also adaptes to your backend capacity change automatically.
 ```
 resolvers += Resolver.jcenterRepo
 
-libraryDependencies +=  "com.iheart" %% "kanaloa" % "0.3.0"
+libraryDependencies +=  "com.iheart" %% "kanaloa" % "0.4.0"
 ```
 
 #### Config
