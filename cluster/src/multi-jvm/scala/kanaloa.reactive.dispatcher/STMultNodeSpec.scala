@@ -1,4 +1,4 @@
-package kanaloa.reactive.dispatcher
+package kanaloa.dispatcher
 
 import akka.cluster.Cluster
 import akka.remote.testconductor.RoleName

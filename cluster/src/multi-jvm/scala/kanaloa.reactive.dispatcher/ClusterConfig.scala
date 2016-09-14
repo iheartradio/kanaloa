@@ -1,4 +1,4 @@
-package kanaloa.reactive.dispatcher
+package kanaloa.dispatcher
 
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeConfig

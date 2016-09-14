@@ -1,4 +1,4 @@
-package kanaloa.reactive.dispatcher
+package kanaloa.dispatcher
 
 
 import akka.actor._
@@ -9,7 +9,7 @@ import akka.routing.{GetRoutees, Routees}
 import akka.testkit._
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.ClusterAwareBackendSpec._
+import kanaloa.dispatcher.ClusterAwareBackendSpec._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._

@@ -7,14 +7,14 @@ import akka.routing.FromConfig
 import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
-import kanaloa.reactive.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
+import kanaloa.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
 import kanaloa.stress.backend.BackendApp._
 import kanaloa.stress.backend.MockBackend
 import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
-import kanaloa.reactive.dispatcher.{ ResultChecker, ClusterAwareBackend, PushingDispatcher }
+import kanaloa.dispatcher.{ ResultChecker, ClusterAwareBackend, PushingDispatcher }
 import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
