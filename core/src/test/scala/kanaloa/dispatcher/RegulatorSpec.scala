@@ -175,7 +175,7 @@ class RegulatorSpec extends SpecWithActorSystem {
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
-      result.value shouldBe 0.1875 +- 0.00001
+      result.value shouldBe 0.1875 +- 0.001
     }
 
     "update p using 1/8 of based factors when p < 1%" in {
