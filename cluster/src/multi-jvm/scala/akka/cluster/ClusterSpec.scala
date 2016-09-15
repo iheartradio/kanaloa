@@ -8,7 +8,7 @@ import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeSpec
 import akka.testkit.EventFilter
 import akka.testkit.TestEvent.Mute
-import kanaloa.reactive.dispatcher.STMultiNodeSpec
+import kanaloa.dispatcher.STMultiNodeSpec
 import scala.concurrent.duration._
 import scala.language.implicitConversions
 //adapted from https://github.com/akka/akka/blob/master/akka-cluster/src/multi-jvm/scala/akka/cluster/MultiNodeClusterSpec.scala
