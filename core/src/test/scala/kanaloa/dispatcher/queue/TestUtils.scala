@@ -33,7 +33,7 @@ object TestUtils {
     def defaultProcessorProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: ActorRef                     = MetricsCollector(None)
+      metricsCollector: ActorRef                     = system.actorOf(MetricsCollector.props(None))
     ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
   }
 }

@@ -8,6 +8,7 @@ import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.dispatcher.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
+import kanaloa.dispatcher.metrics.StatsDClient
 import kanaloa.stress.backend.BackendApp._
 import kanaloa.stress.backend.MockBackend
 import kanaloa.util.JavaDurationConverters._
@@ -20,23 +21,28 @@ import scala.concurrent.duration._
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
 
   lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
-  lazy val metricsConfig = statsDHostO.map { host ⇒
+  lazy val metricsConfig = statsDHostO.map { _ ⇒
     s"""
-      metrics {
+      kanaloa.default-dispatcher.metrics {
         enabled = on // turn it off if you don't have a statsD server and hostname set as an env var
-        statsd {
+        statsD {
           namespace = kanaloa-stress
-          host = $host //todo do not commit this
           eventSampleRate = 0.25
         }
       }
     """
   }.getOrElse("")
 
-  val baseCfg = ConfigFactory.load("frontend.conf").withFallback(ConfigFactory.parseString(metricsConfig))
+  lazy val statsDConf = statsDHostO.map { host =>
+    s"kanaloa.statsD.host = $host"
+  }
+
+  val baseCfg = ConfigFactory.parseString(metricsConfig).withFallback(ConfigFactory.load("frontend.conf"))
+
   val cfg = if (inCluster) baseCfg else baseCfg.withoutPath("akka.actor.provider").withoutPath("akka.cluster").withoutPath("akka.remote")
 
   implicit val system = ActorSystem("kanaloa-stress", cfg.resolve())
+  implicit val statsDClient = statsDConf.flatMap(cs => StatsDClient(ConfigFactory.parseString(cs)))
   implicit val materializer = ActorMaterializer()
   implicit val execCtx = system.dispatcher
   implicit val timeout: Timeout = (cfg.getDuration("frontend-timeout").asScala).asInstanceOf[FiniteDuration]

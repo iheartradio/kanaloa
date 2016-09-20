@@ -6,35 +6,29 @@ import akka.actor._
  * Collector that sends metrics to StatsD
  *
  * @constructor create new collector with an existing StatsDClient
- * @param statsd StatsDClient
+ * @param statsD StatsDClient
  * @param eventSampleRate sample rate for countable events (WorkEnqueued, WorkCompleted, etc)
  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
  */
 class StatsDReporter(
-  statsd:               StatsDClient,
+  statsD:               StatsDClient,
+  prefix:               String,
   val eventSampleRate:  Double,
   val statusSampleRate: Double
-)(implicit system: ActorSystem)
+)
   extends Reporter {
 
-  /**
-   * Auxilliary constructor that creates a StatsDClient from params
-   *
-   * @param prefix all StatsD metrics will be prefixed with this value
-   * @param settings
-   */
-  def this(
-    prefix:   String,
-    settings: StatsDMetricsReporterSettings
-  )(implicit system: ActorSystem) =
-    this(new StatsDClient(system, settings.host, settings.port, prefix = prefix), settings.eventSampleRate, settings.statusSampleRate)
-
   import Metric._
+  private def fullKey(key: String) = prefix + "." + key
 
   private def gauge(key: String, value: Any, rate: Double = statusSampleRate) =
-    statsd.gauge(key, value.toString, statusSampleRate)
+    statsD.gauge(fullKey(key), value.toString, statusSampleRate)
+
   private def increment(key: String, rate: Double = eventSampleRate) =
-    statsd.increment(key, 1, rate)
+    statsD.increment(fullKey(key), 1, rate)
+
+  private def timing(key: String, millis: Int, rate: Double = eventSampleRate) =
+    statsD.timing(fullKey(key), millis, rate)
 
   /**
    * Always increment error counter regardless of sample rate.
@@ -48,7 +42,7 @@ class StatsDReporter(
 
     case WorkCompleted(processTime) ⇒
       increment("work.completed")
-      statsd.timing("work.processTime", processTime.toMillis.toInt, eventSampleRate)
+      timing("work.processTime", processTime.toMillis.toInt, eventSampleRate)
 
     case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
     case WorkTimedOut         ⇒ increment("work.timedOut", failureSampleRate)
@@ -67,7 +61,7 @@ class StatsDReporter(
       gauge("queue.burstMode", if (inBurst) 1 else 0)
 
     case WorkQueueExpectedWaitTime(duration) ⇒
-      statsd.timing("queue.waitTime", duration.toMillis.toInt)
+      timing("queue.waitTime", duration.toMillis.toInt)
 
     case WorkQueueLength(length) ⇒
       gauge("queue.length", length)
@@ -82,9 +76,9 @@ object StatsDReporter {
    * @param dispatcherName used to determine the metrics prefix (`namespace.dispatcherName`)
    * @param settings
    */
-  def apply(dispatcherName: String, settings: StatsDMetricsReporterSettings)(implicit system: ActorSystem): StatsDReporter = {
+  def apply(dispatcherName: String, settings: StatsDMetricsReporterSettings, statsDClient: StatsDClient): StatsDReporter = {
     val prefix: String = List(settings.namespace, dispatcherName).filter(_.nonEmpty).mkString(".")
 
-    new StatsDReporter(prefix, settings)
+    new StatsDReporter(statsDClient, prefix, settings.eventSampleRate, settings.statusSampleRate)
   }
 }

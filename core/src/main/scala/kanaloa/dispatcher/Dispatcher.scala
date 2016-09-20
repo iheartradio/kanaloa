@@ -7,7 +7,7 @@ import kanaloa.dispatcher.ApiProtocol.{ShutdownGracefully, WorkRejected}
 import kanaloa.dispatcher.Backend.BackendAdaptor
 import kanaloa.dispatcher.Dispatcher.{UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
 import kanaloa.dispatcher.Regulator.DroppingRate
-import kanaloa.dispatcher.metrics.{Metric, MetricsCollector, Reporter}
+import kanaloa.dispatcher.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
 import kanaloa.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
@@ -22,7 +22,9 @@ trait Dispatcher extends Actor with ActorLogging {
   def settings: Dispatcher.Settings
   def backend: Backend
   def resultChecker: ResultChecker
-  def metricsCollector: ActorRef
+  def reporter: Option[Reporter]
+
+  protected lazy val metricsCollector = context.actorOf(MetricsCollector.props(reporter, settings.performanceSamplerSettings))
 
   protected def queueProps: Props
 
@@ -84,6 +86,7 @@ object Dispatcher {
     lazy val workSettings = WorkSettings(workRetry, workTimeout, lengthOfDisplayForMessage)
   }
 
+  //todo: move this out of Dispatcher object
   private[dispatcher] def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) = {
     val referenceConfig = ConfigFactory.defaultReference(getClass.getClassLoader).getConfig("kanaloa")
 
@@ -119,23 +122,27 @@ object Dispatcher {
       settings ← componentCfg.atPath("root").as[Option[SettingT]]("root") if enabled
     } yield settings
 
-  def readConfig(dispatcherName: String, rootConfig: Config, defaultConfigName: Option[String] = None)(implicit system: ActorSystem): (Settings, Option[Reporter]) = {
+  def readConfig(
+    dispatcherName:    String,
+    rootConfig:        Config,
+    statsDClient:      Option[StatsDClient],
+    defaultConfigName: Option[String]       = None
+  ): (Settings, Option[Reporter]) = {
     val cfg = kanaloaConfig(rootConfig)
     val dispatcherCfg = cfg.as[Option[Config]]("dispatchers." + dispatcherName).getOrElse(ConfigFactory.empty).withFallback(defaultDispatcherConfig(cfg, defaultConfigName))
-
     val settings = toDispatcherSettings(dispatcherCfg)
 
-    (settings, Reporter.fromConfig(dispatcherName: String, dispatcherCfg))
+    (settings, Reporter.fromConfig(dispatcherName: String, dispatcherCfg, statsDClient))
   }
 
 }
 
 case class PushingDispatcher(
-  name:             String,
-  settings:         Settings,
-  backend:          Backend,
-  metricsCollector: ActorRef,
-  resultChecker:    ResultChecker
+  name:          String,
+  settings:      Settings,
+  backend:       Backend,
+  reporter:      Option[Reporter],
+  resultChecker: ResultChecker
 )
   extends Dispatcher {
   val random = new Random(23)
@@ -172,27 +179,25 @@ case class PushingDispatcher(
 }
 
 object PushingDispatcher {
-
   def props[T: BackendAdaptor](
     name:       String,
     backend:    T,
     rootConfig: Config = ConfigFactory.load()
-  )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig)
-    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings)
+  )(resultChecker: ResultChecker)(implicit statsDClient: Option[StatsDClient]) = {
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient = statsDClient)
     val toBackend = implicitly[BackendAdaptor[T]]
-    Props(PushingDispatcher(name, settings, toBackend(backend), metricsCollector, resultChecker)).withDeploy(Deploy.local)
+    Props(PushingDispatcher(name, settings, toBackend(backend), reporter, resultChecker)).withDeploy(Deploy.local)
   }
 }
 
 case class PullingDispatcher(
-  name:             String,
-  iterator:         Iterator[_],
-  settings:         Settings,
-  backend:          Backend,
-  metricsCollector: ActorRef,
-  sendResultsTo:    Option[ActorRef],
-  resultChecker:    ResultChecker
+  name:          String,
+  iterator:      Iterator[_],
+  settings:      Settings,
+  backend:       Backend,
+  reporter:      Option[Reporter],
+  sendResultsTo: Option[ActorRef],
+  resultChecker: ResultChecker
 ) extends Dispatcher {
   protected def queueProps = QueueOfIterator.props(
     iterator,
@@ -209,11 +214,13 @@ object PullingDispatcher {
     backend:       T,
     sendResultsTo: Option[ActorRef] = None,
     rootConfig:    Config           = ConfigFactory.load()
-  )(resultChecker: ResultChecker)(implicit system: ActorSystem) = {
-    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, Some("default-pulling-dispatcher"))
+  )(resultChecker: ResultChecker)(
+    implicit
+    statsDClient: Option[StatsDClient]
+  ) = {
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient, Some("default-pulling-dispatcher"))
     //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
-    val metricsCollector = MetricsCollector(reporter, settings.performanceSamplerSettings)
     val toBackend = implicitly[BackendAdaptor[T]]
-    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), metricsCollector, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
+    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), reporter, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
   }
 }

@@ -178,7 +178,12 @@ object QueueOfIterator {
     metricsCollector:    ActorRef,
     sendResultsTo:       Option[ActorRef] = None
   ): Props =
-    Props(new QueueOfIterator(iterator, defaultWorkSettings, metricsCollector, sendResultsTo)).withDeploy(Deploy.local)
+    Props(new QueueOfIterator(
+      iterator,
+      defaultWorkSettings,
+      metricsCollector,
+      sendResultsTo
+    )).withDeploy(Deploy.local)
 
   private case object EnqueueMore
 

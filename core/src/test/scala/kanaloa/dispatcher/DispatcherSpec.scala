@@ -4,7 +4,7 @@ import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestActors, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.dispatcher.ApiProtocol._
-import kanaloa.dispatcher.metrics.{Metric, MetricsCollector, StatsDReporter}
+import kanaloa.dispatcher.metrics.{StatsDClient, Metric, MetricsCollector, StatsDReporter}
 import kanaloa.dispatcher.queue.TestUtils.MessageProcessed
 import kanaloa.dispatcher.queue._
 import org.scalatest.OptionValues
@@ -14,6 +14,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 
 class DispatcherSpec extends SpecWithActorSystem with OptionValues {
+  implicit val noneStatsDClient: Option[StatsDClient] = None
   "pulling work dispatcher" should {
 
     "finish a simple list" in new ScopeWithActor {
@@ -23,7 +24,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autothrottle = None),
         backend,
-        metricsCollector = MetricsCollector(None),
+        None,
         None,
         {
           case Success ⇒ Right(())
@@ -177,21 +178,20 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       expectMsgType[WorkRejected]
     }
 
-    "send WorkRejected metric when message is rejected" in new ScopeWithActor {
-      val metricCollector = TestProbe()
+    "send WorkRejected metric when message is rejected" in new ScopeWithActor with Eventually {
+      val reporter = new MockReporter
       val dispatcher = system.actorOf(Props(new PushingDispatcher(
         "test",
         Dispatcher.defaultDispatcherSettings(),
         TestProbe().ref,
-        metricCollector.ref,
+        Some(reporter),
         ResultChecker.complacent
       )))
 
       dispatcher ! Regulator.DroppingRate(1)
       dispatcher ! "message"
-      metricCollector.fishForMessage(30.milliseconds) {
-        case Metric.WorkRejected ⇒ true
-        case _                   ⇒ false
+      eventually {
+        reporter.reported should contain(Metric.WorkRejected)
       }
     }
 
@@ -286,7 +286,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
   "readConfig" should {
     "use default settings when nothing is in config" in {
-      val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty)
+      val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty, None)
       settings.workRetry === 0
       settings.autothrottle shouldBe defined
       settings.workerPool.shutdownOnAllWorkerDeath shouldBe false
@@ -294,7 +294,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     "use a specific default settings" in {
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.empty, Some("default-pulling-dispatcher"))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.empty, None, Some("default-pulling-dispatcher"))
       settings.workerPool.shutdownOnAllWorkerDeath shouldBe true
       settings.autothrottle shouldBe defined
     }
@@ -312,7 +312,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             }
           """
 
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.workRetry === 27
     }
 
@@ -332,7 +332,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             }
           """
 
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.workRetry === 29
       settings.autothrottle shouldBe defined
     }
@@ -350,7 +350,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               }
             }
           """
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.autothrottle shouldBe None
     }
 
@@ -367,7 +367,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               }
             }
           """
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.circuitBreaker shouldBe None
     }
 
@@ -385,7 +385,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             }
           """
 
-      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.circuitBreaker.get.timeoutCountThreshold === 6
     }
 
@@ -395,15 +395,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             kanaloa.default-dispatcher {
               metrics {
                 enabled  = on
-                statsd {
+                statsD {
                   host = "localhost"
                   eventSampleRate = 0.5
                 }
               }
             }
           """
+      val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
 
-      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), statsDClient)
       reporter.value shouldBe a[StatsDReporter]
       reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.5
     }
@@ -424,7 +425,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               default-dispatcher {
                 metrics {
                   enabled = on
-                  statsd {
+                  statsD {
                     host = "localhost"
                     eventSampleRate = 0.5
                   }
@@ -432,12 +433,14 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               }
             }
           """
+      val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
+      statsDClient shouldNot be(empty)
 
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
-      val (_, reporter) = Dispatcher.readConfig("example", strCfg)
+      val (_, reporter) = Dispatcher.readConfig("example", strCfg, statsDClient)
       reporter shouldBe empty
 
-      val (_, reporter2) = Dispatcher.readConfig("example2", strCfg)
+      val (_, reporter2) = Dispatcher.readConfig("example2", strCfg, statsDClient)
       reporter2.value shouldBe a[StatsDReporter]
     }
 
@@ -448,7 +451,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               dispatchers {
                 example {
                   metrics {
-                    statsd {
+                    statsD {
                       host = "localhost"
                       eventSampleRate = 0.7
                     }
@@ -457,7 +460,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
               }
               default-dispatcher.metrics {
                 enabled  = on
-                statsd {
+                statsD {
                   host = "localhost"
                   eventSampleRate = 0.5
                 }
@@ -465,8 +468,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             }
           """
 
+      val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
+
       val strCfg: Config = ConfigFactory.parseString(cfgStr)
-      val (_, reporter) = Dispatcher.readConfig("example", strCfg)
+      val (_, reporter) = Dispatcher.readConfig("example", strCfg, statsDClient)
       reporter.value shouldBe a[StatsDReporter]
       reporter.get.asInstanceOf[StatsDReporter].eventSampleRate === 0.7
 
@@ -478,15 +483,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             kanaloa {
               default-dispatcher.metrics {
                 enabled = off
-                statsd {
+                statsD {
                   host = "localhost"
                   eventSampleRate = 0.5
                 }
               }
             }
           """
+      val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
 
-      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+      val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), statsDClient)
       reporter shouldBe empty
 
     }
@@ -495,15 +501,14 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val cfgStr =
         """
             kanaloa {
-              default-dispatcher.metrics {
-                enabled = on
-                statsd {}
+              statsD {
+                port = 2323
               }
             }
           """
 
       intercept[ConfigException] {
-        Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr))
+        StatsDClient(ConfigFactory.parseString(cfgStr))
       }
     }
   }

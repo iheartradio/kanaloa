@@ -33,10 +33,4 @@ private[dispatcher] object MetricsCollector {
     reporter: Option[Reporter],
     settings: PerformanceSamplerSettings = PerformanceSamplerSettings()
   ): Props = Props(new MetricsCollectorImpl(reporter, settings))
-
-  def apply(
-    reporter: Option[Reporter],
-    settings: PerformanceSamplerSettings = PerformanceSamplerSettings()
-  )(implicit system: ActorSystem): ActorRef = system.actorOf(props(reporter, settings))
-
 }
