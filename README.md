@@ -124,7 +124,7 @@ kanaloa {
   default-dispatcher {
     metrics {
       enabled = on
-      statsd {
+      statsD {
         host = "localhost" #host of your statsD server
         port = 8125
       }
@@ -142,7 +142,7 @@ kanaloa {
     }
     example2 {
       metrics {
-        statsd {
+        statsD {
           eventSampleRate = 0.01
         }
       }

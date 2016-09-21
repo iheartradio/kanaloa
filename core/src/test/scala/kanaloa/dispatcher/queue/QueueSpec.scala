@@ -178,7 +178,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
-  val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
+  val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
@@ -207,9 +207,9 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: ActorRef = MetricsCollector(Some(new Reporter {
+  override val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(Some(new Reporter {
     def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-  }))
+  })))
 
 }
 

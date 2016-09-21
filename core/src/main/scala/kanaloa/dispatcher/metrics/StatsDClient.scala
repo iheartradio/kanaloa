@@ -33,30 +33,21 @@ import java.util.Random
 
 import akka.actor._
 import akka.dispatch.{BalancingDispatcherConfigurator, ForkJoinExecutorConfigurator}
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
+import kanaloa.dispatcher.Dispatcher
 import org.slf4j.LoggerFactory
+import StatsDClient._
+import net.ceedubs.ficus.Ficus._
+import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 
 /**
  * Client for sending stats to StatsD uses Akka to manage concurrency
- *
- * @param system The Akka ActorContext
- * @param host The statsd host
- * @param port The statsd port
- * @param prefix Prefix for metrics keys (no trailing period), can be empty string
- * @param multiMetrics If true, multiple stats will be sent in a single UDP packet
- * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
- * @param defaultSampleRate Default sample rate to use for metrics, if unspecified
  */
 class StatsDClient(
-  system:            ActorSystem,
-  host:              String,
-  port:              Int,
-  prefix:            String      = "",
-  multiMetrics:      Boolean     = true,
-  packetBufferSize:  Int         = 1024,
-  defaultSampleRate: Double      = 1.0
+  system:   ActorSystem,
+  settings: Settings
 ) {
-
+  import settings._
   private val rand = new Random()
 
   private val actorRef = {
@@ -132,8 +123,8 @@ class StatsDClient(
    */
   private def send(key: String, value: String, metric: String, sampleRate: Double): Boolean = {
     if (sampleRate >= 1 || rand.nextDouble <= sampleRate) {
-      val fullKey: String = if (prefix.isEmpty) key else (prefix + '.' + key)
-      actorRef ! SendStat(StatsDProtocol.stat(fullKey, value, metric, sampleRate))
+
+      actorRef ! SendStat(StatsDProtocol.stat(key, value, metric, sampleRate))
       true
     } else {
       false
@@ -141,118 +132,132 @@ class StatsDClient(
   }
 }
 
-object StatsDProtocol {
-  val TIMING_METRIC = "ms"
-  val COUNTER_METRIC = "c"
-  val GAUGE_METRIC = "g"
-  val SET_METRIC = "s"
+object StatsDClient {
+
+  case class Settings(
+    host:              String,
+    port:              Int     = 8125,
+    multiMetrics:      Boolean = true,
+    packetBufferSize:  Int     = 1024,
+    defaultSampleRate: Double  = 1.0
+  )
+
+  def apply(config: Config = ConfigFactory.empty)(implicit system: ActorSystem): Option[StatsDClient] =
+    Dispatcher.kanaloaConfig(config).as[Option[Settings]]("statsD").map(s ⇒ new StatsDClient(system, s))
+
+  object StatsDProtocol {
+    val TIMING_METRIC = "ms"
+    val COUNTER_METRIC = "c"
+    val GAUGE_METRIC = "g"
+    val SET_METRIC = "s"
+
+    /**
+     * @return Returns a string that conforms to the StatsD protocol:
+     *         KEY:VALUE|METRIC or KEY:VALUE|METRIC|@SAMPLE_RATE
+     */
+    def stat(key: String, value: String, metric: String, sampleRate: Double) = {
+      val sampleRateString = if (sampleRate < 1) "|@" + sampleRate else ""
+      key + ":" + value + "|" + metric + sampleRateString
+    }
+  }
 
   /**
-   * @return Returns a string that conforms to the StatsD protocol:
-   *         KEY:VALUE|METRIC or KEY:VALUE|METRIC|@SAMPLE_RATE
+   * Message for the StatsDActor
    */
-  def stat(key: String, value: String, metric: String, sampleRate: Double) = {
-    val sampleRateString = if (sampleRate < 1) "|@" + sampleRate else ""
-    key + ":" + value + "|" + metric + sampleRateString
+  private case class SendStat(stat: String)
+
+  /**
+   * @param host             The statsD host
+   * @param port             The statsD port
+   * @param multiMetrics     If true, multiple stats will be sent in a single UDP packet
+   * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
+   */
+  private class StatsDActor(
+    host:             String,
+    port:             Int,
+    multiMetrics:     Boolean,
+    packetBufferSize: Int
+  ) extends Actor {
+
+    private val log = LoggerFactory.getLogger(getClass())
+
+    private val sendBuffer = ByteBuffer.allocate(packetBufferSize)
+
+    private val address = new InetSocketAddress(InetAddress.getByName(host), port)
+    private val channel = DatagramChannel.open()
+
+    def receive = {
+      case msg: SendStat ⇒ doSend(msg.stat)
+      case _             ⇒ log.error("Unknown message")
+    }
+
+    override def postStop() = {
+      //save any remaining data to StatsD
+      flush
+
+      //Close the channel
+      if (channel.isOpen()) {
+        channel.close()
+      }
+
+      sendBuffer.clear()
+    }
+
+    private def doSend(stat: String) = {
+      try {
+        val data = stat.getBytes("utf-8")
+
+        // If we're going to go past the threshold of the buffer then flush.
+        // the +1 is for the potential '\n' in multi_metrics below
+        if (sendBuffer.remaining() < (data.length + 1)) {
+          flush
+        }
+
+        // multiple metrics are separated by '\n'
+        if (sendBuffer.position() > 0) {
+          sendBuffer.put('\n'.asInstanceOf[Byte])
+        }
+
+        // append the data
+        sendBuffer.put(data)
+
+        if (!multiMetrics) {
+          flush
+        }
+
+      } catch {
+        case e: IOException ⇒ {
+          log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
+        }
+      }
+    }
+
+    private def flush(): Unit = {
+      try {
+        val sizeOfBuffer = sendBuffer.position()
+
+        if (sizeOfBuffer <= 0) {
+          // empty buffer
+          return
+        }
+
+        // send and reset the buffer
+        sendBuffer.flip()
+        val nbSentBytes = channel.send(sendBuffer, address)
+        sendBuffer.limit(sendBuffer.capacity())
+        sendBuffer.rewind()
+
+        if (sizeOfBuffer != nbSentBytes) {
+          log.error("Could not send entirely stat {} to host {}:{}. Only sent {} bytes out of {} bytes", sendBuffer.toString(),
+            address.getHostName(), address.getPort().toString, nbSentBytes.toString, sizeOfBuffer.toString)
+        }
+
+      } catch {
+        case e: IOException ⇒ {
+          log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
+        }
+      }
+    }
   }
+
 }
-
-/**
- * Message for the StatsDActor
- */
-private case class SendStat(stat: String)
-
-/**
- * @param host The statsd host
- * @param port The statsd port
- * @param multiMetrics If true, multiple stats will be sent in a single UDP packet
- * @param packetBufferSize If multiMetrics is true, this is the max buffer size before sending the UDP packet
- */
-private class StatsDActor(
-  host:             String,
-  port:             Int,
-  multiMetrics:     Boolean,
-  packetBufferSize: Int
-) extends Actor {
-
-  private val log = LoggerFactory.getLogger(getClass())
-
-  private val sendBuffer = ByteBuffer.allocate(packetBufferSize)
-
-  private val address = new InetSocketAddress(InetAddress.getByName(host), port)
-  private val channel = DatagramChannel.open()
-
-  def receive = {
-    case msg: SendStat ⇒ doSend(msg.stat)
-    case _             ⇒ log.error("Unknown message")
-  }
-
-  override def postStop() = {
-    //save any remaining data to StatsD
-    flush
-
-    //Close the channel
-    if (channel.isOpen()) {
-      channel.close()
-    }
-
-    sendBuffer.clear()
-  }
-
-  private def doSend(stat: String) = {
-    try {
-      val data = stat.getBytes("utf-8")
-
-      // If we're going to go past the threshold of the buffer then flush.
-      // the +1 is for the potential '\n' in multi_metrics below
-      if (sendBuffer.remaining() < (data.length + 1)) {
-        flush
-      }
-
-      // multiple metrics are separated by '\n'
-      if (sendBuffer.position() > 0) {
-        sendBuffer.put('\n'.asInstanceOf[Byte])
-      }
-
-      // append the data
-      sendBuffer.put(data)
-
-      if (!multiMetrics) {
-        flush
-      }
-
-    } catch {
-      case e: IOException ⇒ {
-        log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
-      }
-    }
-  }
-
-  private def flush(): Unit = {
-    try {
-      val sizeOfBuffer = sendBuffer.position()
-
-      if (sizeOfBuffer <= 0) {
-        // empty buffer
-        return
-      }
-
-      // send and reset the buffer 
-      sendBuffer.flip()
-      val nbSentBytes = channel.send(sendBuffer, address)
-      sendBuffer.limit(sendBuffer.capacity())
-      sendBuffer.rewind()
-
-      if (sizeOfBuffer != nbSentBytes) {
-        log.error("Could not send entirely stat {} to host {}:{}. Only sent {} bytes out of {} bytes", sendBuffer.toString(),
-          address.getHostName(), address.getPort().toString, nbSentBytes.toString, sizeOfBuffer.toString)
-      }
-
-    } catch {
-      case e: IOException ⇒ {
-        log.error("Could not send stat {} to host {}:{}", sendBuffer.toString, address.getHostName(), address.getPort().toString, e)
-      }
-    }
-  }
-}
-

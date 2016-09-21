@@ -10,6 +10,7 @@ import kanaloa.dispatcher.ApiProtocol.{QueryStatus, ShutdownGracefully, Shutdown
 import kanaloa.dispatcher.Dispatcher.SubscribePerformanceMetrics
 import kanaloa.dispatcher.IntegrationTests._
 import kanaloa.dispatcher.PerformanceSampler.{Report, Sample}
+import kanaloa.dispatcher.metrics.StatsDClient
 import kanaloa.dispatcher.queue.QueueProcessor.{RunningStatus, ShuttingDown}
 import kanaloa.util.Java8TimeExtensions._
 import org.scalatest.{ShouldMatchers, WordSpecLike}
@@ -45,18 +46,21 @@ trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
   ))
 
   lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
-  lazy val metricsConfig = statsDHostO.map { host ⇒
+  lazy val metricsConfig = statsDHostO.map { _ ⇒
     s"""
       metrics {
         enabled = on // turn it off if you don't have a statsD server and hostname set as an env var
-        statsd {
+        statsD {
           namespace = kanaloa-integration
-          host = $host //todo do not commit this
           eventSampleRate = 0.25
         }
       }
     """
   }.getOrElse("")
+
+  lazy implicit val statsDClient = statsDHostO.flatMap { host ⇒
+    StatsDClient(ConfigFactory.parseString(s"kanaloa.statsD.host = $host"))
+  }
 
   def afterAll(): Unit = system.terminate()
 
@@ -180,7 +184,7 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
-           updateInterval = 100ms
+            updateInterval = 100ms
             workerPool {
               startingPoolSize = 30
               minPoolSize = 30

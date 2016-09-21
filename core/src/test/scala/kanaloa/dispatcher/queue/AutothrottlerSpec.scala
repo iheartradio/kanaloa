@@ -224,11 +224,11 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         queue.ref,
         backend,
         ProcessingWorkerPoolSettings(),
-        MetricsCollector(None)
+        system.actorOf(MetricsCollector.props(None))
       )(ResultChecker.expectType))
 
       watch(processor)
-      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), MetricsCollector(None)))
+      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), system.actorOf(MetricsCollector.props(None))))
       watch(autothrottler)
       processor ! PoisonPill
 
@@ -236,7 +236,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
-      val mc = MetricsCollector(None)
+      val mc = system.actorOf(MetricsCollector.props(None))
       val queue = TestProbe()
       val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.expectType))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
@@ -252,7 +252,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
 class AutothrottleScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender {
 
-  val metricsCollector: ActorRef = MetricsCollector(None) // To be overridden
+  val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
   val defaultSettings: AutothrottleSettings = AutothrottleSettings(
     chanceOfScalingDownWhenFull = 0.3,
     resizeInterval = 1.hour, //manual action only
