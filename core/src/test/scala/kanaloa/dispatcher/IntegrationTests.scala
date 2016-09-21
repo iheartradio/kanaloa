@@ -201,7 +201,7 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
     pd ! SubscribePerformanceMetrics(prob.ref)
 
     var samples = List[Sample]() //collect 20 samples
-    val r = prob.fishForMessage(10.seconds) {
+    val r = prob.fishForMessage(20.seconds) {
       case s: Sample ⇒
         samples = s :: samples
         samples.length > 20
