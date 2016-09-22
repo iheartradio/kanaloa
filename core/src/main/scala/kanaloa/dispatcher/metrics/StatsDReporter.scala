@@ -77,7 +77,11 @@ object StatsDReporter {
    * @param settings
    */
   def apply(dispatcherName: String, settings: StatsDMetricsReporterSettings, statsDClient: StatsDClient): StatsDReporter = {
-    val prefix: String = List(settings.namespace, dispatcherName).filter(_.nonEmpty).mkString(".")
+
+    import java.net._
+    val localhost = InetAddress.getLocalHost.getHostAddress.replace(".", "_")
+
+    val prefix: String = List(settings.namespace, dispatcherName, localhost).filter(_.nonEmpty).mkString(".")
 
     new StatsDReporter(statsDClient, prefix, settings.eventSampleRate, settings.statusSampleRate)
   }

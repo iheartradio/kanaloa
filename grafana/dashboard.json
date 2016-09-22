@@ -56,7 +56,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
               "textEditor": true
             }
           ],
@@ -142,12 +142,12 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
               "textEditor": true
             }
           ],
@@ -248,13 +248,13 @@
           "steppedLine": false,
           "targets": [
             {
-             "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.received.rate, '.*$namespace.(.*).work.received.rate', '\\1 (accepted)')",
+              "refId": "A",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.received.rate, '.*$namespace.(.*).work.received.rate', '\\1 (accepted)')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.work.rejected.rate, '.*$namespace.(.*).work.rejected.rate', '\\1 (rejected)')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.rejected.rate, '.*$namespace.(.*).work.rejected.rate', '\\1 (rejected)')",
               "textEditor": true
             }
           ],
@@ -330,7 +330,7 @@
             {
               "hide": false,
               "refId": "A",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.length, '.*$namespace.(.*).queue.length', '\\1')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.queue.length, '.*$namespace.(.*).queue.length', '\\1')",
               "textEditor": true
             }
           ],
@@ -413,7 +413,7 @@
             {
               "hide": false,
               "refId": "A",
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', '\\1')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.$hostName.queue.waitTime.mean, '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": false
             }
           ],
@@ -486,7 +486,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.work.processTime.mean, '.*$namespace.(.*).queue.*','\\1')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.$hostName.work.processTime.mean,  '.*$namespace.(.*).work.processTime.*','\\1')",
               "textEditor": true
             }
           ],
@@ -565,7 +565,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": true
             }
           ],
@@ -642,12 +642,12 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
               "textEditor": true
             }
           ],
@@ -726,7 +726,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.dropRate, '.*$namespace.(.*).queue.dropRate', '\\1')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.queue.dropRate, '.*$namespace.(.*).queue.dropRate', '\\1')",
               "textEditor": true
             }
           ],
@@ -798,7 +798,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.queue.burstMode, '.*$namespace.(.*).queue.burstMode', '\\1')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.queue.burstMode, '.*$namespace.(.*).queue.burstMode', '\\1')",
               "textEditor": true
             }
           ],
@@ -837,7 +837,7 @@
     }
   ],
   "time": {
-    "from": "now-1h",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {
@@ -921,10 +921,38 @@
           {
             "text": "All",
             "value": "$__all",
-            "selected": true
+            "selected": false
           }
         ],
         "query": "stats.timers.$namespace.*",
+        "refresh": 1,
+        "refresh_on_load": false,
+        "regex": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allFormat": "wildcard",
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "tags": []
+        },
+        "datasource": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": "Host",
+        "multi": false,
+        "multiFormat": "glob",
+        "name": "hostName",
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          }
+        ],
+        "query": "stats.timers.$namespace.$dispatcherName.*",
         "refresh": 1,
         "refresh_on_load": false,
         "regex": "",
@@ -938,6 +966,6 @@
   },
   "refresh": "5s",
   "schemaVersion": 12,
-  "version": 0,
+  "version": 3,
   "links": []
 }

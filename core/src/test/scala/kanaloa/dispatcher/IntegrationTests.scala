@@ -188,6 +188,7 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
             workerPool {
               startingPoolSize = 30
               minPoolSize = 30
+              shutdownOnAllWorkerDeath = false
             }
             $metricsConfig
           }
@@ -201,7 +202,7 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
     pd ! SubscribePerformanceMetrics(prob.ref)
 
     var samples = List[Sample]() //collect 20 samples
-    val r = prob.fishForMessage(10.seconds) {
+    val r = prob.fishForMessage(20.seconds) {
       case s: Sample ⇒
         samples = s :: samples
         samples.length > 20
@@ -210,10 +211,12 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
     }
 
     samples.forall(_.queueLength.value <= 30) shouldBe true
+
     samples.map(_.workDone).sum shouldBe <=(30)
 
     pd ! ShutdownGracefully(timeout = 100.milliseconds)
-    expectTerminated(pd, shutdownTimeout)
+
+    expectTerminated(pd, 200.milliseconds)
 
   }
 
