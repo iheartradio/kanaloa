@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory
 import StatsDClient._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 
 /**
  * Client for sending stats to StatsD uses Akka to manage concurrency

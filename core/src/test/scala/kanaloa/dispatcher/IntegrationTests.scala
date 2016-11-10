@@ -78,8 +78,8 @@ class PushingDispatcherIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
-            workerPool {
-              startingPoolSize = 8
+            worker-pool {
+              starting-pool-size = 8
             }
           }
         """
@@ -110,16 +110,16 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
-            workerPool {
-              startingPoolSize = 8
+            worker-pool {
+              starting-pool-size = 8
             }
             autothrottle {
               enabled = off
             }
-            backPressure {
+            back-pressure {
               enabled = off
             }
-            circuitBreaker {
+            circuit-breaker {
               enabled = off
             }
           }
@@ -153,8 +153,8 @@ class PullingDispatcherIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
-            workerPool {
-              startingPoolSize = 8
+            worker-pool {
+              starting-pool-size = 8
             }
           }
         """
@@ -184,11 +184,11 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
-            updateInterval = 100ms
-            workerPool {
-              startingPoolSize = 30
-              minPoolSize = 30
-              shutdownOnAllWorkerDeath = false
+            update-interval = 100ms
+            worker-pool {
+              starting-pool-size = 30
+              min-pool-size = 30
+              shutdown-on-all-worker-death = false
             }
             $metricsConfig
           }
@@ -237,22 +237,22 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
         ConfigFactory.parseString(
           s"""
           kanaloa.dispatchers.test-pushing {
-            updateInterval = 100ms
-            workerPool {
-              startingPoolSize = 3
-              minPoolSize = 1
+            update-interval = 100ms
+            worker-pool {
+              starting-pool-size = 3
+              min-pool-size = 1
             }
-            backPressure {
+            back-pressure {
               maxBufferSize = 60000
               thresholdForExpectedWaitTime = 1h
               maxHistoryLength = 3s
             }
             autothrottle {
-              chanceOfScalingDownWhenFull = 0.3
-              resizeInterval = 200ms
-              weightOfLatency = 0.1
-              explorationRatio = 0.5
-              maxExploreStepSize = 1
+              chance-of-scaling-down-when-full = 0.3
+              resize-interval = 200ms
+              weight-of-latency = 0.1
+              exploration-ratio = 0.5
+              max-explore-step-size = 1
             }
             $metricsConfig
           }
@@ -301,20 +301,20 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pulling {
-            updateInterval = 100ms
-            workerPool {
-              startingPoolSize = 3
-              minPoolSize = 1
+            update-interval = 100ms
+            worker-pool {
+              starting-pool-size = 3
+              min-pool-size = 1
             }
-            backPressure {
+            back-pressure {
               maxBufferSize = 60000
               thresholdForExpectedWaitTime = 1h
               maxHistoryLength = 3s
             }
             autothrottle {
-              chanceOfScalingDownWhenFull = 0.1
-              resizeInterval = 100ms
-              downsizeAfterUnderUtilization = 72h
+              chance-of-scaling-down-when-full = 0.1
+              resize-interval = 100ms
+              downsize-after-under-utilization = 72h
             }
             $metricsConfig
           }
@@ -364,14 +364,14 @@ class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pushing {
-            updateInterval = 100ms
-            workerPool {
-              startingPoolSize = 10
-              minPoolSize = 2
+            update-interval = 100ms
+            worker-pool {
+              starting-pool-size = 10
+              min-pool-size = 2
             }
             autothrottle {
-              resizeInterval = 10ms
-              downsizeAfterUnderUtilization = 100ms
+              resize-interval = 10ms
+              downsize-after-under-utilization = 100ms
             }
           }
         """

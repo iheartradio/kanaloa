@@ -12,6 +12,7 @@ import kanaloa.dispatcher.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.dispatcher.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.concurrent.duration._
@@ -109,8 +110,8 @@ object Dispatcher {
   private def toDispatcherSettings(config: Config): Dispatcher.Settings = {
     val settings = config.atPath("root").as[Dispatcher.Settings]("root")
     settings.copy(
-      regulator = readComponent[Regulator.Settings]("backPressure", config),
-      circuitBreaker = readComponent[CircuitBreakerSettings]("circuitBreaker", config),
+      regulator = readComponent[Regulator.Settings]("back-pressure", config),
+      circuitBreaker = readComponent[CircuitBreakerSettings]("circuit-breaker", config),
       autothrottle = readComponent[AutothrottleSettings]("autothrottle", config)
     )
   }

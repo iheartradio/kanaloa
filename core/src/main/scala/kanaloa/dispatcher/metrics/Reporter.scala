@@ -2,6 +2,7 @@ package kanaloa.dispatcher.metrics
 
 import akka.actor.ActorSystem
 import com.typesafe.config.{ConfigFactory, Config}
+import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 
 trait Reporter {
   def report(metric: Metric): Unit
