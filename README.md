@@ -52,10 +52,10 @@ An example of a `my-dispatcher`
 kanaloa {
   dispatchers {
     my-service1 {
-      workerPool {
-       startingPoolSize = 8
+      worker-pool {
+       starting-pool-size = 8
       }
-      workTimeout = 3s
+      work-timeout = 3s
     }
   }
 }

@@ -4,7 +4,7 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val akka = "2.4.8"
+    val akka = "2.4.11"
   }
 
   val akka = Seq(
@@ -19,7 +19,7 @@ object Dependencies {
   )
 
   val akkaHttp = Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % Versions.akka
+    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.11"
   )
 
   val akkaThrottler = Seq(
@@ -27,8 +27,8 @@ object Dependencies {
   )
 
   val gatling = Seq(
-    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.3-SNAPSHOT" % Test,
-    "io.gatling"            % "gatling-test-framework"    % "2.2.3-SNAPSHOT" % Test
+    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.3" % Test,
+    "io.gatling"            % "gatling-test-framework"    % "2.2.3" % Test
   )
 
   val (test, integration) = {
@@ -41,7 +41,7 @@ object Dependencies {
   }
 
   val config = Seq(
-    "com.iheart" %% "ficus" % "1.2.6"
+    "com.iheart" %% "ficus" % "1.3.3"
   )
 
 

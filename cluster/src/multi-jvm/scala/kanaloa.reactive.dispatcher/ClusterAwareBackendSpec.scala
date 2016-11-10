@@ -32,7 +32,7 @@ object ClusterAwareBackendSpec extends ClusterConfig {
     """
       |kanaloa {
       |  default-dispatcher {
-      |    workerPool.startingPoolSize = 2
+      |    worker-pool.starting-pool-size = 2
       |  }
       |}
     """.stripMargin)

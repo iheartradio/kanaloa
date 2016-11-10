@@ -77,7 +77,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
           iterator,
           backendProb.ref,
           Some(resultProbe.ref),
-          ConfigFactory.parseString("kanaloa.default-dispatcher.workerPool.startingPoolSize = 20")
+          ConfigFactory.parseString("kanaloa.default-dispatcher.workerPool.starting-pool-size = 20")
         )(ResultChecker.complacent)
       )
 
@@ -203,8 +203,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
-            |  updateInterval = 300s
-            |  circuitBreaker.enabled = off
+            |  update-interval = 300s
+            |  circuit-breaker.enabled = off
             |  autothrottle.enabled = off
             |}""".stripMargin
         ) //make sure regulator doesn't interfere
@@ -232,10 +232,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
-            |  updateInterval = 10ms
-            |  backPressure {
-            |    durationOfBurstAllowed = 10ms
-            |    referenceDelay = 2s
+            |  update-interval = 10ms
+            |  back-pressure {
+            |    duration-of-burst-allowed = 10ms
+            |    reference-delay = 2s
             |  }
             |}""".stripMargin
         )
@@ -258,10 +258,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
-            |  updateInterval = 50ms
-            |  backPressure {
-            |    durationOfBurstAllowed = 30ms
-            |    referenceDelay = 1s
+            |  update-interval = 50ms
+            |  back-pressure {
+            |    duration-of-burst-allowed = 30ms
+            |    reference-delay = 1s
             |  }
             |}""".stripMargin
         )
@@ -304,7 +304,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         """
             kanaloa {
               default-dispatcher {
-                workRetry = 27
+                work-retry = 27
               }
               dispatchers {
 
@@ -321,11 +321,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         """
             kanaloa {
               default-dispatcher {
-                workRetry = 29
+                work-retry = 29
               }
               dispatchers {
                 example {
-                  workTimeout = 1m
+                  work-timeout = 1m
                 }
               }
 
@@ -354,13 +354,13 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       settings.autothrottle shouldBe None
     }
 
-    "turn off circuitBreaker if set to off" in {
+    "turn off circuit-breaker if set to off" in {
       val cfgStr =
         """
             kanaloa {
               dispatchers {
                 example {
-                  circuitBreaker {
+                  circuit-breaker {
                     enabled = off
                   }
                 }
@@ -377,8 +377,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             kanaloa {
               dispatchers {
                 example {
-                  circuitBreaker {
-                    timeoutCountThreshold = 0.5
+                  circuit-breaker {
+                    timeout-count-threshold = 0.5
                   }
                 }
               }

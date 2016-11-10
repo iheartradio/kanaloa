@@ -77,9 +77,9 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
     ConfigFactory.parseString(
       """
         |kanaloa.default-dispatcher {
-        |  workerPool {
-        |    startingPoolSize = 1000
-        |    maxPoolSize = 3000
+        |  worker-pool {
+        |    starting-pool-size = 1000
+        |    max-pool-size = 3000
         |  }
         |}
       """.stripMargin
