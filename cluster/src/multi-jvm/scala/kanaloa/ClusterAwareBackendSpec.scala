@@ -10,6 +10,7 @@ import akka.testkit._
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import kanaloa.ClusterAwareBackendSpec._
+import kanaloa.handler.ResultChecker
 import kanaloa.metrics.StatsDClient
 
 import scala.concurrent.Await

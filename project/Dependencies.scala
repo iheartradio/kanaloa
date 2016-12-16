@@ -4,13 +4,14 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val akka = "2.4.11"
+    val akka = "2.4.16"
   }
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
     "com.typesafe.akka" %% "akka-testkit" % Versions.akka % "test",
-    "com.typesafe.akka" %% "akka-slf4j" % Versions.akka
+    "com.typesafe.akka" %% "akka-slf4j" % Versions.akka,
+    "com.typesafe.akka" %% "akka-agent" % Versions.akka
   )
 
   val akkaCluster = Seq(

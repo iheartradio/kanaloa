@@ -3,6 +3,7 @@ package kanaloa.queue
 import akka.actor.{Actor, ActorRef, PoisonPill, Props}
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.{WorkFailed, WorkTimedOut}
+import kanaloa.handler.{GeneralActorRefHandler, Handler}
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister}
 import kanaloa.queue.Worker.UnregisteringIdle
@@ -103,14 +104,16 @@ class WorkerWorkingSpec extends WorkerSpec {
     }
 
     "should only send responses for the current executing Work" in {
+      import kanaloa.HandlerProviders._
       //create a new worker whose Routee is actually a Router which simply sends messages to a specific Actor
       //This is so that we can control the response order of who gets messages
       val queueProbe = TestProbe("queue")
       val routeeA = TestProbe("routeeA")
       val routeeB = TestProbe("routeeB")
       val routerActor = system.actorOf(Props(classOf[SimpleRoutingActor], Set(routeeA.ref, routeeB.ref)))
+      val handler = simpleHandler(routerActor)
       val metricsCollectorProbe = TestProbe("metricsCollector")
-      val worker = TestActorRef[Worker](Worker.default(queueProbe.ref, routerActor, metricsCollectorProbe.ref)(SimpleResultChecker))
+      val worker = TestActorRef[Worker[Any]](Worker.default(queueProbe.ref, handler, metricsCollectorProbe.ref))
 
       //send the first message, with an aggressive timeout, just so we can have this message timeout
       queueProbe.send(worker, Work(RoutedMessage(routeeA.ref, "AMessage"), Some(self), WorkSettings(timeout = 1.millisecond)))

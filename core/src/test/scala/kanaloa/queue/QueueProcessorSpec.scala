@@ -2,10 +2,12 @@ package kanaloa.queue
 
 import java.util.concurrent.atomic.AtomicInteger
 
+import akka.actor.Status.Success
 import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
 import kanaloa.ApiProtocol.{ShutdownGracefully, ShutdownForcefully, QueryStatus, ShutdownSuccessfully}
+import kanaloa.handler.{ResultChecker, Handler, GeneralActorRefHandler, HandlerProvider}
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
@@ -16,18 +18,19 @@ import org.scalatest.concurrent.Eventually
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
-
+import HandlerProviders._
 class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
 
-  type QueueTest = (TestActorRef[QueueProcessor], TestProbe, TestProbe, TestBackend, TestWorkerFactory) ⇒ Any
+  type QueueTest = (TestActorRef[QueueProcessor[Any]], TestProbe, TestProbe, HandlerProvider[Any], TestWorkerFactory) ⇒ Any
 
   def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
 
     val queueProbe = TestProbe("queue")
-    val testBackend = new TestBackend()
+    val serviceProbe = TestProbe("service")
+    val testHandlerProvider = HandlerProviders.simpleHandlerProvider(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[QueueProcessor](QueueProcessor.default(queueProbe.ref, testBackend, poolSettings, metricsCollector.ref, None, testWorkerFactory)(SimpleResultChecker))
+    val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(queueProbe.ref, testHandlerProvider, poolSettings, metricsCollector.ref, None, testWorkerFactory))
 
     eventually {
       qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
@@ -35,7 +38,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
     watch(qp)
     try {
-      test(qp, queueProbe, metricsCollector, testBackend, testWorkerFactory)
+      test(qp, queueProbe, metricsCollector, testHandlerProvider, testWorkerFactory)
     } finally {
       unwatch(qp)
       qp.stop()
@@ -57,7 +60,9 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
   "The QueueProcessor" should {
 
     "create Workers on startup" in withQueueProcessor(ProcessingWorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      testBackend.timesInvoked shouldBe 5
+      eventually {
+        qp.underlyingActor.workerPool should have size 5
+      }
     }
 
     "report pool size on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
@@ -68,23 +73,20 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       qp ! ScaleTo(10)
       eventually {
         qp.underlyingActor.workerPool should have size 10
-        testBackend.timesInvoked shouldBe 10
       }
     }
 
     "does not scale workers when there is already workers creation in flight" in new Backends {
       import system.dispatcher
       val promise = Promise[ActorRef]
-      val backend = promiseBackend(promise)
+      val handlerProvider = fromPromise(promise, simpleResultChecker)
       val metricsCollectorProbe = TestProbe()
-      val qp = TestActorRef[QueueProcessor](QueueProcessor.default(
+      val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(
         TestProbe().ref,
-        backend,
+        handlerProvider,
         ProcessingWorkerPoolSettings(startingPoolSize = 1),
         metricsCollectorProbe.ref
-      )(
-          SimpleResultChecker
-        ))
+      ))
 
       qp ! ScaleTo(10) //this should be ignored
 
@@ -135,7 +137,6 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
         eventually {
           qp.underlyingActor.workerPool should have size 7
-          testBackend.timesInvoked shouldBe 7
         }
       }
 
@@ -145,29 +146,22 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
         eventually {
           qp.underlyingActor.workerPool should have size 3
-          testBackend.timesInvoked shouldBe 7 //2 new invocations should have happened
           workerFactory.probeMap should have size 3 //should only be 3 workers
         }
     }
 
     "attempt to retry create Workers until it hits the minimumWorkers" in {
       val settings = ProcessingWorkerPoolSettings(minPoolSize = 2, startingPoolSize = 2, healthCheckInterval = 10.milliseconds)
+      import system.dispatcher
+      val promise = Promise[ActorRef]
+      val handlerProvider = fromPromise(promise, simpleResultChecker)
 
-      val testBackend = new Backend {
-        var count = 0
-        def apply(af: ActorRefFactory) = {
-          if (count > 2) Future.successful(TestProbe().ref)
-          else {
-            count += 1
-            Future.failed(new Exception("failed"))
-          }
-        }
-      }
-      val qp = TestActorRef[QueueProcessor](QueueProcessor.default(
+      val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(
         TestProbe("queue").ref,
-        testBackend, settings, TestProbe("metrics-collector").ref
-      )(SimpleResultChecker))
-
+        handlerProvider, settings, TestProbe("metrics-collector").ref
+      ))
+      expectNoMsg(200.milliseconds)
+      promise.complete(scala.util.Success(TestProbe().ref))
       eventually {
         qp.underlyingActor.workerPool should have size 2
       }
@@ -226,10 +220,10 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       val queueProcessor = system.actorOf(
         QueueProcessor.default(
           queueProbe.ref,
-          promiseBackend(Promise[ActorRef]),
+          fromPromise(Promise[ActorRef], ResultChecker.complacent),
           ProcessingWorkerPoolSettings(),
           TestProbe().ref
-        )(ResultChecker.complacent)
+        )
       )
       queueProcessor ! Shutdown(Some(self))
       queueProbe.expectMsgType[Retire]
@@ -249,16 +243,6 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     }
   }
 
-  class TestBackend extends Backend {
-    val probe = TestProbe()
-    var timesInvoked: Int = 0
-
-    override def apply(f: ActorRefFactory): Future[ActorRef] = {
-      timesInvoked += 1
-      Future.successful(probe.ref)
-    }
-  }
-
   class TestWorkerFactory extends WorkerFactory {
 
     val probeMap: MMap[ActorRef, TestProbe] = MMap()
@@ -266,12 +250,11 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     val retiredCount: AtomicInteger = new AtomicInteger(0)
 
     //create a Worker, and increment a count when its told to Retire.
-    override def createWorker(
+    override def createWorker[T](
       queueRef:               QueueRef,
-      routee:                 QueueRef,
+      handler:                Handler[T],
       metricsCollector:       ActorRef,
       circuitBreakerSettings: Option[CircuitBreakerSettings],
-      resultChecker:          ResultChecker,
       workerName:             String
     )(implicit ac: ActorRefFactory): ActorRef = {
       val probe = TestProbe(workerName)

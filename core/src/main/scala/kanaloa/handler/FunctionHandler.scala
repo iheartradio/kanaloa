@@ -1,13 +1,11 @@
 package kanaloa.handler
 
-import kanaloa.Result
-
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * For simple async function without the error handling capabiliy
  */
-class SimpleFunctionHandler[TReq, TResp](f: TReq ⇒ Future[TResp])(implicit ex: ExecutionContext) extends Handler[TReq] {
+class SimpleFunctionHandler[TReq, TResp](f: TReq ⇒ Future[TResp], val name: String)(implicit ex: ExecutionContext) extends Handler[TReq] {
   type Resp = TResp
   type Error = Nothing
 
@@ -15,7 +13,5 @@ class SimpleFunctionHandler[TReq, TResp](f: TReq ⇒ Future[TResp])(implicit ex:
     override val result: Future[Result[Resp, Error]] = f(req).map(r ⇒ Result(Right(r), None))
     override val cancellable: Option[Cancellable] = None
   }
-
-  override def name: String = ???
 
 }

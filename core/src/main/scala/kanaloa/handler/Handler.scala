@@ -3,9 +3,7 @@ package kanaloa.handler
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
-
-
-trait Handler[TReq] {
+trait Handler[-TReq] {
   type Resp
   type Error
   def name: String
@@ -54,7 +52,6 @@ case class Hold(duration: FiniteDuration) extends Instruction
  * Kanaloa should retry the same request after {{@param duration}}
  */
 case class RetryIn(duration: FiniteDuration) extends Instruction
-
 
 object Handler {
   type Aux[TReq, TResp, TError] = Handler[TReq] { type Resp = TResp; type Error = TError }

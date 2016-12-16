@@ -1,27 +1,30 @@
 package kanaloa.queue
 
+import java.util.concurrent.atomic.AtomicLong
+
 import akka.actor._
+import akka.routing.{NoRoutee, RoundRobinRoutingLogic}
 import kanaloa.ApiProtocol._
+import kanaloa.handler.HandlerProvider.{HandlerChange, HandlersAdded}
+import kanaloa.handler.{ResultChecker, HandlerProvider, Handler}
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
 import kanaloa.queue.QueueProcessor._
-import kanaloa.{Backend, ResultChecker}
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
-class QueueProcessor(
+class QueueProcessor[T](
   queue:                  QueueRef,
-  backend:                Backend,
+  handlerProvider:        HandlerProvider[T],
   settings:               ProcessingWorkerPoolSettings,
   circuitBreakerSettings: Option[CircuitBreakerSettings],
   metricsCollector:       ActorRef,
-  workerFactory:          WorkerFactory,
-  resultChecker:          ResultChecker
+  workerFactory:          WorkerFactory
 ) extends Actor with ActorLogging with MessageScheduler {
-
+  val listSelection = new ListSelection
   val healthCheckSchedule = {
     import context.dispatcher
     context.system.scheduler.schedule(settings.healthCheckInterval, settings.healthCheckInterval, self, HealthCheck)
@@ -39,13 +42,36 @@ class QueueProcessor(
 
     super.preStart()
     metricsCollector ! Metric.PoolSize(0)
-    (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveRoutee())
+
+    if (!handlerProvider.handlers.isEmpty)
+      start()
+
+    handlerProvider.subscribe(self ! _)
     context watch queue
+  }
+
+  val starting: Receive = {
+    case HandlersAdded(_) ⇒ start()
+    case Shutdown(reportTo, timeout) ⇒
+      log.info("Commanded to shutdown while starting. Shutting down")
+      shutdown(reportTo, timeout)
+    case _ ⇒ //ignore everything else when starting
+  }
+
+  val receive = starting
+
+  def start(): Unit = {
+    (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveHandler())
+    context become running
   }
 
   def currentWorkers = workerPool.size + inflightWorkerCreation - inflightWorkerRemoval
 
-  def receive: Receive = {
+  val running: Receive = {
+
+    case hc: HandlerChange ⇒
+      self ! HealthCheck //todo: as a temporary solution mostly for the intermediate implementation to avoid involving involving another design change. This approach would allow the queueProcessor to replenish workers. The real plan, however, is to do one QueueProcessor per handler, which should be implemented before the next release.
+
     case ScaleTo(newPoolSize, reason) if inflightWorkerCreation == 0 && inflightWorkerRemoval == 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
@@ -59,10 +85,10 @@ class QueueProcessor(
 
     case ScaleTo(_, _) ⇒ //ignore when there is inflight creation or removal going on.
 
-    case RouteeRetrieved(routee) ⇒
-      createWorker(routee)
+    case hr: HandlerRetrieved[T] ⇒
+      createWorker(hr.handler)
 
-    case RouteeFailed(ex) ⇒
+    case HandlerProviderFailure(ex) ⇒
       inflightWorkerCreation = Math.max(0, inflightWorkerCreation - 1)
       if (settings.logRouteeRetrievalError)
         log.warning("Failed to retrieve Routee: " + ex.getMessage)
@@ -143,13 +169,13 @@ class QueueProcessor(
     metricsCollector ! Metric.PoolSize(workerPool.length)
   }
 
-  private def retrieveRoutee(): Unit = {
-    import context.dispatcher //do we want to pass this in?
-    inflightWorkerCreation += 1
-    backend(context).onComplete {
-      case Success(routee) ⇒ self ! RouteeRetrieved(routee)
-      case Failure(ex)     ⇒ self ! RouteeFailed(ex)
+  private def retrieveHandler(): Unit = {
+    val handlers = handlerProvider.handlers
+    listSelection.select(handlers) foreach { handler ⇒
+      self ! HandlerRetrieved(handler)
+      inflightWorkerCreation += 1
     }
+
   }
 
   private def healthCheck(): Unit = {
@@ -164,14 +190,14 @@ class QueueProcessor(
   private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): Boolean = {
     val workerNeeded = numberOfWorkersToCreate > 0
     if (workerNeeded)
-      (1 to numberOfWorkersToCreate).foreach(_ ⇒ retrieveRoutee())
+      (1 to numberOfWorkersToCreate).foreach(_ ⇒ retrieveHandler())
     workerNeeded
   }
 
-  private def createWorker(routee: ActorRef): Unit = {
+  private def createWorker(handler: Handler[T]): Unit = {
     val workerName = s"worker-$workerCount"
     workerCount += 1
-    val worker = workerFactory.createWorker(queue, routee, metricsCollector, circuitBreakerSettings, resultChecker, workerName)
+    val worker = workerFactory.createWorker(queue, handler, metricsCollector, circuitBreakerSettings, workerName)
     context watch worker
 
     workerPool = workerPool :+ worker
@@ -180,27 +206,36 @@ class QueueProcessor(
   }
 }
 
+private[queue] class ListSelection {
+  val next = new AtomicLong
+  def select[T](list: Seq[T]): Option[T] = {
+    if (list.nonEmpty) {
+      val size = list.size
+      val index = (next.getAndIncrement % size).asInstanceOf[Int]
+      Some(list(if (index < 0) size + index - 1 else index))
+    } else None
+  }
+}
+
 private[queue] trait WorkerFactory {
-  def createWorker(
+  def createWorker[T](
     queueRef:               ActorRef,
-    routee:                 ActorRef,
+    handler:                Handler[T],
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings],
-    resultChecker:          ResultChecker,
     workerName:             String
   )(implicit ac: ActorRefFactory): ActorRef
 }
 
-object DefaultWorkerFactory extends WorkerFactory {
-
-  override def createWorker(
+class DefaultWorkerFactory extends WorkerFactory {
+  override def createWorker[T](
     queue:                  QueueRef,
-    routee:                 ActorRef,
+    handler:                Handler[T],
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings],
-    resultChecker:          ResultChecker, workerName: String
+    workerName:             String
   )(implicit ac: ActorRefFactory): ActorRef = {
-    ac.actorOf(Worker.default(queue, routee, metricsCollector, circuitBreakerSettings)(resultChecker), workerName)
+    ac.actorOf(Worker.default(queue, handler, metricsCollector, circuitBreakerSettings), workerName)
   }
 }
 
@@ -218,25 +253,24 @@ object QueueProcessor {
 
   private case object ShutdownTimeout
   private case object HealthCheck
-  private[queue] case class RouteeRetrieved(routee: ActorRef)
-  private[queue] case class RouteeFailed(ex: Throwable)
+  private[queue] case class HandlerRetrieved[T](handler: Handler[T])
+  private[queue] case class HandlerProviderFailure(ex: Throwable)
 
-  def default(
+  def default[T](
     queue:                  QueueRef,
-    backend:                Backend,
+    handlerProvider:        HandlerProvider[T],
     settings:               ProcessingWorkerPoolSettings,
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None,
-    workerFactory:          WorkerFactory                  = DefaultWorkerFactory
-  )(resultChecker: ResultChecker): Props =
+    workerFactory:          WorkerFactory                  = new DefaultWorkerFactory
+  ): Props =
     Props(new QueueProcessor(
       queue,
-      backend,
+      handlerProvider,
       settings,
       circuitBreakerSettings,
       metricsCollector,
-      workerFactory,
-      resultChecker
+      workerFactory
     )).withDeploy(Deploy.local)
 
 }

@@ -5,8 +5,8 @@ import akka.actor.ActorRef
 import scala.concurrent.duration._
 
 object ApiProtocol {
-  sealed trait Request
-  sealed trait Response
+  sealed trait Request extends Product with Serializable
+  sealed trait Response extends Product with Serializable
   sealed trait WorkException extends Response
 
   /**

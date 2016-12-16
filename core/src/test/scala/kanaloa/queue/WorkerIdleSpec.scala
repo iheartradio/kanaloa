@@ -32,11 +32,12 @@ class WorkerIdleSpec extends WorkerSpec {
       assertWorkerStatus(worker, Worker.UnregisteringIdle)
     }
 
-    "transition to 'unregisteringIdle' when the Routee dies" in withIdleWorker() { (worker, queueProbe, routeeProbe, _) ⇒
-      routeeProbe.ref ! PoisonPill
-      queueProbe.expectMsg(Unregister(worker))
-      assertWorkerStatus(worker, Worker.UnregisteringIdle)
-    }
+    //todo: this mechanism will be handled Processor per handler, make sure the scenario is tested there
+    //    "transition to 'unregisteringIdle' when the Routee dies" in withIdleWorker() { (worker, queueProbe, routeeProbe, _) ⇒
+    //      routeeProbe.ref ! PoisonPill
+    //      queueProbe.expectMsg(Unregister(worker))
+    //      assertWorkerStatus(worker, Worker.UnregisteringIdle)
+    //    }
   }
 
 }

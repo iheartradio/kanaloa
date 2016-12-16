@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicBoolean, AtomicInteger}
 import akka.actor.Actor.Receive
 import akka.actor._
 import kanaloa._
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.util.AtomicCyclicInt
 
 import scala.concurrent.duration.Duration
@@ -23,13 +24,14 @@ class GeneralActorRefHandler[TResp, TError](
   val name: String,
   actor:    ActorRef,
   factory:  ActorRefFactory
-)(resultChecker: Any ⇒ Either[Option[TError], TResp]) extends Handler[Any] {
+)(resultChecker: ResultChecker[TResp, TError]) extends Handler[Any] {
   import GeneralActorRefHandler._
 
   override type Error = Option[TError]
   override type Resp = TResp
 
-  val index = new AtomicCyclicInt(0, 10000000)
+  val maxConcurrentHandling = 100000000 //the actual max concurrent handling is controlled by the kanaloa, this number is just a hard limit, not suggesting that the concurrent handling should be allowed to go there.
+  val index = new AtomicCyclicInt(0, maxConcurrentHandling)
   val cancelled = new AtomicBoolean(false)
 
   override def handle(req: Any): Handling[Resp, Error] = new Handling[Resp, Error] {
@@ -39,6 +41,8 @@ class GeneralActorRefHandler[TResp, TError](
       handlerActorProps(promise, actor),
       s"${name}-handler-of-${actor.path.name}_${index.incrementAndGet()}"
     )
+
+    (actor ! req)(handlerActor)
 
     import factory.dispatcher
 
@@ -61,6 +65,8 @@ class GeneralActorRefHandler[TResp, TError](
 }
 
 object GeneralActorRefHandler {
+  type ResultChecker[TResp, TError] = Any ⇒ Either[Option[TError], TResp]
+
   private class HandlerActor(promise: Promise[Either[Interrupted, Any]], target: ActorRef) extends Actor {
     context watch target
 
@@ -89,4 +95,12 @@ object GeneralActorRefHandler {
 
   case object TargetTerminated extends Interrupted
   case object Cancelled extends Interrupted
+
+  def apply[TResp, TError](
+    name:    String,
+    actor:   ActorRef,
+    factory: ActorRefFactory
+  )(resultChecker: ResultChecker[TResp, TError]) = new GeneralActorRefHandler[TResp, TError](name, actor, factory)(resultChecker)
+
 }
+

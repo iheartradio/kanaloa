@@ -10,6 +10,8 @@ import kanaloa.ApiProtocol.{QueryStatus, ShutdownGracefully, ShutdownSuccessfull
 import kanaloa.Dispatcher.SubscribePerformanceMetrics
 import kanaloa.IntegrationTests._
 import kanaloa.PerformanceSampler.{Report, Sample}
+import kanaloa.handler.{HandlerProvider, GeneralActorRefHandler}
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.metrics.StatsDClient
 import kanaloa.queue.QueueProcessor.{RunningStatus, ShuttingDown}
 import kanaloa.util.Java8TimeExtensions._
@@ -74,7 +76,7 @@ class PushingDispatcherIntegration extends IntegrationSpec {
 
     val pd = system.actorOf(PushingDispatcher.props(
       "test-pushing",
-      backend,
+      handlerWith(backend),
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
@@ -84,7 +86,7 @@ class PushingDispatcherIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker))
+    ))
 
     ignoreMsg { case Success ⇒ true }
 
@@ -106,7 +108,7 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
 
     val pd = system.actorOf(PushingDispatcher.props(
       "test-pushing",
-      backend,
+      handlerWith(backend),
       ConfigFactory.parseString(
         s"""
           kanaloa.dispatchers.test-pushing {
@@ -125,7 +127,7 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker))
+    ))
 
     ignoreMsg { case Success ⇒ true }
 
@@ -148,7 +150,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
     val pd = system.actorOf(PullingDispatcher.props(
       "test-pulling",
       iterator,
-      backend,
+      handlerWith(backend),
       None,
       ConfigFactory.parseString(
         s"""
@@ -159,7 +161,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker))
+    ))
 
     watch(pd)
 
@@ -173,13 +175,13 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
 
   "can remain sane when all workers are constantly failing" in new TestScope with Backends {
-    val backend = suicidal(1.milliseconds)
+    val backend = system.actorOf(suicidal(1.milliseconds))
     val iterator = Stream.continually("a").iterator
 
     val pd = system.actorOf(PullingDispatcher.props(
       "test-pulling",
       iterator,
-      backend,
+      handlerWith(backend),
       None,
       ConfigFactory.parseString(
         s"""
@@ -194,7 +196,7 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker))
+    ))
 
     watch(pd)
 
@@ -231,9 +233,9 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
 
     def test: Int = {
       val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
-      val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
+      val pd = TestActorRef[Dispatcher[Any]](PushingDispatcher.props(
         "test-pushing",
-        backend,
+        handlerWith(backend),
         ConfigFactory.parseString(
           s"""
           kanaloa.dispatchers.test-pushing {
@@ -258,7 +260,7 @@ class AutothrottleWithPushingIntegration extends IntegrationSpec {
           }
         """
         )
-      )(resultChecker))
+      ))
       ignoreMsg {
         case Success ⇒ true
       }
@@ -296,7 +298,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
     def dispatcherProps(backend: ActorRef) = PullingDispatcher.props(
       "test-pulling",
       iteratorOf(numberOfMessages),
-      backend,
+      handlerWith(backend),
       None,
       ConfigFactory.parseString(
         s"""
@@ -320,13 +322,13 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker)
+    )
 
     val backendProps = concurrencyLimitedBackendProps(optimalSize, processTime, Some(numberOfMessages))
 
     def test: Int = {
       val backend = TestActorRef[ConcurrencyLimitedBackend](backendProps)
-      val pd = TestActorRef[Dispatcher](dispatcherProps(backend))
+      val pd = TestActorRef[Dispatcher[Any]](dispatcherProps(backend))
 
       ignoreMsg { case Success ⇒ true }
 
@@ -358,9 +360,9 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
 class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
   "downsize when the traffic is sparse" in new TestScope {
     val backend = TestActorRef[SimpleBackend]
-    val pd = TestActorRef[Dispatcher](PushingDispatcher.props(
+    val pd = TestActorRef[Dispatcher[Any]](PushingDispatcher.props(
       "test-pushing",
-      backend,
+      handlerWith(backend),
       ConfigFactory.parseString(
         """
           kanaloa.dispatchers.test-pushing {
@@ -376,7 +378,7 @@ class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
           }
         """
       )
-    )(resultChecker))
+    ))
 
     pd ! "a msg"
 
@@ -449,8 +451,14 @@ object IntegrationTests {
     }
   }
 
-  val resultChecker: ResultChecker = {
+  val resultChecker: ResultChecker[Any, String] = {
     case Success ⇒ Right(Success)
+    case _       ⇒ Left(Some("failure"))
+  }
+
+  def handlerWith(ref: ActorRef)(implicit system: ActorSystem): HandlerProvider[Any] = {
+    import system.dispatcher
+    HandlerProvider.actorRef("testBackend", ref, system)(resultChecker)
   }
 
   def iteratorOf(numberOfMessages: Int) = new Iterator[Int] {
@@ -482,7 +490,7 @@ object IntegrationTests {
       numberOfMessages
     }
 
-    def getPoolSize(rd: Dispatcher): Int = {
+    def getPoolSize(rd: Dispatcher[_]): Int = {
       rd.processor ! QueryStatus()
 
       val status = expectMsgClass(classOf[RunningStatus])

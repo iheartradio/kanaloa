@@ -13,9 +13,9 @@ package kanaloa {
 
 package kanaloa.queue {
 
-  private[queue] case class Work(messageToDelegatee: Any, replyTo: Option[ActorRef] = None, settings: WorkSettings = WorkSettings())
+  private[queue] case class Work[T](messageToDelegatee: T, replyTo: Option[ActorRef] = None, settings: WorkSettings = WorkSettings())
 
-  private[queue] case class Rejected(work: Work, reason: String)
+  private[queue] case class Rejected[T](work: Work[T], reason: String)
 
   case class WorkSettings(
     retry:                     Int            = 0,

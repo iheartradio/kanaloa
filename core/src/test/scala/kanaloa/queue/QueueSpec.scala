@@ -3,6 +3,7 @@ package kanaloa.queue
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
+import kanaloa.handler.GeneralActorRefHandler
 import kanaloa.metrics.{Metric, MetricsCollector, Reporter}
 import kanaloa.queue.Queue._
 import kanaloa.queue.QueueProcessor.{Shutdown, _}
@@ -145,9 +146,9 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
       val workerProps: Props = Worker.default(
         TestProbe().ref,
-        TestProbe().ref,
+        GeneralActorRefHandler("tst", TestProbe().ref, system)(resultChecker),
         TestProbe().ref
-      )(resultChecker)
+      )
 
       val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
       val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
@@ -178,6 +179,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 }
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
+
   val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {

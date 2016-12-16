@@ -1,9 +1,13 @@
 package kanaloa
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRefFactory, ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestActors, TestKit, TestProbe}
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.ApiProtocol._
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.handler.HandlerProvider.HandlerChange
+import kanaloa.handler.{ResultChecker, HandlerProvider, Handler, GeneralActorRefHandler}
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, StatsDReporter}
 import kanaloa.queue.TestUtils.MessageProcessed
 import kanaloa.queue._
@@ -13,6 +17,7 @@ import org.scalatest.concurrent.Eventually
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.Success
+import HandlerProviders._
 
 class DispatcherSpec extends SpecWithActorSystem with OptionValues {
   implicit val noneStatsDClient: Option[StatsDClient] = None
@@ -24,12 +29,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         "test",
         iterator,
         Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autothrottle = None),
-        backend,
+        testHandlerProvider(ResultChecker.expectType[SuccessResp.type]),
         None,
-        None,
-        {
-          case SuccessResp ⇒ Right(())
-        }
+        None
+
       )))
 
       delegatee.expectMsg(1)
@@ -50,9 +53,9 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          TestActors.echoActorProps,
+          testHandlerProvider(ResultChecker.complacent, TestActors.echoActorProps),
           Some(resultProbe.ref)
-        )(ResultChecker.complacent)
+        )
       )
 
       resultProbe.expectMsg(1)
@@ -76,10 +79,10 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          backendProb.ref,
+          testHandlerProvider(ResultChecker.complacent, backendProb.ref),
           Some(resultProbe.ref),
           ConfigFactory.parseString("kanaloa.default-dispatcher.workerPool.starting-pool-size = 20")
-        )(ResultChecker.complacent)
+        )
       )
 
       backendProb.expectMsg(1)
@@ -111,8 +114,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          TestActors.echoActorProps
-        )(ResultChecker.complacent)
+          testHandlerProvider(ResultChecker.complacent, TestActors.echoActorProps)
+        )
       )
 
       dispatcher ! ShutdownGracefully(Some(self))
@@ -127,8 +130,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         PullingDispatcher.props(
           "test",
           iterator,
-          promiseBackend(Promise[ActorRef])
-        )(ResultChecker.complacent)
+          fromPromise(Promise[ActorRef], ResultChecker.complacent)
+        )
       )
 
       dispatcher ! ShutdownGracefully(Some(self))
@@ -140,10 +143,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
   "pushing work dispatcher" should {
     trait SimplePushingDispatchScope extends ScopeWithActor {
+      import system.{dispatcher ⇒ ex}
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
         (i: String) ⇒ Future.successful(MessageProcessed(i))
-      )(ResultChecker.expectType[MessageProcessed]))
+      ))
     }
 
     "work happily with simpleBackend" in new SimplePushingDispatchScope {
@@ -157,10 +161,15 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     "let simple result check fail on unrecognized reply message" in new ScopeWithActor {
+      import system.{dispatcher ⇒ ex}
+      val service = system.actorOf(TestActors.echoActorProps)
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
-        (i: String) ⇒ Future.successful("A Result")
-      )(ResultChecker.expectType[MessageProcessed]))
+        HandlerProvider.actorRef("test", service, system) {
+          case i: Int ⇒ Right(i)
+          case _      ⇒ Left(Some("unrecognized"))
+        }
+      ))
 
       dispatcher ! "3"
       expectMsgType[WorkFailed]
@@ -170,8 +179,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val backendProb = TestProbe()
       val dispatcher = system.actorOf(PushingDispatcher.props(
         "test",
-        backendProb.ref
-      )(ResultChecker.complacent))
+        HandlerProvider.actorRef("testService", backendProb.ref)(ResultChecker.complacent)
+      ))
 
       dispatcher ! Regulator.DroppingRate(1)
       dispatcher ! "message"
@@ -184,9 +193,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val dispatcher = system.actorOf(Props(new PushingDispatcher(
         "test",
         Dispatcher.defaultDispatcherSettings(),
-        TestProbe().ref,
-        Some(reporter),
-        ResultChecker.complacent
+        HandlerProvider.actorRef("testService", TestProbe().ref)(ResultChecker.complacent),
+        Some(reporter)
       )))
 
       dispatcher ! Regulator.DroppingRate(1)
@@ -200,7 +208,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val backendProb = TestProbe()
       val dispatcher = system.actorOf(PushingDispatcher.props(
         "test",
-        backendProb.ref,
+        HandlerProvider.actorRef("testService", backendProb.ref)(ResultChecker.complacent),
+
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
@@ -209,7 +218,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |  autothrottle.enabled = off
             |}""".stripMargin
         ) //make sure regulator doesn't interfere
-      )(ResultChecker.complacent))
+      ))
 
       dispatcher ! Regulator.DroppingRate(0.5)
 
@@ -229,7 +238,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       import system.dispatcher
       val pd = system.actorOf(PushingDispatcher.props(
         "test",
-        promiseBackend(Promise[ActorRef].failure(new Exception("failing backend"))),
+        fromPromise(Promise[ActorRef].failure(new Exception("failing backend")), ResultChecker.complacent),
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
@@ -240,7 +249,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |  }
             |}""".stripMargin
         )
-      )(ResultChecker.complacent))
+      ))
 
       eventually {
         (1 to 100).foreach(_ ⇒ pd ! "a work")
@@ -255,7 +264,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val backendActorPromise = Promise[ActorRef]
       val dispatcher = system.actorOf(PushingDispatcher.props(
         "test",
-        promiseBackend(backendActorPromise),
+        fromPromise(backendActorPromise, ResultChecker.complacent),
         ConfigFactory.parseString(
           """
             |kanaloa.default-dispatcher {
@@ -266,7 +275,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             |  }
             |}""".stripMargin
         )
-      )(ResultChecker.complacent))
+      ))
 
       //reach the point that it starts to reject work
       eventually {
@@ -520,5 +529,24 @@ class ScopeWithActor(implicit system: ActorSystem) extends TestKit(system) with 
 
   val delegatee = TestProbe()
 
-  val backend: Backend = delegatee.ref
+  def testHandler[TResp, TError](resultChecker: Any ⇒ Either[Option[TError], TResp], routee: ActorRef = delegatee.ref): Handler[Any] =
+    new GeneralActorRefHandler("routeeHandler", routee, system)(resultChecker)
+
+  def testHandlerProvider[TResp, TError](resultChecker: ResultChecker[TError, TResp], routee: ActorRef = delegatee.ref): HandlerProvider[Any] =
+    testHandlerProvider(testHandler(resultChecker, routee))
+
+  def testHandlerProvider[TResp, TError](
+    resultChecker: ResultChecker[TError, TResp], props: Props
+  )(
+    implicit
+    arf: ActorRefFactory
+  ): HandlerProvider[Any] =
+    testHandlerProvider(testHandler(resultChecker, arf.actorOf(props)))
+
+  def testHandlerProvider(handler: Handler[Any]): HandlerProvider[Any] =
+    new HandlerProvider[Any] {
+      val handlers = List(handler)
+
+      override def subscribe(f: (HandlerChange) ⇒ Unit): Unit = ()
+    }
 }

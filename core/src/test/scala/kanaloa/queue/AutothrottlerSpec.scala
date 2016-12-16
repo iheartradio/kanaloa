@@ -6,11 +6,12 @@ import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.DurationFunctions._
 import kanaloa.PerformanceSampler.{PartialUtilization, Sample}
 import kanaloa.Types.{Speed, QueueLength}
+import kanaloa.handler.ResultChecker
 import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}
-import kanaloa.{ResultChecker, ScopeWithActor, SpecWithActorSystem}
+import kanaloa.{ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -222,10 +223,10 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val queue = TestProbe()
       val processor = system.actorOf(QueueProcessor.default(
         queue.ref,
-        backend,
+        testHandlerProvider(ResultChecker.expectType),
         ProcessingWorkerPoolSettings(),
         system.actorOf(MetricsCollector.props(None))
-      )(ResultChecker.expectType))
+      ))
 
       watch(processor)
       val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), system.actorOf(MetricsCollector.props(None))))
@@ -238,7 +239,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
       val mc = system.actorOf(MetricsCollector.props(None))
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, backend, ProcessingWorkerPoolSettings(), mc)(ResultChecker.expectType))
+      val processor = system.actorOf(QueueProcessor.default(queue.ref, testHandlerProvider(ResultChecker.expectType), ProcessingWorkerPoolSettings(), mc))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
       val a = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(resizeInterval = 10.minutes), mc))
       watch(a)

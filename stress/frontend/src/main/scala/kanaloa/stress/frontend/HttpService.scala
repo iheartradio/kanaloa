@@ -15,7 +15,7 @@ import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
-import kanaloa.{ ResultChecker, ClusterAwareBackend, PushingDispatcher }
+import kanaloa.{ ClusterAwareBackend, PushingDispatcher }
 import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {

@@ -12,6 +12,7 @@ trait MessageScheduler {
     import context.dispatcher
     context.system.scheduler.scheduleOnce(delay, receiver, msg)
   }
+
   def maybeDelayedMsg(delayO: Option[FiniteDuration], msg: Any, receiver: ActorRef = self): Option[Cancellable] = {
     delayO.map(delayedMsg(_, msg, receiver)).orElse {
       receiver ! msg

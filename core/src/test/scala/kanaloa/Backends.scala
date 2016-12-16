@@ -1,20 +1,21 @@
 package kanaloa
 
 import akka.actor._
+import akka.testkit.TestProbe
 import kanaloa.Backends.SuicidalActor
 import kanaloa.IntegrationTests.Success
+import kanaloa.handler.{GeneralActorRefHandler, Handler, HandlerProvider}
+import kanaloa.handler.HandlerProvider.HandlerChange
+import kanaloa.queue.{Fail, Result}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 trait Backends {
-  def promiseBackend(promise: Promise[ActorRef])(implicit ex: ExecutionContext) = new Backend {
-    def apply(f: ActorRefFactory): Future[ActorRef] = promise.future
-  }
 
-  def processTimeBackend(processTime: FiniteDuration): Backend = Backends.delayedProcessorProps(processTime)
+  def processTimeBackend(processTime: FiniteDuration): Props = Backends.delayedProcessorProps(processTime)
 
-  def suicidal(delay: FiniteDuration): Backend = Props(classOf[SuicidalActor], delay)
+  def suicidal(delay: FiniteDuration): Props = Props(classOf[SuicidalActor], delay)
 }
 
 object Backends {
@@ -33,4 +34,33 @@ object Backends {
   }
 
   def delayedProcessorProps(processTime: FiniteDuration): Props = Props(new DelayedProcessor(processTime))
+}
+
+object HandlerProviders {
+  def fromPromise[TError, TResp](
+    promise:       Promise[ActorRef],
+    resultChecker: Any ⇒ Either[Option[TError], TResp]
+  )(
+    implicit
+    ex: ExecutionContext, system: ActorSystem
+  ): HandlerProvider[Any] = HandlerProvider.actorRef("testPromise", promise.future, system)(resultChecker)
+
+  val simpleResultChecker: Any ⇒ Either[Option[String], Any] = (v1: Any) ⇒ {
+    v1 match {
+      case Result(v) ⇒ Right(v)
+      case Fail(v)   ⇒ Left(Option(v))
+    }
+  }
+
+  def simpleHandler(testProbe: TestProbe)(implicit system: ActorSystem): Handler[Any] =
+    simpleHandler(testProbe.ref)
+
+  def simpleHandler(testActor: ActorRef)(implicit system: ActorSystem): Handler[Any] =
+    new GeneralActorRefHandler("routeeHandler", testActor, system)(simpleResultChecker)
+
+  def simpleHandlerProvider(testProbe: TestProbe)(implicit system: ActorSystem): HandlerProvider[Any] = {
+    import system.dispatcher
+    HandlerProvider.single(new GeneralActorRefHandler("routeeHandler", testProbe.ref, system)(simpleResultChecker))
+  }
+
 }

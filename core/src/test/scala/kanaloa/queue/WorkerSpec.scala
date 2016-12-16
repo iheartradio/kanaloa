@@ -1,27 +1,17 @@
 package kanaloa.queue
 
-import akka.actor.ActorRef
+import akka.actor.{ActorSystem, ActorRef}
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.QueryStatus
+import kanaloa.handler.{Handler, GeneralActorRefHandler}
 import kanaloa.queue.Queue.RequestWork
-import kanaloa.{ResultChecker, SpecWithActorSystem}
+import kanaloa.{HandlerProviders, SpecWithActorSystem}
 import org.scalatest.{ShouldMatchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 case class Result(value: Any)
 case class Fail(value: String)
-
-object SimpleResultChecker extends ResultChecker {
-
-  override def apply(v1: Any): Either[String, Any] = {
-    v1 match {
-      case Result(v) ⇒ Right(v): Either[String, Any]
-      case Fail(v)   ⇒ Left(v): Either[String, Any]
-    }
-  }
-
-  override def isDefinedAt(x: Any): Boolean = true
-}
+import HandlerProviders._
 
 abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
 
@@ -29,13 +19,13 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
     val queueProbe = TestProbe("queue")
     val routeeProbe = TestProbe("routee")
     val metricsCollectorProbe = TestProbe("metricsCollector")
-    val worker = TestActorRef[Worker](
-      Worker.default(
+    val worker = TestActorRef[Worker[Any]](
+      Worker.default[Any](
         queueProbe.ref,
-        routeeProbe.ref,
+        simpleHandler(routeeProbe),
         metricsCollectorProbe.ref,
         circuitBreakerSettings
-      )(SimpleResultChecker)
+      )
     )
     (queueProbe, routeeProbe, worker, metricsCollectorProbe)
   }
@@ -45,7 +35,7 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
     expectMsg(status)
   }
 
-  final def withIdleWorker(circuitBreakerSettings: Option[CircuitBreakerSettings] = None)(test: (TestActorRef[Worker], TestProbe, TestProbe, TestProbe) ⇒ Any) {
+  final def withIdleWorker(circuitBreakerSettings: Option[CircuitBreakerSettings] = None)(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe, TestProbe) ⇒ Any) {
     val (queueProbe, routeeProbe, worker, metricsCollectorProbe) = createWorker(circuitBreakerSettings)
     watch(worker)
     try {
@@ -60,9 +50,9 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
   final def withWorkingWorker(
     settings:               WorkSettings                   = WorkSettings(),
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None
-  )(test: (TestActorRef[Worker], TestProbe, TestProbe, Work, TestProbe) ⇒ Any) {
+  )(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe, Work[Any], TestProbe) ⇒ Any) {
     withIdleWorker(circuitBreakerSettings) { (worker, queueProbe, routeeProbe, metricCollectorProbe) ⇒
-      val work = Work("work", Some(self), settings)
+      val work = Work[Any]("work", Some(self), settings)
       queueProbe.send(worker, work) //send it work, to put it into the Working state
       routeeProbe.expectMsg(work.messageToDelegatee) //work should always get sent to a Routee from an Idle Worker
       test(worker, queueProbe, routeeProbe, work, metricCollectorProbe)

@@ -3,10 +3,10 @@ package kanaloa
 import akka.actor.SupervisorStrategy.Escalate
 import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
-import kanaloa.ApiProtocol.{ShutdownGracefully, WorkRejected}
-import kanaloa.Backend.BackendAdaptor
+import kanaloa.ApiProtocol.{WorkFailed, ShutdownGracefully, WorkRejected}
 import kanaloa.Dispatcher.{UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
 import kanaloa.Regulator.DroppingRate
+import kanaloa.handler.{HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
 import kanaloa.queue.Queue.{Enqueue, EnqueueRejected}
 import kanaloa.queue._
@@ -16,13 +16,13 @@ import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.concurrent.duration._
+import scala.reflect._
 import scala.util.Random
 
-trait Dispatcher extends Actor with ActorLogging {
+trait Dispatcher[T] extends Actor with ActorLogging {
   def name: String
   def settings: Dispatcher.Settings
-  def backend: Backend
-  def resultChecker: ResultChecker
+  def handlerProvider: HandlerProvider[T]
   def reporter: Option[Reporter]
 
   protected lazy val metricsCollector = context.actorOf(MetricsCollector.props(reporter, settings.performanceSamplerSettings))
@@ -41,11 +41,11 @@ trait Dispatcher extends Actor with ActorLogging {
   private[kanaloa] val processor = {
     val props = QueueProcessor.default(
       queue,
-      backend,
+      handlerProvider,
       settings.workerPool,
       metricsCollector,
       settings.circuitBreaker
-    )(resultChecker)
+    )
 
     context.actorOf(props, "queue-processor")
   }
@@ -138,14 +138,13 @@ object Dispatcher {
 
 }
 
-case class PushingDispatcher(
-  name:          String,
-  settings:      Settings,
-  backend:       Backend,
-  reporter:      Option[Reporter],
-  resultChecker: ResultChecker
+case class PushingDispatcher[T: ClassTag](
+  name:            String,
+  settings:        Settings,
+  handlerProvider: HandlerProvider[T],
+  reporter:        Option[Reporter]
 )
-  extends Dispatcher {
+  extends Dispatcher[T] {
   val random = new Random(23)
   var droppingRate: DroppingRate = DroppingRate(0)
   protected lazy val queueProps = Queue.default(metricsCollector, settings.workSettings)
@@ -164,9 +163,11 @@ case class PushingDispatcher(
   override def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m ⇒
+    case m: T if classTag[T].runtimeClass.isInstance(m) ⇒
+
       metricsCollector ! Metric.WorkReceived
       dropOrEnqueue(m, sender)
+    case unrecognized ⇒ sender ! WorkFailed("unrecognized request")
   }
 
   private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
@@ -180,26 +181,24 @@ case class PushingDispatcher(
 }
 
 object PushingDispatcher {
-  def props[T: BackendAdaptor](
-    name:       String,
-    backend:    T,
-    rootConfig: Config = ConfigFactory.load()
-  )(resultChecker: ResultChecker)(implicit statsDClient: Option[StatsDClient]) = {
+  def props[T: ClassTag, A](
+    name:            String,
+    handlerProvider: A,
+    rootConfig:      Config = ConfigFactory.load()
+  )(implicit statsDClient: Option[StatsDClient], adaptor: HandlerProviderAdaptor[A, T]) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient = statsDClient)
-    val toBackend = implicitly[BackendAdaptor[T]]
-    Props(PushingDispatcher(name, settings, toBackend(backend), reporter, resultChecker)).withDeploy(Deploy.local)
+    Props(PushingDispatcher(name, settings, adaptor(handlerProvider), reporter)).withDeploy(Deploy.local)
   }
 }
 
-case class PullingDispatcher(
-  name:          String,
-  iterator:      Iterator[_],
-  settings:      Settings,
-  backend:       Backend,
-  reporter:      Option[Reporter],
-  sendResultsTo: Option[ActorRef],
-  resultChecker: ResultChecker
-) extends Dispatcher {
+case class PullingDispatcher[T](
+  name:            String,
+  iterator:        Iterator[T],
+  settings:        Settings,
+  handlerProvider: HandlerProvider[T],
+  reporter:        Option[Reporter],
+  sendResultsTo:   Option[ActorRef]
+) extends Dispatcher[T] {
   protected def queueProps = QueueOfIterator.props(
     iterator,
     settings.workSettings,
@@ -209,19 +208,19 @@ case class PullingDispatcher(
 }
 
 object PullingDispatcher {
-  def props[T: BackendAdaptor](
-    name:          String,
-    iterator:      Iterator[_],
-    backend:       T,
-    sendResultsTo: Option[ActorRef] = None,
-    rootConfig:    Config           = ConfigFactory.load()
-  )(resultChecker: ResultChecker)(
+  def props[T, A](
+    name:            String,
+    iterator:        Iterator[T],
+    handlerProvider: A,
+    sendResultsTo:   Option[ActorRef] = None,
+    rootConfig:      Config           = ConfigFactory.load()
+  )(
     implicit
-    statsDClient: Option[StatsDClient]
+    statsDClient: Option[StatsDClient],
+    adaptor:      HandlerProviderAdaptor[A, T]
   ) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient, Some("default-pulling-dispatcher"))
     //for pulling dispatchers because only a new idle worker triggers a pull of work, there maybe cases where there are two idle workers but the system should be deemed as fully utilized.
-    val toBackend = implicitly[BackendAdaptor[T]]
-    Props(PullingDispatcher(name, iterator, settings, toBackend(backend), reporter, sendResultsTo, resultChecker)).withDeploy(Deploy.local)
+    Props(PullingDispatcher[T](name, iterator, settings, adaptor(handlerProvider), reporter, sendResultsTo)).withDeploy(Deploy.local)
   }
 }

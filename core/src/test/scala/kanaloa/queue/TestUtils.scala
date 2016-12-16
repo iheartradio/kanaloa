@@ -3,6 +3,8 @@ package kanaloa.queue
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa._
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.handler.HandlerProvider
 import kanaloa.metrics.MetricsCollector
 
 object TestUtils {
@@ -11,9 +13,9 @@ object TestUtils {
   case class MessageProcessed(msg: String)
   case object MessageFailed
 
-  val resultChecker: ResultChecker = {
+  val resultChecker: ResultChecker[String, String] = {
     case MessageProcessed(msg) ⇒ Right(msg)
-    case m                     ⇒ Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
+    case m                     ⇒ Left(Some(s"unrecognized message received by resultChecker: $m (${m.getClass})"))
   }
 
   def iteratorQueueProps(
@@ -28,12 +30,12 @@ object TestUtils {
 
     val delegatee = TestProbe()
 
-    val backend = delegatee.ref
+    val handlerProvider = HandlerProvider.actorRef("test", delegatee.ref)(resultChecker)
 
     def defaultProcessorProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
       metricsCollector: ActorRef                     = system.actorOf(MetricsCollector.props(None))
-    ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
+    ) = QueueProcessor.default(queue, handlerProvider, settings, metricsCollector)
   }
 }
