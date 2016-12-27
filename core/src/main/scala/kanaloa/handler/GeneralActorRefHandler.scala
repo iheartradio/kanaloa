@@ -21,9 +21,9 @@ import scala.util.Success
  * @param resultChecker
  */
 class GeneralActorRefHandler[TResp, TError](
-  val name: String,
-  actor:    ActorRef,
-  factory:  ActorRefFactory
+  val name:  String,
+  val actor: ActorRef,
+  factory:   ActorRefFactory
 )(resultChecker: ResultChecker[TResp, TError]) extends Handler[Any] {
   import GeneralActorRefHandler._
 

@@ -15,7 +15,7 @@ import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
-import kanaloa.{ ClusterAwareBackend, PushingDispatcher }
+import kanaloa.{ ClusterAwareHandlerProvider$, PushingDispatcher }
 import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
@@ -89,7 +89,7 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
   lazy val clusterDispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "with-remote-backend",
-      ClusterAwareBackend("backend", "backend"),
+      ClusterAwareHandlerProvider("backend", "backend"),
       cfg
     )(resultChecker), "cluster-dispatcher")
 

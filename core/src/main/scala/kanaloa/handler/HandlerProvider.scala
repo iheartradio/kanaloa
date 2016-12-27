@@ -54,7 +54,7 @@ trait HandlerProviderFactories {
 
 }
 
-private[handler] trait AgentHandlerProvider[T] extends HandlerProvider[T] {
+trait AgentHandlerProvider[T] extends HandlerProvider[T] {
   implicit def ex: ExecutionContext
   val agentSubscribers = Agent[List[Subscriber]](Nil)
   val agentHandlers = Agent[List[Handler[T]]](Nil)
@@ -67,6 +67,7 @@ private[handler] trait AgentHandlerProvider[T] extends HandlerProvider[T] {
   protected def broadcast(change: HandlerChange): Unit =
     agentSubscribers.get.foreach(_(change))
 
+  //todo: check duplicated handler on add
   protected def addHandler(handler: Handler[T]): Unit = {
     agentHandlers.alter(handler :: _).foreach { _ ⇒
       broadcast(HandlersAdded(List(handler)))
