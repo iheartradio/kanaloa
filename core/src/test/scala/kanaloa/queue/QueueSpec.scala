@@ -4,11 +4,11 @@ import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
 import kanaloa.handler.GeneralActorRefHandler
-import kanaloa.metrics.{Metric, MetricsCollector, Reporter}
+import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
 import kanaloa.queue.QueueProcessor.{Shutdown, _}
 import kanaloa.queue.TestUtils._
-import kanaloa.{Backends, SpecWithActorSystem}
+import kanaloa.{QueueSampler, Backends, SpecWithActorSystem}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
 
@@ -180,7 +180,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
-  val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
+  val metricsCollector: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
     val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
@@ -209,7 +209,7 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(Some(new Reporter {
+  override val metricsCollector: ActorRef = system.actorOf(QueueSampler.props(Some(new Reporter {
     def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
   })))
 

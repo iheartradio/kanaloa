@@ -2,7 +2,7 @@ package kanaloa.queue
 
 import akka.actor._
 import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
-import kanaloa.PerformanceSampler
+import kanaloa.WorkerPoolSampler
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.{MetricsCollector, Metric}
 import kanaloa.queue.Queue._
@@ -61,7 +61,8 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(state, true) orElse {
       case e @ Enqueue(_, _, _) ⇒ sender() ! EnqueueRejected(e, Queue.EnqueueRejected.Retiring)
-      case RetiringTimeout      ⇒ finish(state, "Forcefully retire after timed out")
+      case RetiringTimeout ⇒ finish(state, "Forcefully 122" +
+        "retire after timed out")
     }
 
   private def finish(state: InternalState, withMessage: String): Unit = {
@@ -124,7 +125,8 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
     }) match {
       case Some(newState) ⇒ dispatchWork(newState, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! statusOf(state)
+        val newStatus = statusOf(state)
+        metricsCollector ! DispatchReport(newStatus, dispatched)
         state
     }
   }
@@ -268,6 +270,7 @@ object Queue {
    * @param fullyUtilized are all workers in the worker pool utilized
    */
   case class Status(idleWorkers: Int, queueLength: QueueLength, fullyUtilized: Boolean)
+  case class DispatchReport(status: Status, dispatched: Int)
 
   def ofIterable[T](
     iterable:           Iterable[T],

@@ -4,8 +4,9 @@ import java.time.{Duration ⇒ JDuration, LocalDateTime ⇒ Time}
 
 import akka.actor._
 import kanaloa.ApiProtocol.QueryStatus
-import kanaloa.PerformanceSampler
-import kanaloa.PerformanceSampler._
+import kanaloa.WorkerPoolSampler
+import kanaloa.WorkerPoolSampler._
+import kanaloa.Sampler._
 import kanaloa.Types.Speed
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.QueueProcessor.ScaleTo
@@ -52,20 +53,20 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
   }
 
   final def receive: Receive = watchingQueueAndProcessor orElse {
-    case s: Sample if s.poolSize > 0 ⇒
+    case s: WorkerPoolSample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
     case PartialUtilization(u) ⇒
       context become underUtilized(u)
-    case OptimizeOrExplore            ⇒ //no history no action
-    case _: PerformanceSampler.Report ⇒ //ignore other performance report
+    case OptimizeOrExplore           ⇒ //no history no action
+    case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
   private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndProcessor orElse {
     case PartialUtilization(utilization) ⇒
       if (highestUtilization < utilization)
         context become underUtilized(utilization, start)
-    case s: Sample if s.poolSize > 0 ⇒
+    case s: WorkerPoolSample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
     case OptimizeOrExplore ⇒
@@ -74,11 +75,11 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
 
-    case _: PerformanceSampler.Report ⇒ //ignore other performance report
+    case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
   private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
-    case s: Sample if s.poolSize > 0 ⇒
+    case s: WorkerPoolSample if s.poolSize > 0 ⇒
       perfLog = updateLogs(perfLog, s, weightOfLatestMetric)
       context become fullyUtilized(s.poolSize)
 
@@ -97,7 +98,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(poolSize = Some(currentSize), performanceLog = perfLog))
 
-    case _: PerformanceSampler.Report ⇒ //ignore other performance report
+    case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
   private def optimize(currentSize: PoolSize): ScaleTo = {
@@ -156,7 +157,7 @@ object Autothrottler {
     currentSize + scaleStep
   }
 
-  private[queue] def updateLogs(logs: PerformanceLogs, sample: Sample, weightOfLatestMetric: Double): PerformanceLogs = {
+  private[queue] def updateLogs(logs: PerformanceLogs, sample: WorkerPoolSample, weightOfLatestMetric: Double): PerformanceLogs = {
     val existingEntry = logs.get(sample.poolSize)
     val newSpeed = existingEntry.fold(sample.speed) { e ⇒
       Speed(e.speed.value * (1d - weightOfLatestMetric) + (sample.speed.value * weightOfLatestMetric))

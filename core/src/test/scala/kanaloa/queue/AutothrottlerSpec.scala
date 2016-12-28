@@ -4,14 +4,14 @@ import akka.actor.{ActorRef, ActorSystem, PoisonPill, Terminated}
 import akka.testkit._
 import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.DurationFunctions._
-import kanaloa.PerformanceSampler.{PartialUtilization, Sample}
+import kanaloa.WorkerPoolSampler.{PartialUtilization, WorkerPoolSample}
 import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.handler.ResultChecker
 import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.QueueProcessor.{ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}
-import kanaloa.{ScopeWithActor, SpecWithActorSystem}
+import kanaloa.{WorkerPoolSampler, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -23,7 +23,7 @@ import org.mockito.Mockito._
 class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually with MockitoSugar {
 
   def sample(poolSize: PoolSize, avgProcessTime: Option[Duration] = None, workDone: Int = 3) =
-    Sample(workDone, 2.second.ago, 1.second.ago, poolSize, QueueLength(14), avgProcessTime)
+    WorkerPoolSample(workDone, 2.second.ago, 1.second.ago, poolSize, avgProcessTime)
 
   "Autothrottle" should {
     "when no history" in new AutothrottleScope {
@@ -225,11 +225,11 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         queue.ref,
         testHandlerProvider(ResultChecker.expectType),
         ProcessingWorkerPoolSettings(),
-        system.actorOf(MetricsCollector.props(None))
+        system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
       ))
 
       watch(processor)
-      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), system.actorOf(MetricsCollector.props(None))))
+      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))))
       watch(autothrottler)
       processor ! PoisonPill
 
@@ -237,7 +237,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     }
 
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
-      val mc = system.actorOf(MetricsCollector.props(None))
+      val mc = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
       val queue = TestProbe()
       val processor = system.actorOf(QueueProcessor.default(queue.ref, testHandlerProvider(ResultChecker.expectType), ProcessingWorkerPoolSettings(), mc))
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
@@ -253,7 +253,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
 class AutothrottleScope(implicit system: ActorSystem)
   extends TestKit(system) with ImplicitSender {
 
-  val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
+  val metricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref)) // To be overridden
   val defaultSettings: AutothrottleSettings = AutothrottleSettings(
     chanceOfScalingDownWhenFull = 0.3,
     resizeInterval = 1.hour, //manual action only
@@ -281,12 +281,11 @@ class AutothrottleScope(implicit system: ActorSystem)
       case ((size, workDone), idx) ⇒
         val distance = ps.size - idx + 1
 
-        subject ! Sample(
+        subject ! WorkerPoolSample(
           workDone,
           start = distance.seconds.ago,
           end = (distance - 1).seconds.ago,
           poolSize = size,
-          queueLength = QueueLength(14),
           None
         )
     }

@@ -1,8 +1,9 @@
 package kanaloa
 
 import akka.testkit.TestProbe
-import kanaloa.PerformanceSampler.{PartialUtilization, Subscribe, Sample}
+import kanaloa.QueueSampler.{PartialUtilized, QueueSample}
 import kanaloa.Regulator.{DroppingRate, Status, Settings}
+import kanaloa.Sampler.Subscribe
 import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.metrics.Metric
 import concurrent.duration._
@@ -15,8 +16,8 @@ class RegulatorSpec extends SpecWithActorSystem {
     workDone:    Int            = 3,
     queueLength: Int            = 5,
     duration:    FiniteDuration = 1.second
-  ): Sample =
-    Sample(workDone, duration.ago, Time.now, poolSize = 14, queueLength = QueueLength(queueLength), None)
+  ): QueueSample =
+    QueueSample(workDone, duration.ago, Time.now, queueLength = QueueLength(queueLength))
 
   def status(
     delay:             FiniteDuration = 1.second,
@@ -90,7 +91,7 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       regulator ! sample() //starts the regulator
 
-      regulator ! PartialUtilization(0)
+      regulator ! PartialUtilized
 
       metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 0
       metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
@@ -118,7 +119,7 @@ class RegulatorSpec extends SpecWithActorSystem {
       regulator ! sample(workDone = 1, queueLength = 10000)
       regulatee.expectMsgType[DroppingRate].value shouldBe 1d //does not send dropping rate larger than zero when within a burst
 
-      regulator ! PartialUtilization(3)
+      regulator ! PartialUtilized
       regulatee.expectMsgType[DroppingRate].value shouldBe 0d //does not send dropping rate larger than zero when within a burst
 
     }

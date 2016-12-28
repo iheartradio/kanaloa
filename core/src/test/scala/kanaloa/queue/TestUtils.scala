@@ -35,7 +35,7 @@ object TestUtils {
     def defaultProcessorProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: ActorRef                     = system.actorOf(MetricsCollector.props(None))
+      metricsCollector: ActorRef                     = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
     ) = QueueProcessor.default(queue, handlerProvider, settings, metricsCollector)
   }
 }
