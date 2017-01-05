@@ -1,4 +1,7 @@
 .idea
+.DS_Store
+
+
 
 *.class
 *.log

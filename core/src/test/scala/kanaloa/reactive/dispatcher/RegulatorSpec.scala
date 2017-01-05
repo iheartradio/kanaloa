@@ -158,6 +158,16 @@ class RegulatorSpec extends SpecWithActorSystem {
       newStatus.delay.toSeconds.toInt shouldBe 175 +- 1
     }
 
+    "calculates status from when the delay is super long" in {
+      val newStatus = update(
+        sample(workDone = 0, duration = 1.second, queueLength = 1750000000), //speed of 0.1
+        status(averageSpeed = 0.000001),
+        settings(referenceDelay = 10.milliseconds)
+      )
+
+      newStatus.delay.toSeconds.toInt shouldBe 1750000000 +- 1
+    }
+
     "update p using based factors when p > 10%" in {
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 100), //speed of 0.1

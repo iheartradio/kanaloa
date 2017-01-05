@@ -27,8 +27,8 @@ object Dependencies {
   )
 
   val gatling = Seq(
-    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.3-SNAPSHOT" % Test,
-    "io.gatling"            % "gatling-test-framework"    % "2.2.3-SNAPSHOT" % Test
+    "io.gatling.highcharts" % "gatling-charts-highcharts" % "2.2.3" % Test,
+    "io.gatling"            % "gatling-test-framework"    % "2.2.3" % Test
   )
 
   val (test, integration) = {

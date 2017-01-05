@@ -52,7 +52,7 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
   def receive: Receive = {
     case s: Sample ⇒
       context become regulating(Status(
-        delay = estimateDelay(s, s.speed),
+        delay = estimateDelay(s, s.speed, settings.referenceDelay),
         droppingRate = DroppingRate(0),
         burstDurationLeft = settings.durationOfBurstAllowed,
         averageSpeed = s.speed
@@ -118,14 +118,20 @@ object Regulator {
     weightOfLatestMetric:   Double         = 0.5
   )
 
-  private def estimateDelay(
-    queueLength: QueueLength,
-    speed:       Speed
-  ): Option[FiniteDuration] =
-    if (speed.value == 0) None else Some((queueLength.value.toDouble / speed.value).milliseconds)
+  private val MaximumEstimatedDelayFactor = 100000
 
-  private def estimateDelay(sample: Sample, avgSpeed: Speed): FiniteDuration =
-    estimateDelay(sample.queueLength, avgSpeed).getOrElse(
+  private def estimateDelay(
+    queueLength:    QueueLength,
+    speed:          Speed,
+    referenceDelay: FiniteDuration
+  ): Option[FiniteDuration] = {
+    val totalMillis = queueLength.value.toDouble / speed.value
+    //avoid creating too long an estimated delay, which is meaningless anyway
+    if (speed.value == 0 || totalMillis > (referenceDelay.toMillis * MaximumEstimatedDelayFactor)) None else Some(totalMillis.milliseconds)
+  }
+
+  private def estimateDelay(sample: Sample, avgSpeed: Speed, referenceDelay: FiniteDuration): FiniteDuration =
+    estimateDelay(sample.queueLength, avgSpeed, referenceDelay).getOrElse(
       (sample.start.until(sample.end) * sample.queueLength.value.toDouble).asInstanceOf[FiniteDuration]
     )
 
@@ -136,7 +142,7 @@ object Regulator {
         sample.speed.value * weightOfLatestMetric + ((1d - weightOfLatestMetric) * lastStatus.averageSpeed.value)
       )
 
-    val delay = estimateDelay(sample, avgSpeed)
+    val delay = estimateDelay(sample, avgSpeed, referenceDelay)
 
     def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
 
