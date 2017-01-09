@@ -9,6 +9,7 @@ import kanaloa.Regulator.DroppingRate
 import kanaloa.handler.{HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
 import kanaloa.queue.Queue.{Enqueue, EnqueueRejected}
+import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -26,8 +27,6 @@ trait Dispatcher[T] extends Actor with ActorLogging {
   def reporter: Option[Reporter]
 
   protected lazy val queueSampler = context.actorOf(QueueSampler.props(reporter, settings.samplerSettings), "queueSampler")
-  //todo: move this into the QueueProcessor
-  protected lazy val workerPoolSampler = context.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings.samplerSettings))
 
   protected def queueProps: Props
 
@@ -45,18 +44,15 @@ trait Dispatcher[T] extends Actor with ActorLogging {
       queue,
       handlerProvider,
       settings.workerPool,
-      workerPoolSampler,
-      settings.circuitBreaker
+      WorkerFactory(settings.circuitBreaker),
+      WorkerPoolSamplerFactory(queueSampler, settings.samplerSettings, reporter),
+      settings.autothrottle.map(AutothrottlerFactory.apply)
     )
 
     context.actorOf(props, "queue-processor")
   }
 
   context watch processor
-
-  private val _ = settings.autothrottle.foreach { s ⇒
-    context.actorOf(Autothrottler.default(processor, s, workerPoolSampler), "autothrottler")
-  }
 
   def receive: Receive = ({
     case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout)
@@ -167,7 +163,7 @@ case class PushingDispatcher[T: ClassTag](
     case r: DroppingRate                   ⇒ droppingRate = r
     case m: T if classTag[T].runtimeClass.isInstance(m) ⇒ //todo: avoid this extra check when unnecessary (such as a method interface or the T is Any)
 
-      workerPoolSampler ! Metric.WorkReceived
+      queueSampler ! Metric.WorkReceived
       dropOrEnqueue(m, sender)
     case unrecognized ⇒ sender ! WorkFailed("unrecognized request")
   }
@@ -175,7 +171,7 @@ case class PushingDispatcher[T: ClassTag](
   private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
     if (droppingRate.value > 0 &&
       (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
-      workerPoolSampler ! Metric.WorkRejected
+      queueSampler ! Metric.WorkRejected
       sender ! WorkRejected(s"Over capacity or capacity is down, request is dropped under random dropping rate ${droppingRate.value} by kanaloa dispatcher $name")
     } else
       queue ! Enqueue(m, false, Some(replyTo))

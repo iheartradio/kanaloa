@@ -4,14 +4,16 @@ import akka.actor.{ActorRef, ActorSystem, PoisonPill, Terminated}
 import akka.testkit._
 import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.DurationFunctions._
+import kanaloa.Sampler.SamplerSettings
+import kanaloa.Utils.Factories
 import kanaloa.WorkerPoolSampler.{PartialUtilization, WorkerPoolSample}
 import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.handler.ResultChecker
 import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.Autothrottler._
-import kanaloa.queue.QueueProcessor.{ScaleTo, Shutdown}
+import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory, ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}
-import kanaloa.{WorkerPoolSampler, ScopeWithActor, SpecWithActorSystem}
+import kanaloa.{Utils, WorkerPoolSampler, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -225,7 +227,9 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         queue.ref,
         testHandlerProvider(ResultChecker.expectType),
         ProcessingWorkerPoolSettings(),
-        system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
+        WorkerFactory(None),
+        factories.workPoolSampler(),
+        None
       ))
 
       watch(processor)
@@ -239,7 +243,16 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
     "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
       val mc = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(queue.ref, testHandlerProvider(ResultChecker.expectType), ProcessingWorkerPoolSettings(), mc))
+      val processor = system.actorOf(
+        QueueProcessor.default(
+          queue.ref,
+          testHandlerProvider(ResultChecker.expectType),
+          ProcessingWorkerPoolSettings(),
+          WorkerFactory(None),
+          factories.workPoolSampler(),
+          None
+        )
+      )
       //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
       val a = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(resizeInterval = 10.minutes), mc))
       watch(a)

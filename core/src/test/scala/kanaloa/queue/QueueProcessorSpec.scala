@@ -11,7 +11,7 @@ import kanaloa.handler.{ResultChecker, Handler, GeneralActorRefHandler, HandlerP
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
-import kanaloa.queue.QueueProcessor.{ScaleTo, Shutdown, ShuttingDown}
+import kanaloa.queue.QueueProcessor.{WorkerFactory, ScaleTo, Shutdown, ShuttingDown}
 import kanaloa._
 import kanaloa.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
@@ -30,7 +30,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     val testHandlerProvider = HandlerProviders.simpleHandlerProvider(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(queueProbe.ref, testHandlerProvider, poolSettings, metricsCollector.ref, None, testWorkerFactory))
+    val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(queueProbe.ref, testHandlerProvider, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
 
     eventually {
       qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
@@ -85,7 +85,9 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         TestProbe().ref,
         handlerProvider,
         ProcessingWorkerPoolSettings(startingPoolSize = 1),
-        metricsCollectorProbe.ref
+        WorkerFactory(None),
+        factories.workPoolSampler(metricsCollectorProbe.ref),
+        None
       ))
 
       qp ! ScaleTo(10) //this should be ignored
@@ -158,7 +160,11 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
       val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(
         TestProbe("queue").ref,
-        handlerProvider, settings, TestProbe("metrics-collector").ref
+        handlerProvider,
+        settings,
+        WorkerFactory(None),
+        factories.workPoolSampler(),
+        None
       ))
       expectNoMsg(200.milliseconds)
       promise.complete(scala.util.Success(TestProbe().ref))
@@ -222,7 +228,9 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
           queueProbe.ref,
           fromPromise(Promise[ActorRef], ResultChecker.complacent),
           ProcessingWorkerPoolSettings(),
-          TestProbe().ref
+          WorkerFactory(None),
+          factories.workPoolSampler(),
+          None
         )
       )
       queueProcessor ! Shutdown(Some(self))
@@ -250,12 +258,11 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     val retiredCount: AtomicInteger = new AtomicInteger(0)
 
     //create a Worker, and increment a count when its told to Retire.
-    override def createWorker[T](
-      queueRef:               QueueRef,
-      handler:                Handler[T],
-      metricsCollector:       ActorRef,
-      circuitBreakerSettings: Option[CircuitBreakerSettings],
-      workerName:             String
+    override def apply[T](
+      queueRef:         QueueRef,
+      handler:          Handler[T],
+      metricsCollector: ActorRef,
+      workerName:       String
     )(implicit ac: ActorRefFactory): ActorRef = {
       val probe = TestProbe(workerName)
       probe.setAutoPilotPF {

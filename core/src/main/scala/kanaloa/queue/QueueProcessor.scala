@@ -3,32 +3,36 @@ package kanaloa.queue
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
-import akka.routing.{NoRoutee, RoundRobinRoutingLogic}
 import kanaloa.ApiProtocol._
+import kanaloa.Sampler.SamplerSettings
+import kanaloa.WorkerPoolSampler
 import kanaloa.handler.HandlerProvider.{HandlerChange, HandlersAdded}
-import kanaloa.handler.{ResultChecker, HandlerProvider, Handler}
-import kanaloa.metrics.Metric
+import kanaloa.handler.{HandlerProvider, Handler}
+import kanaloa.metrics.{Reporter, Metric}
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
 import kanaloa.queue.QueueProcessor._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
-import scala.util.{Failure, Success}
 
 class QueueProcessor[T](
-  queue:                  QueueRef,
-  handlerProvider:        HandlerProvider[T],
-  settings:               ProcessingWorkerPoolSettings,
-  circuitBreakerSettings: Option[CircuitBreakerSettings],
-  metricsCollector:       ActorRef,
-  workerFactory:          WorkerFactory
+  queue:                QueueRef,
+  handlerProvider:      HandlerProvider[T],
+  settings:             ProcessingWorkerPoolSettings,
+  workerFactory:        WorkerFactory,
+  samplerFactory:       WorkerPoolSamplerFactory,
+  autothrottlerFactory: Option[AutothrottlerFactory]
 ) extends Actor with ActorLogging with MessageScheduler {
   val listSelection = new ListSelection
   val healthCheckSchedule = {
     import context.dispatcher
     context.system.scheduler.schedule(settings.healthCheckInterval, settings.healthCheckInterval, self, HealthCheck)
   }
+
+  val metricsCollector: ActorRef = samplerFactory() // todo: life management
+
+  val autoThrottler: Option[ActorRef] = autothrottlerFactory.map(_(self, metricsCollector)) // todo: life management
 
   var workerCount = 0
   var workerPool: WorkerPool = List[ActorRef]()
@@ -197,7 +201,7 @@ class QueueProcessor[T](
   private def createWorker(handler: Handler[T]): Unit = {
     val workerName = s"worker-$workerCount"
     workerCount += 1
-    val worker = workerFactory.createWorker(queue, handler, metricsCollector, circuitBreakerSettings, workerName)
+    val worker = workerFactory(queue, handler, metricsCollector, workerName)
     context watch worker
 
     workerPool = workerPool :+ worker
@@ -217,30 +221,47 @@ private[queue] class ListSelection {
   }
 }
 
-private[queue] trait WorkerFactory {
-  def createWorker[T](
-    queueRef:               ActorRef,
-    handler:                Handler[T],
-    metricsCollector:       ActorRef,
-    circuitBreakerSettings: Option[CircuitBreakerSettings],
-    workerName:             String
-  )(implicit ac: ActorRefFactory): ActorRef
-}
-
-class DefaultWorkerFactory extends WorkerFactory {
-  override def createWorker[T](
-    queue:                  QueueRef,
-    handler:                Handler[T],
-    metricsCollector:       ActorRef,
-    circuitBreakerSettings: Option[CircuitBreakerSettings],
-    workerName:             String
-  )(implicit ac: ActorRefFactory): ActorRef = {
-    ac.actorOf(Worker.default(queue, handler, metricsCollector, circuitBreakerSettings), workerName)
-  }
-}
-
 object QueueProcessor {
   private[queue]type WorkerPool = List[WorkerRef] //keep sequence of creation time
+
+  private[kanaloa] trait WorkerFactory {
+    def apply[T](
+      queueRef:         ActorRef,
+      handler:          Handler[T],
+      metricsCollector: ActorRef,
+      workerName:       String
+    )(implicit ac: ActorRefFactory): ActorRef
+  }
+
+  private[kanaloa] object WorkerFactory {
+    def apply(circuitBreakerSettings: Option[CircuitBreakerSettings]): WorkerFactory = new WorkerFactory {
+      def apply[T](q: QueueRef, h: Handler[T], mc: QueueRef, name: String)(implicit ac: ActorRefFactory): QueueRef = {
+        ac.actorOf(Worker.default(q, h, mc, circuitBreakerSettings), name)
+      }
+    }
+  }
+
+  private[kanaloa] trait WorkerPoolSamplerFactory {
+    def apply()(implicit ac: ActorRefFactory): ActorRef
+  }
+
+  private[kanaloa] object WorkerPoolSamplerFactory {
+    def apply(queueSampler: ActorRef, settings: SamplerSettings, reporter: Option[Reporter]): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
+      def apply()(implicit ac: ActorRefFactory) =
+        ac.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings))
+    }
+  }
+
+  private[kanaloa] trait AutothrottlerFactory {
+    def apply(workerPoolManager: ActorRef, workerPoolSampler: ActorRef)(implicit ac: ActorRefFactory): ActorRef
+  }
+
+  private[kanaloa] object AutothrottlerFactory {
+    def apply(settings: AutothrottleSettings): AutothrottlerFactory = new AutothrottlerFactory {
+      def apply(workerPoolManager: ActorRef, workerPoolSampler: ActorRef)(implicit ac: ActorRefFactory): ActorRef =
+        ac.actorOf(Autothrottler.default(workerPoolManager, settings, workerPoolSampler), "autothrottler")
+    }
+  }
 
   case class ScaleTo(numOfWorkers: Int, reason: Option[String] = None) {
     assert(numOfWorkers >= 0)
@@ -257,20 +278,22 @@ object QueueProcessor {
   private[queue] case class HandlerProviderFailure(ex: Throwable)
 
   def default[T](
-    queue:                  QueueRef,
-    handlerProvider:        HandlerProvider[T],
-    settings:               ProcessingWorkerPoolSettings,
-    metricsCollector:       ActorRef,
-    circuitBreakerSettings: Option[CircuitBreakerSettings] = None,
-    workerFactory:          WorkerFactory                  = new DefaultWorkerFactory
-  ): Props =
+    queue:                QueueRef,
+    handlerProvider:      HandlerProvider[T],
+    settings:             ProcessingWorkerPoolSettings,
+    workerFactory:        WorkerFactory,
+    samplerFactory:       WorkerPoolSamplerFactory,
+    autothrottlerFactory: Option[AutothrottlerFactory]
+
+  ): Props = {
     Props(new QueueProcessor(
       queue,
       handlerProvider,
       settings,
-      circuitBreakerSettings,
-      metricsCollector,
-      workerFactory
+      workerFactory,
+      samplerFactory,
+      autothrottlerFactory
     )).withDeploy(Deploy.local)
+  }
 
 }

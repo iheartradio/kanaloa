@@ -1,11 +1,12 @@
 package kanaloa.queue
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRefFactory, ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider
 import kanaloa.metrics.MetricsCollector
+import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory}
 
 object TestUtils {
 
@@ -36,6 +37,15 @@ object TestUtils {
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
       metricsCollector: ActorRef                     = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
-    ) = QueueProcessor.default(queue, handlerProvider, settings, metricsCollector)
+    ) = QueueProcessor.default(
+      queue,
+      handlerProvider,
+      settings,
+      WorkerFactory(None),
+      new WorkerPoolSamplerFactory {
+        def apply()(implicit ac: ActorRefFactory): ActorRef = metricsCollector
+      },
+      None
+    )
   }
 }
