@@ -11,7 +11,7 @@ import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.handler.ResultChecker
 import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.Autothrottler._
-import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory, ScaleTo, Shutdown}
+import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}
 import kanaloa.{Utils, WorkerPoolSampler, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
@@ -30,7 +30,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
   "Autothrottle" should {
     "when no history" in new AutothrottleScope {
       as ! OptimizeOrExplore
-      tProcessor.expectNoMsg(50.milliseconds)
+      tWorkerPool.expectNoMsg(50.milliseconds)
     }
 
     "record perfLog" in new AutothrottleScope {
@@ -109,7 +109,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
 
       subject ! OptimizeOrExplore
 
-      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
 
       scaleCmd.reason.value shouldBe "exploring"
     }
@@ -119,13 +119,13 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       subject ! sample(poolSize = 30)
 
       subject ! OptimizeOrExplore
-      tProcessor.expectMsgType[ScaleTo]
+      tWorkerPool.expectMsgType[ScaleTo]
 
       subject ! PartialUtilization(4)
 
       subject ! OptimizeOrExplore
 
-      tProcessor.expectNoMsg(30.millisecond)
+      tWorkerPool.expectNoMsg(30.millisecond)
     }
 
     "optimize towards the faster size when currently maxed out and exploration rate is 0" in new AutothrottleScope {
@@ -139,7 +139,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         (45, 4)
       )
       subject ! OptimizeOrExplore
-      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
 
       scaleCmd.reason.value shouldBe "optimizing"
       scaleCmd.numOfWorkers should be > 35
@@ -203,7 +203,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       )
       subject ! OptimizeOrExplore
 
-      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
 
       scaleCmd.reason.value shouldBe "optimizing"
       scaleCmd.numOfWorkers should be <= 41
@@ -214,16 +214,16 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val subject = autothrottlerRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
 
       subject ! PartialUtilization(5)
-      tProcessor.expectNoMsg(20.milliseconds)
+      tWorkerPool.expectNoMsg(20.milliseconds)
       subject ! OptimizeOrExplore
 
-      val scaleCmd = tProcessor.expectMsgType[ScaleTo]
+      val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
       scaleCmd shouldBe ScaleTo(4, Some("downsizing"))
     }
 
-    "stop itself if the QueueProcessor stops" in new ScopeWithActor() {
+    "stop itself if the WorkerPoolManager stops" in new ScopeWithActor() {
       val queue = TestProbe()
-      val processor = system.actorOf(QueueProcessor.default(
+      val workerPool = system.actorOf(WorkerPoolManager.default(
         queue.ref,
         testHandlerProvider(ResultChecker.expectType),
         ProcessingWorkerPoolSettings(),
@@ -232,19 +232,19 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         None
       ))
 
-      watch(processor)
-      val autothrottler = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(), system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))))
+      watch(workerPool)
+      val autothrottler = system.actorOf(Autothrottler.default(workerPool, AutothrottleSettings(), system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))))
       watch(autothrottler)
-      processor ! PoisonPill
+      workerPool ! PoisonPill
 
-      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(processor, autothrottler)
+      Set(expectMsgType[Terminated].actor, expectMsgType[Terminated].actor) shouldBe Set(workerPool, autothrottler)
     }
 
-    "stop itself if the QueueProcessor is shutting down" in new ScopeWithActor() {
+    "stop itself if the WorkerPoolManager is shutting down" in new ScopeWithActor() {
       val mc = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
       val queue = TestProbe()
-      val processor = system.actorOf(
-        QueueProcessor.default(
+      val workerPool = system.actorOf(
+        WorkerPoolManager.default(
           queue.ref,
           testHandlerProvider(ResultChecker.expectType),
           ProcessingWorkerPoolSettings(),
@@ -253,11 +253,11 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
           None
         )
       )
-      //using 10 minutes to squelch its querying of the QueueProcessor, so that we can do it manually
-      val a = system.actorOf(Autothrottler.default(processor, AutothrottleSettings(resizeInterval = 10.minutes), mc))
+      //using 10 minutes to squelch its querying of the WorkerPoolManager, so that we can do it manually
+      val a = system.actorOf(Autothrottler.default(workerPool, AutothrottleSettings(resizeInterval = 10.minutes), mc))
       watch(a)
       a ! PartialUtilization(5)
-      processor ! Shutdown(None, 100.milliseconds)
+      workerPool ! Shutdown(None, 100.milliseconds)
       expectTerminated(a)
     }
   }
@@ -279,12 +279,12 @@ class AutothrottleScope(implicit system: ActorSystem)
   val alwaysOptimizeSettings = defaultSettings.copy(explorationRatio = 0)
   val alwaysExploreSettings = defaultSettings.copy(explorationRatio = 1)
 
-  val tProcessor = TestProbe()
+  val tWorkerPool = TestProbe()
 
   def autothrottlerRef(settings: AutothrottleSettings = defaultSettings) = {
 
     TestActorRef[Autothrottler](Autothrottler.default(
-      tProcessor.ref, settings, metricsCollector
+      tWorkerPool.ref, settings, metricsCollector
     ))
   }
 

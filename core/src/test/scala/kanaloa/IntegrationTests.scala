@@ -13,7 +13,7 @@ import kanaloa.WorkerPoolSampler.{Report, WorkerPoolSample}
 import kanaloa.handler.{HandlerProvider, GeneralActorRefHandler}
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.metrics.StatsDClient
-import kanaloa.queue.QueueProcessor.{RunningStatus, ShuttingDown}
+import kanaloa.queue.WorkerPoolManager.{RunningStatus, ShuttingDown}
 import kanaloa.util.Java8TimeExtensions._
 import org.scalatest.{ShouldMatchers, WordSpecLike}
 
@@ -174,7 +174,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
 class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
 
-  "can remain sane when all workers are constantly failing" in new TestScope with Backends {
+  "can remain sane when all workers are constantly failing" in new TestScope with MockServices {
     val backend = system.actorOf(suicidal(1.milliseconds), "suicidal-backend")
     val iterator = Stream.continually("a").iterator
 
@@ -327,7 +327,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
       ignoreMsg { case Success ⇒ true }
 
       watch(backend)
-      pd.underlyingActor.processor ! QueryStatus()
+      pd.underlyingActor.workerPool ! QueryStatus()
       var lastPoolSize = 0
       import system.dispatcher
 
@@ -335,7 +335,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
         case Terminated(`backend`) ⇒ true //it shutdowns itself after all messages are processed.
         case RunningStatus(pool) ⇒
           lastPoolSize = pool.size
-          system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.processor, QueryStatus(Some(self)))
+          system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.workerPool, QueryStatus(Some(self)))
           false
         case ShuttingDown ⇒ false
         case m            ⇒ throw new Exception("unexpected, " + m)
@@ -485,7 +485,7 @@ object IntegrationTests {
     }
 
     def getPoolSize(rd: Dispatcher[_]): Int = {
-      rd.processor ! QueryStatus()
+      rd.workerPool ! QueryStatus()
 
       val status = expectMsgClass(classOf[RunningStatus])
 

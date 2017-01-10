@@ -9,7 +9,7 @@ import kanaloa.WorkerPoolSampler._
 import kanaloa.Sampler._
 import kanaloa.Types.Speed
 import kanaloa.queue.Autothrottler._
-import kanaloa.queue.QueueProcessor.ScaleTo
+import kanaloa.queue.WorkerPoolManager.ScaleTo
 import kanaloa.util.JavaDurationConverters._
 import kanaloa.util.MessageScheduler
 
@@ -21,7 +21,7 @@ import scala.util.Random
  * For mechanisms see docs in the autothrottle section in reference.conf
  */
 trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
-  val processor: QueueProcessorRef
+  val workerPool: WorkerPoolManagerRef
   val metricsCollector: ActorRef
 
   val settings: AutothrottleSettings
@@ -35,7 +35,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
   override def preStart(): Unit = {
     super.preStart()
     metricsCollector ! Subscribe(self)
-    context watch processor
+    context watch workerPool
     import context.dispatcher
     actionScheduler = Some(context.system.scheduler.schedule(resizeInterval, resizeInterval, self, OptimizeOrExplore))
   }
@@ -46,13 +46,13 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
     metricsCollector ! Unsubscribe(self)
   }
 
-  private def watchingQueueAndProcessor: Receive = {
-    case Terminated(`processor`) | QueueProcessor.ShuttingDown ⇒ {
+  private def watchingQueueAndWorkerPool: Receive = {
+    case Terminated(`workerPool`) | WorkerPoolManager.ShuttingDown ⇒ {
       context stop self
     }
   }
 
-  final def receive: Receive = watchingQueueAndProcessor orElse {
+  final def receive: Receive = watchingQueueAndWorkerPool orElse {
     case s: WorkerPoolSample if s.poolSize > 0 ⇒
       context become fullyUtilized(s.poolSize)
       self forward s
@@ -62,7 +62,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
     case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
-  private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndProcessor orElse {
+  private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndWorkerPool orElse {
     case PartialUtilization(utilization) ⇒
       if (highestUtilization < utilization)
         context become underUtilized(utilization, start)
@@ -71,14 +71,14 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
       self forward s
     case OptimizeOrExplore ⇒
       if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization.asJava)))
-        processor ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
+        workerPool ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
 
     case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
-  private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndProcessor orElse {
+  private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndWorkerPool orElse {
     case s: WorkerPoolSample if s.poolSize > 0 ⇒
       perfLog = updateLogs(perfLog, s, weightOfLatestMetric)
       context become fullyUtilized(s.poolSize)
@@ -93,7 +93,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
         else
           optimize(currentSize)
       }
-      processor ! action
+      workerPool ! action
 
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(poolSize = Some(currentSize), performanceLog = perfLog))
@@ -188,14 +188,14 @@ object Autothrottler {
   private[queue]type PerformanceLogs = Map[PoolSize, PerformanceLogEntry]
 
   case class Default(
-    processor:        QueueProcessorRef,
+    workerPool:       WorkerPoolManagerRef,
     settings:         AutothrottleSettings,
     metricsCollector: ActorRef
   ) extends Autothrottler
 
   def default(
-    processor:        QueueProcessorRef,
+    workerPool:       WorkerPoolManagerRef,
     settings:         AutothrottleSettings,
     metricsCollector: ActorRef
-  ) = Props(Default(processor, settings, metricsCollector)).withDeploy(Deploy.local)
+  ) = Props(Default(workerPool, settings, metricsCollector)).withDeploy(Deploy.local)
 }

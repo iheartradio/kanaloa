@@ -1,8 +1,8 @@
 package kanaloa.queue
 
 import kanaloa.ApiProtocol.ShutdownSuccessfully
-import kanaloa.{SpecWithActorSystem, Backends}
-import kanaloa.queue.QueueProcessor.Shutdown
+import kanaloa.{SpecWithActorSystem, MockServices}
+import kanaloa.queue.WorkerPoolManager.Shutdown
 import kanaloa.queue.TestUtils._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -12,7 +12,7 @@ import concurrent.duration._
 class IteratorQueueSpec extends SpecWithActorSystem {
   "Iterator Queue" should {
     "Process through a list of tasks in sequence with one worker" in new QueueScope {
-      val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c").iterator))
+      val workerPoolManager = initQueue(iteratorQueue(List("a", "b", "c").iterator))
 
       delegatee.expectMsg(DelegateeMessage("a"))
       delegatee.reply(MessageProcessed("a"))
@@ -23,13 +23,13 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     }
 
     "shutdown with all outstanding work done from the queue side" in new QueueScope {
-      val queueProcessor = initQueue(iteratorQueue(List("a", "b", "c", "d").iterator, sendResultsTo = Some(self)))
+      val workerPoolManager = initQueue(iteratorQueue(List("a", "b", "c", "d").iterator, sendResultsTo = Some(self)))
 
       delegatee.expectMsg(DelegateeMessage("a"))
       delegatee.reply(MessageProcessed("a"))
       delegatee.expectMsg(DelegateeMessage("b"))
 
-      queueProcessor ! Shutdown(Some(self))
+      workerPoolManager ! Shutdown(Some(self))
 
       expectMsg("a")
       expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
@@ -43,20 +43,20 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     }
 
     "abandon work when delegatee times out" in new QueueScope {
-      val queueProcessor = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(timeout = 288.milliseconds)))
+      val workerPoolManager = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(timeout = 288.milliseconds)))
 
       delegatee.expectMsg(DelegateeMessage("a"))
 
       delegatee.expectNoMsg(250.milliseconds)
 
       delegatee.expectMsg(DelegateeMessage("b"))
-      watch(queueProcessor)
-      queueProcessor ! Shutdown
+      watch(workerPoolManager)
+      workerPoolManager ! Shutdown
 
-      expectTerminated(queueProcessor)
+      expectTerminated(workerPoolManager)
     }
 
-    "does not retrieve work without workers" in new QueueScope with Backends with MockitoSugar with Eventually {
+    "does not retrieve work without workers" in new QueueScope with MockServices with MockitoSugar with Eventually {
       import org.mockito.Mockito._
       val iterator = mock[Iterator[String]]
       val queue = system.actorOf(Queue.ofIterator(iterator, metricsCollector, WorkSettings(), Some(self)))

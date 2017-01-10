@@ -5,7 +5,7 @@ import akka.actor.{ActorRef, ActorRefFactory, ActorSystem}
 import akka.testkit.TestProbe
 import kanaloa.Sampler.SamplerSettings
 import kanaloa.metrics.Reporter
-import kanaloa.queue.QueueProcessor.WorkerPoolSamplerFactory
+import kanaloa.queue.WorkerPoolManager.WorkerPoolSamplerFactory
 object Utils {
 
   class Factories(implicit system: ActorSystem) {

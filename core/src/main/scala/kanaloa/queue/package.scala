@@ -5,7 +5,7 @@ package kanaloa {
 
   package object queue {
     type QueueRef = ActorRef
-    type QueueProcessorRef = ActorRef
+    type WorkerPoolManagerRef = ActorRef
     type WorkerRef = ActorRef
   }
 

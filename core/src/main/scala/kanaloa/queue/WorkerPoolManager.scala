@@ -11,12 +11,12 @@ import kanaloa.handler.{HandlerProvider, Handler}
 import kanaloa.metrics.{Reporter, Metric}
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
-import kanaloa.queue.QueueProcessor._
+import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 
-class QueueProcessor[T](
+class WorkerPoolManager[T](
   queue:                QueueRef,
   handlerProvider:      HandlerProvider[T],
   settings:             ProcessingWorkerPoolSettings,
@@ -74,7 +74,7 @@ class QueueProcessor[T](
   val running: Receive = {
 
     case hc: HandlerChange ⇒
-      self ! HealthCheck //todo: as a temporary solution mostly for the intermediate implementation to avoid involving involving another design change. This approach would allow the queueProcessor to replenish workers. The real plan, however, is to do one QueueProcessor per handler, which should be implemented before the next release.
+      self ! HealthCheck //todo: as a temporary solution mostly for the intermediate implementation to avoid involving involving another design change. This approach would allow the workerPoolManager to replenish workers. The real plan, however, is to do one WorkerPoolManager per handler, which should be implemented before the next release.
 
     case ScaleTo(newPoolSize, reason) if inflightWorkerCreation == 0 && inflightWorkerRemoval == 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
@@ -125,7 +125,7 @@ class QueueProcessor[T](
 
     case qs: QueryStatus ⇒ qs reply RunningStatus(workerPool)
 
-    //queue processor initiates shutdown of everyone.
+    //worker pool initiates shutdown of everyone.
     case Shutdown(reportTo, timeout) ⇒
       log.info("Commanded to shutdown. Shutting down")
       shutdown(reportTo, timeout)
@@ -141,7 +141,7 @@ class QueueProcessor[T](
   def shuttingDown(reportTo: Option[ActorRef]): Receive = {
     def tryFinish(): Unit = {
       if (workerPool.isEmpty) {
-        log.info(s"All Workers have terminated, QueueProcessor is shutting down")
+        log.info(s"All Workers have terminated, WorkerPoolManager is shutting down")
         reportTo.foreach(_ ! ShutdownSuccessfully)
         context stop self
       }
@@ -221,7 +221,7 @@ private[queue] class ListSelection {
   }
 }
 
-object QueueProcessor {
+object WorkerPoolManager {
   private[queue]type WorkerPool = List[WorkerRef] //keep sequence of creation time
 
   private[kanaloa] trait WorkerFactory {
@@ -286,7 +286,7 @@ object QueueProcessor {
     autothrottlerFactory: Option[AutothrottlerFactory]
 
   ): Props = {
-    Props(new QueueProcessor(
+    Props(new WorkerPoolManager(
       queue,
       handlerProvider,
       settings,

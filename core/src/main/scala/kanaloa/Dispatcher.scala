@@ -9,7 +9,7 @@ import kanaloa.Regulator.DroppingRate
 import kanaloa.handler.{HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
 import kanaloa.queue.Queue.{Enqueue, EnqueueRejected}
-import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
+import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -39,8 +39,8 @@ trait Dispatcher[T] extends Actor with ActorLogging {
         Escalate
     }
 
-  private[kanaloa] val processor = {
-    val props = QueueProcessor.default(
+  private[kanaloa] val workerPool = {
+    val props = WorkerPoolManager.default(
       queue,
       handlerProvider,
       settings.workerPool,
@@ -49,16 +49,16 @@ trait Dispatcher[T] extends Actor with ActorLogging {
       settings.autothrottle.map(AutothrottlerFactory.apply)
     )
 
-    context.actorOf(props, "queue-processor")
+    context.actorOf(props, "worker-pool-manager")
   }
 
-  context watch processor
+  context watch workerPool
 
   def receive: Receive = ({
-    case ShutdownGracefully(reportBack, timeout) ⇒ processor ! QueueProcessor.Shutdown(reportBack, timeout)
+    case ShutdownGracefully(reportBack, timeout) ⇒ workerPool ! WorkerPoolManager.Shutdown(reportBack, timeout)
     case SubscribePerformanceMetrics(actor)      ⇒ queueSampler ! Sampler.Subscribe(actor)
     case UnSubscribePerformanceMetrics(actor)    ⇒ queueSampler ! Sampler.Unsubscribe(actor)
-    case Terminated(`processor`) ⇒
+    case Terminated(`workerPool`) ⇒
       context stop self
       log.info(s"Dispatcher $name is shutdown")
   }: Receive) orElse extraReceive

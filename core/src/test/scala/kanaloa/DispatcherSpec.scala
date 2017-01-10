@@ -122,7 +122,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       expectMsg(ShutdownSuccessfully)
     }
 
-    "shutdown before worker created" in new ScopeWithActor with Backends {
+    "shutdown before worker created" in new ScopeWithActor with MockServices {
       val iterator = Stream.continually(1).iterator
       import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -234,7 +234,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     //todo: move this to integration test once the integration re-org test PR is merged.
-    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with Backends {
+    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with MockServices {
       import system.dispatcher
       val pd = system.actorOf(PushingDispatcher.props(
         "test",
@@ -259,7 +259,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     //todo: move this to integration test once the integration re-org test PR is merged. 
-    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with Backends {
+    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with MockServices {
       import scala.concurrent.ExecutionContext.Implicits.global
       val backendActorPromise = Promise[ActorRef]
       val dispatcher = system.actorOf(PushingDispatcher.props(

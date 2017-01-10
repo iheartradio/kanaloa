@@ -111,7 +111,7 @@ private[queue] class Worker[T](
 
     case wr: WorkResult[handler.Error, handler.Resp] if wr.workId == outstanding.workId ⇒ {
 
-      wr.result.instruction.foreach { //todo: these instructions should happen at the processor level once it's processor per handler
+      wr.result.instruction.foreach { //todo: these instructions should happen at the workerPool level once it's workerPool per handler
         case Terminate         ⇒ self ! Retire
         case Hold(duration)    ⇒ delayBeforeNextWork = Some(duration)
         case RetryIn(duration) ⇒ //todo: implement this retry

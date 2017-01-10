@@ -6,7 +6,7 @@ import kanaloa._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider
 import kanaloa.metrics.MetricsCollector
-import kanaloa.queue.QueueProcessor.{WorkerPoolSamplerFactory, WorkerFactory}
+import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory}
 
 object TestUtils {
 
@@ -33,11 +33,11 @@ object TestUtils {
 
     val handlerProvider = HandlerProvider.actorRef("test", delegatee.ref)(resultChecker)
 
-    def defaultProcessorProps(
+    def defaultWorkerPoolProps(
       queue:            QueueRef,
       settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
       metricsCollector: ActorRef                     = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
-    ) = QueueProcessor.default(
+    ) = WorkerPoolManager.default(
       queue,
       handlerProvider,
       settings,

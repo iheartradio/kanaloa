@@ -90,7 +90,7 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
       enterBarrier("testOne")
     }
 
-//   todo: right now kanaloa uses the first available handler to initialize the entire worker pool. this test can be easier after we implement the one queue processor per handler
+//   todo: right now kanaloa uses the first available handler to initialize the entire worker pool. this test can be easier after we implement the one worker pool per handler
 //    "slow routees doesn't block dispatcher" in within(15 seconds) {
 //
 //      awaitClusterUp(first, second, third)

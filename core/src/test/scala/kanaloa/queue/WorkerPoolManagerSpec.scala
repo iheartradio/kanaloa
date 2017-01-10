@@ -11,7 +11,7 @@ import kanaloa.handler.{ResultChecker, Handler, GeneralActorRefHandler, HandlerP
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
-import kanaloa.queue.QueueProcessor.{WorkerFactory, ScaleTo, Shutdown, ShuttingDown}
+import kanaloa.queue.WorkerPoolManager.{WorkerFactory, ScaleTo, Shutdown, ShuttingDown}
 import kanaloa._
 import kanaloa.queue.TestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
@@ -19,18 +19,18 @@ import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
 import HandlerProviders._
-class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backends {
+class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with MockServices {
 
-  type QueueTest = (TestActorRef[QueueProcessor[Any]], TestProbe, TestProbe, HandlerProvider[Any], TestWorkerFactory) ⇒ Any
+  type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, HandlerProvider[Any], TestWorkerFactory) ⇒ Any
 
-  def withQueueProcessor(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
+  def withWorkerPoolManager(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
 
     val queueProbe = TestProbe("queue")
     val serviceProbe = TestProbe("service")
     val testHandlerProvider = HandlerProviders.simpleHandlerProvider(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(queueProbe.ref, testHandlerProvider, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
+    val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandlerProvider, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
 
     eventually {
       qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
@@ -57,31 +57,31 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     }
   }
 
-  "The QueueProcessor" should {
+  "The WorkerPoolManager" should {
 
-    "create Workers on startup" in withQueueProcessor(ProcessingWorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "create Workers on startup" in withWorkerPoolManager(ProcessingWorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       eventually {
         qp.underlyingActor.workerPool should have size 5
       }
     }
 
-    "report pool size on startup" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "report pool size on startup" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       metricsCollector.expectMsg(PoolSize(0))
     }
 
-    "scale workers up" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "scale workers up" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       qp ! ScaleTo(10)
       eventually {
         qp.underlyingActor.workerPool should have size 10
       }
     }
 
-    "does not scale workers when there is already workers creation in flight" in new Backends {
+    "does not scale workers when there is already workers creation in flight" in new MockServices {
       import system.dispatcher
       val promise = Promise[ActorRef]
       val handlerProvider = fromPromise(promise, simpleResultChecker)
       val metricsCollectorProbe = TestProbe()
-      val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(
+      val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(
         TestProbe().ref,
         handlerProvider,
         ProcessingWorkerPoolSettings(startingPoolSize = 1),
@@ -100,7 +100,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
     }
 
-    "scale workers down" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "scale workers down" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! ScaleTo(4) //kill 1 Worker
 
@@ -108,7 +108,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         workerFactory.retiredCount.get() shouldBe 1
       }
 
-      //pick any 2 actors, since the QueueProcessor is not currently tracking who got the term signal
+      //pick any 2 actors, since the WorkerPoolManager is not currently tracking who got the term signal
       //kill the 'Workers' who got the Retire message, so that they signal the QP to remove them
       workerFactory.probeMap.values.take(1).foreach(_.ref ! PoisonPill)
 
@@ -119,7 +119,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       workerFactory.retiredCount.get shouldBe 1
     }
 
-    "honor minimum pool size during AutoScale" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "honor minimum pool size during AutoScale" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       qp ! ScaleTo(1) //minimum is 3, starts at 5
 
       eventually {
@@ -134,7 +134,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
     }
 
     "honor maximum pool size during AutoScale" in
-      withQueueProcessor(ProcessingWorkerPoolSettings(maxPoolSize = 7)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      withWorkerPoolManager(ProcessingWorkerPoolSettings(maxPoolSize = 7)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         qp ! ScaleTo(10) //maximum is 7
 
         eventually {
@@ -142,7 +142,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
         }
       }
 
-    "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withQueueProcessor(ProcessingWorkerPoolSettings(healthCheckInterval = 10.milliseconds)) {
+    "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withWorkerPoolManager(ProcessingWorkerPoolSettings(healthCheckInterval = 10.milliseconds)) {
       (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
         workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
@@ -158,7 +158,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       val promise = Promise[ActorRef]
       val handlerProvider = fromPromise(promise, simpleResultChecker)
 
-      val qp = TestActorRef[QueueProcessor[Any]](QueueProcessor.default(
+      val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(
         TestProbe("queue").ref,
         handlerProvider,
         settings,
@@ -173,13 +173,13 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       }
     }
 
-    "shutdown itself when all worker dies" in withQueueProcessor() { (qp, _, _, _, workerFactory) ⇒
+    "shutdown itself when all worker dies" in withWorkerPoolManager() { (qp, _, _, _, workerFactory) ⇒
       watch(qp)
       workerFactory.killsAllWorkers()
       expectTerminated(qp)
     }
 
-    "shutdown Queue and wait for Workers to terminate" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown Queue and wait for Workers to terminate" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 30.seconds)
       queueProbe.expectMsg(Queue.Retire(30.seconds))
@@ -199,7 +199,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       expectTerminated(qp)
     }
 
-    "shutdown if Queue terminates" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown if Queue terminates" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       queueProbe.ref ! PoisonPill
 
@@ -223,8 +223,8 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
       import system.dispatcher
 
       val queueProbe = TestProbe()
-      val queueProcessor = system.actorOf(
-        QueueProcessor.default(
+      val workerPoolManager = system.actorOf(
+        WorkerPoolManager.default(
           queueProbe.ref,
           fromPromise(Promise[ActorRef], ResultChecker.complacent),
           ProcessingWorkerPoolSettings(),
@@ -233,7 +233,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
           None
         )
       )
-      queueProcessor ! Shutdown(Some(self))
+      workerPoolManager ! Shutdown(Some(self))
       queueProbe.expectMsgType[Retire]
       queueProbe.ref ! PoisonPill
 
@@ -241,7 +241,7 @@ class QueueProcessorSpec extends SpecWithActorSystem with Eventually with Backen
 
     }
 
-    "force shutdown if timeout" in withQueueProcessor() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "force shutdown if timeout" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 25.milliseconds)
       queueProbe.expectMsg(Queue.Retire(25.milliseconds))
@@ -293,12 +293,12 @@ class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
 
     "send PoolSize metric when pool size changes" in new MetricCollectorScope {
 
-      val queueProcessor = initQueue(
+      val workerPoolManager = initQueue(
         iteratorQueue(Iterator("a", "b")), //make sure queue remains alive during test
         numberOfWorkers = 1
       )
-      queueProcessor ! ScaleTo(3)
-      queueProcessor ! ScaleTo(5)
+      workerPoolManager ! ScaleTo(3)
+      workerPoolManager ! ScaleTo(5)
 
       eventually {
         val poolSizeMetrics = receivedMetrics.collect {
@@ -309,14 +309,14 @@ class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
     }
 
     "retiring a worker when there is no work" in new QueueScope {
-      val queueProcessor = initQueue(
+      val workerPoolManager = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
           sendResultsTo = Some(self)
         ),
         numberOfWorkers = 2
       )
-      queueProcessor ! ScaleTo(1)
+      workerPoolManager ! ScaleTo(1)
       expectNoMsg(20.millisecond) //wait for retire to take effect
       delegatee.expectMsgType[DelegateeMessage]
 
@@ -331,7 +331,7 @@ class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
     }
 
     "retiring a worker when it already started working" in new QueueScope {
-      val queueProcessor = initQueue(
+      val workerPoolManager = initQueue(
         iteratorQueue(
           List("a", "b", "c").iterator,
           sendResultsTo = Some(self)
@@ -342,7 +342,7 @@ class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
 
       expectNoMsg(20.millisecond) //wait for both workers get occupied
 
-      queueProcessor ! ScaleTo(1)
+      workerPoolManager ! ScaleTo(1)
 
       expectNoMsg(20.millisecond) //wait for one of the workers got into retiring
 
