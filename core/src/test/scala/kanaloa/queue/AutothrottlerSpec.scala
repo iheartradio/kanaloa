@@ -225,8 +225,8 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val queue = TestProbe()
       val workerPool = system.actorOf(WorkerPoolManager.default(
         queue.ref,
-        testHandlerProvider(ResultChecker.expectType),
-        ProcessingWorkerPoolSettings(),
+        testHandler(ResultChecker.expectType),
+        WorkerPoolSettings(),
         WorkerFactory(None),
         factories.workPoolSampler(),
         None
@@ -246,8 +246,8 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       val workerPool = system.actorOf(
         WorkerPoolManager.default(
           queue.ref,
-          testHandlerProvider(ResultChecker.expectType),
-          ProcessingWorkerPoolSettings(),
+          testHandler(ResultChecker.expectType),
+          WorkerPoolSettings(),
           WorkerFactory(None),
           factories.workPoolSampler(),
           None

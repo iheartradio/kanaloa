@@ -104,7 +104,7 @@ class WorkerWorkingSpec extends WorkerSpec {
     }
 
     "should only send responses for the current executing Work" in {
-      import kanaloa.HandlerProviders._
+      import kanaloa.TestHandlerProviders._
       //create a new worker whose Routee is actually a Router which simply sends messages to a specific Actor
       //This is so that we can control the response order of who gets messages
       val queueProbe = TestProbe("queue")

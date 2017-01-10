@@ -10,7 +10,7 @@ import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.queue.Worker._
 import kanaloa.util.Java8TimeExtensions._
-import kanaloa.util.MessageScheduler
+import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 
 import scala.concurrent.duration._
 
@@ -36,7 +36,7 @@ private[queue] class Worker[T](
 
   override def preStart(): Unit = {
     super.preStart()
-    context watch queue
+    context watch queue //todo: is this necessary? Maybe we should let supervisor to take care of this kind of management.
     queue ! RequestWork(self)
   }
 
@@ -109,7 +109,7 @@ private[queue] class Worker[T](
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
   def handleRouteeResponse(outstanding: Outstanding): Receive = {
 
-    case wr: WorkResult[handler.Error, handler.Resp] if wr.workId == outstanding.workId ⇒ {
+    case wr: WorkResult[handler.Error, handler.Resp] if wr.workId === outstanding.workId ⇒ {
 
       wr.result.instruction.foreach { //todo: these instructions should happen at the workerPool level once it's workerPool per handler
         case Terminate         ⇒ self ! Retire
@@ -185,7 +185,7 @@ private[queue] class Worker[T](
       timeoutCount = timeoutCount + 1
       if (timeoutCount >= settings.timeoutCountThreshold) {
         delayBeforeNextWork = Some(settings.openDurationBase * timeoutCount.toLong)
-        if (timeoutCount == settings.timeoutCountThreshold) //just crossed the threshold
+        if (timeoutCount === settings.timeoutCountThreshold) //just crossed the threshold
           metricsCollector ! Metric.CircuitBreakerOpened
       }
 

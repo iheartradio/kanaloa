@@ -28,20 +28,19 @@ package kanaloa.queue {
    */
   case class CircuitBreakerSettings(
     openDurationBase:      FiniteDuration = 3.seconds,
-    timeoutCountThreshold: Double         = 3
+    timeoutCountThreshold: Int            = 3
   )
 
   /**
    * see reference.conf
    */
-  case class ProcessingWorkerPoolSettings(
-    startingPoolSize:         Int            = 5,
-    minPoolSize:              Int            = 3,
-    maxPoolSize:              Int            = 400,
-    healthCheckInterval:      FiniteDuration = 1.seconds,
-    logRouteeRetrievalError:  Boolean        = true,
-    shutdownOnAllWorkerDeath: Boolean        = true,
-    defaultShutdownTimeout:   FiniteDuration = 30.seconds
+  case class WorkerPoolSettings(
+    startingPoolSize:        Int            = 5,
+    minPoolSize:             Int            = 3,
+    maxPoolSize:             Int            = 400,
+    replenishSpeed:          FiniteDuration = 1.second,
+    logRouteeRetrievalError: Boolean        = true,
+    defaultShutdownTimeout:  FiniteDuration = 30.seconds //todo: move this to the dispatcher settings
   )
 
   /**

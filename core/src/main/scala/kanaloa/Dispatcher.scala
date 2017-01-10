@@ -3,19 +3,20 @@ package kanaloa
 import akka.actor.SupervisorStrategy.Escalate
 import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
-import kanaloa.ApiProtocol.{WorkFailed, ShutdownGracefully, WorkRejected}
-import kanaloa.Dispatcher.{UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
+import kanaloa.ApiProtocol._
+import kanaloa.Dispatcher.{ShutdownTimedOut, UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
 import kanaloa.Regulator.DroppingRate
-import kanaloa.handler.{HandlerProviderAdaptor, HandlerProvider}
+import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
+import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
-import kanaloa.queue.Queue.{Enqueue, EnqueueRejected}
+import kanaloa.queue.Queue.{Retire, Enqueue, EnqueueRejected}
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 import net.ceedubs.ficus.readers.ValueReader
-
+import kanaloa.util.AnyEq._
 import scala.concurrent.duration._
 import scala.reflect._
 import scala.util.Random
@@ -26,12 +27,16 @@ trait Dispatcher[T] extends Actor with ActorLogging {
   def handlerProvider: HandlerProvider[T]
   def reporter: Option[Reporter]
 
+  type HandlerName = String
+  type WorkerPoolRef = ActorRef
+
   protected lazy val queueSampler = context.actorOf(QueueSampler.props(reporter, settings.samplerSettings), "queueSampler")
 
   protected def queueProps: Props
 
   protected lazy val queue = context.actorOf(queueProps, "queue")
 
+  context watch queue
   override val supervisorStrategy =
     OneForOneStrategy() {
       case e ⇒
@@ -39,44 +44,103 @@ trait Dispatcher[T] extends Actor with ActorLogging {
         Escalate
     }
 
-  private[kanaloa] val workerPool = {
+  var workerPoolIndex: Int = 0
+
+  var workerPools: List[(HandlerName, WorkerPoolRef)] = handlerProvider.handlers.map(createWorkerPool)
+
+  handlerProvider.subscribe(self ! _)
+
+  private def createWorkerPool(handler: Handler[T]): (HandlerName, WorkerPoolRef) = {
     val props = WorkerPoolManager.default(
       queue,
-      handlerProvider,
+      handler,
       settings.workerPool,
       WorkerFactory(settings.circuitBreaker),
       WorkerPoolSamplerFactory(queueSampler, settings.samplerSettings, reporter),
       settings.autothrottle.map(AutothrottlerFactory.apply)
     )
 
-    context.actorOf(props, "worker-pool-manager")
+    val workerPool = context.actorOf(props, s"worker-pool-manager-$workerPoolIndex")
+    context watch workerPool
+    workerPoolIndex += 1
+    handler.name → workerPool
   }
 
-  context watch workerPool
+  def shutdown(reportTo: Option[ActorRef], timeout: FiniteDuration): Unit = {
+    if (workerPools.isEmpty) {
+      reportTo.foreach(_ ! ShutdownSuccessfully)
+      context stop self
+    } else {
+      context become shuttingDown(reportTo, timeout)
+      import context.dispatcher
+      context.system.scheduler.scheduleOnce(timeout, self, ShutdownTimedOut)
+      workerPools.foreach(_._2 ! WorkerPoolManager.Shutdown(Some(self), timeout)) //todo: do not timeout workerpool shutdown
+    }
+  }
 
   def receive: Receive = ({
-    case ShutdownGracefully(reportBack, timeout) ⇒ workerPool ! WorkerPoolManager.Shutdown(reportBack, timeout)
-    case SubscribePerformanceMetrics(actor)      ⇒ queueSampler ! Sampler.Subscribe(actor)
-    case UnSubscribePerformanceMetrics(actor)    ⇒ queueSampler ! Sampler.Unsubscribe(actor)
-    case Terminated(`workerPool`) ⇒
+    case ShutdownGracefully(reportBack, timeout) ⇒
+      queue ! Retire
+      shutdown(reportBack, timeout)
+
+    case Terminated(`queue`) ⇒ //todo: this is only expected in pulling dispatcher. so should make it more safe in pushing( like restart queue)
+      shutdown(None, settings.workerPool.defaultShutdownTimeout)
+
+    case SubscribePerformanceMetrics(actor)   ⇒ queueSampler ! Sampler.Subscribe(actor)
+    case UnSubscribePerformanceMetrics(actor) ⇒ queueSampler ! Sampler.Unsubscribe(actor)
+
+    case HandlersAdded(handlers: List[Handler[T]]) ⇒
+      val (dups, rest) = handlers.partition(h ⇒ workerPools.exists(_._1 === h.name))
+      workerPools = workerPools ++ rest.map(createWorkerPool)
+      if (!dups.isEmpty)
+        log.error(s"New Handler received but their names are duplicates ${dups.map(_.name).mkString(",")}")
+
+    case HandlersRemoved(handlers: List[Handler[T]]) ⇒
+      val removedNames = handlers.map(_.name)
+      workerPools.collect {
+        case (handlerName, workerPool) if removedNames.contains(handlerName) ⇒
+          workerPool ! WorkerPoolManager.Shutdown() //todo: make the shutdown timeout configuratble
+      }
+
+  }: Receive) orElse monitorWorkerPools(None, false) orElse extraReceive
+
+  def monitorWorkerPools(reportTo: Option[ActorRef], shuttingDown: Boolean): Receive = {
+    case Terminated(t) if workerPools.exists(_._2 === t) ⇒
+      workerPools = workerPools.filterNot(_._2 === t)
+      if (workerPools.isEmpty) {
+        if (shuttingDown) {
+          context stop self
+          reportTo.foreach(_ ! ShutdownSuccessfully)
+          log.info(s"Dispatcher $name is shutdown gracefully")
+        } else
+          log.info(s"All handlers for Dispatcher $name stopped.")
+      }
+
+  }
+
+  def shuttingDown(reportTo: Option[ActorRef], timeout: FiniteDuration): Receive = monitorWorkerPools(reportTo, true) orElse {
+    case ShutdownTimedOut ⇒
+      reportTo.foreach(_ ! ShutdownForcefully)
+      log.error(s"Dispatcher $name is shutdown forcefully after timeout of $timeout")
       context stop self
-      log.info(s"Dispatcher $name is shutdown")
-  }: Receive) orElse extraReceive
+  }
 
   def extraReceive: Receive = PartialFunction.empty
+
 }
 
 object Dispatcher {
 
   private[kanaloa] case class SubscribePerformanceMetrics(actor: ActorRef)
   private[kanaloa] case class UnSubscribePerformanceMetrics(actor: ActorRef)
+  private case object ShutdownTimedOut
 
   case class Settings(
     workTimeout:               FiniteDuration                 = 1.minute,
     workRetry:                 Int                            = 0,
     updateInterval:            FiniteDuration                 = 1.second,
     lengthOfDisplayForMessage: Int                            = 200,
-    workerPool:                ProcessingWorkerPoolSettings,
+    workerPool:                WorkerPoolSettings,
     regulator:                 Option[Regulator.Settings],
     circuitBreaker:            Option[CircuitBreakerSettings],
     autothrottle:              Option[AutothrottleSettings]

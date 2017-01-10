@@ -6,77 +6,48 @@ import akka.actor._
 import kanaloa.ApiProtocol._
 import kanaloa.Sampler.SamplerSettings
 import kanaloa.WorkerPoolSampler
-import kanaloa.handler.HandlerProvider.{HandlerChange, HandlersAdded}
-import kanaloa.handler.{HandlerProvider, Handler}
-import kanaloa.metrics.{Reporter, Metric}
+import kanaloa.handler.Handler
+import kanaloa.handler.HandlerProvider.HandlerChange
 import kanaloa.metrics.Metric.PoolSize
+import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue.Retire
 import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.MessageScheduler
+import kanaloa.util.AnyEq._
 
 import scala.concurrent.duration._
 
 class WorkerPoolManager[T](
   queue:                QueueRef,
-  handlerProvider:      HandlerProvider[T],
-  settings:             ProcessingWorkerPoolSettings,
+  handler:              Handler[T],
+  settings:             WorkerPoolSettings,
   workerFactory:        WorkerFactory,
   samplerFactory:       WorkerPoolSamplerFactory,
   autothrottlerFactory: Option[AutothrottlerFactory]
 ) extends Actor with ActorLogging with MessageScheduler {
   val listSelection = new ListSelection
-  val healthCheckSchedule = {
-    import context.dispatcher
-    context.system.scheduler.schedule(settings.healthCheckInterval, settings.healthCheckInterval, self, HealthCheck)
-  }
 
   val metricsCollector: ActorRef = samplerFactory() // todo: life management
 
   val autoThrottler: Option[ActorRef] = autothrottlerFactory.map(_(self, metricsCollector)) // todo: life management
 
   var workerCount = 0
-  var workerPool: WorkerPool = List[ActorRef]()
-  var inflightWorkerCreation = 0
+
+  var workerPool: WorkerPool = Nil
+
   var inflightWorkerRemoval = 0
 
-  //stop any children which failed.  Let the DeathWatch handle it
-  override val supervisorStrategy = SupervisorStrategy.stoppingStrategy
-
   override def preStart(): Unit = {
-
     super.preStart()
     metricsCollector ! Metric.PoolSize(0)
-
-    if (!handlerProvider.handlers.isEmpty)
-      start()
-
-    handlerProvider.subscribe(self ! _)
-    context watch queue
+    tryCreateWorkersIfNeeded(settings.startingPoolSize)
   }
 
-  val starting: Receive = {
-    case HandlersAdded(_) ⇒ start()
-    case Shutdown(reportTo, timeout) ⇒
-      log.info("Commanded to shutdown while starting. Shutting down")
-      shutdown(reportTo, timeout)
-    case _ ⇒ //ignore everything else when starting
-  }
+  def currentWorkers = workerPool.size - inflightWorkerRemoval
 
-  val receive = starting
+  val receive: Receive = {
 
-  def start(): Unit = {
-    (1 to settings.startingPoolSize).foreach(_ ⇒ retrieveHandler())
-    context become running
-  }
-
-  def currentWorkers = workerPool.size + inflightWorkerCreation - inflightWorkerRemoval
-
-  val running: Receive = {
-
-    case hc: HandlerChange ⇒
-      self ! HealthCheck //todo: as a temporary solution mostly for the intermediate implementation to avoid involving involving another design change. This approach would allow the workerPoolManager to replenish workers. The real plan, however, is to do one WorkerPoolManager per handler, which should be implemented before the next release.
-
-    case ScaleTo(newPoolSize, reason) if inflightWorkerCreation == 0 && inflightWorkerRemoval == 0 ⇒
+    case ScaleTo(newPoolSize, reason) if inflightWorkerRemoval === 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
       val toPoolSize = Math.max(settings.minPoolSize, Math.min(settings.maxPoolSize, newPoolSize))
       val diff = toPoolSize - currentWorkers
@@ -87,41 +58,19 @@ class WorkerPoolManager[T](
         workerPool.take(-diff).foreach(_ ! Worker.Retire)
       }
 
-    case ScaleTo(_, _) ⇒ //ignore when there is inflight creation or removal going on.
-
-    case hr: HandlerRetrieved[T] ⇒
-      createWorker(hr.handler)
-
-    case HandlerProviderFailure(ex) ⇒
-      inflightWorkerCreation = Math.max(0, inflightWorkerCreation - 1)
-      if (settings.logRouteeRetrievalError)
-        log.warning("Failed to retrieve Routee: " + ex.getMessage)
+    case ScaleTo(_, _) ⇒ //ignore when there is inflight removal going on.
 
     case Terminated(worker) if workerPool.contains(worker) ⇒
       removeWorker(worker)
       if (workerPool.length < settings.minPoolSize) {
         log.error("Worker death caused worker pool size drop below minimum.")
-        if (workerPool.isEmpty && settings.shutdownOnAllWorkerDeath) {
-          log.error("Dispatcher is shutdown because there are no workers left.")
-          shutdown()
-        }
+        delayedMsg(settings.replenishSpeed, HealthCheck) //delayed so that it won't run into a uncontrolled create-die-create cycle.
       }
 
     case HealthCheck ⇒
       metricsCollector ! PoolSize(workerPool.length) //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable
-      healthCheck()
-
-    //if the Queue terminated, time to shut stuff down.
-    case Terminated(`queue`) ⇒
-      log.debug(s"Queue ${queue.path} is terminated")
-      healthCheckSchedule.cancel()
-      if (workerPool.isEmpty) {
-        context stop self
-      } else {
-        workerPool.foreach(_ ! Worker.Retire)
-        delayedMsg(settings.defaultShutdownTimeout, ShutdownTimeout)
-        context become shuttingDown(None)
-      }
+      if (!tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers).isEmpty)
+        log.debug("Number of workers in pool is below minimum. Replenished.")
 
     case qs: QueryStatus ⇒ qs reply RunningStatus(workerPool)
 
@@ -132,10 +81,14 @@ class WorkerPoolManager[T](
   }
 
   def shutdown(reportTo: Option[ActorRef] = None, timeout: FiniteDuration = settings.defaultShutdownTimeout): Unit = {
-    queue ! Retire(timeout)
-    delayedMsg(timeout, ShutdownTimeout)
-    healthCheckSchedule.cancel()
-    context become shuttingDown(reportTo)
+    if (workerPool.isEmpty) {
+      reportTo.foreach(_ ! ShutdownSuccessfully)
+      context stop self
+    } else {
+      workerPool.foreach(_ ! Worker.Retire)
+      delayedMsg(timeout, ShutdownTimeout)
+      context become shuttingDown(reportTo)
+    }
   }
 
   def shuttingDown(reportTo: Option[ActorRef]): Receive = {
@@ -151,9 +104,6 @@ class WorkerPoolManager[T](
         removeWorker(worker)
         tryFinish()
 
-      case Terminated(`queue`) ⇒
-        tryFinish()
-
       case qs: QueryStatus ⇒ qs reply ShuttingDown
 
       case ShutdownTimeout ⇒
@@ -161,7 +111,7 @@ class WorkerPoolManager[T](
         reportTo.foreach(_ ! ShutdownForcefully)
         context stop self
 
-      case m ⇒ log.info("message received and ignored during shutdown: " + m)
+      case m ⇒ log.info("Unhandled message received and ignored during shutdown: " + m)
 
     }: Receive
   }
@@ -173,32 +123,20 @@ class WorkerPoolManager[T](
     metricsCollector ! Metric.PoolSize(workerPool.length)
   }
 
-  private def retrieveHandler(): Unit = {
-    val handlers = handlerProvider.handlers
-    listSelection.select(handlers) foreach { handler ⇒
-      self ! HandlerRetrieved(handler)
-      inflightWorkerCreation += 1
-    }
-
-  }
-
-  private def healthCheck(): Unit = {
-    if (tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers))
-      log.debug("Number of workers in pool is below minimum. Trying to replenish.")
-  }
   /**
    *
    * @param numberOfWorkersToCreate
-   * @return true if workers are scheduled to be created
+   * @return workers created
    */
-  private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): Boolean = {
+  private def tryCreateWorkersIfNeeded(numberOfWorkersToCreate: Int): List[ActorRef] = {
     val workerNeeded = numberOfWorkersToCreate > 0
     if (workerNeeded)
-      (1 to numberOfWorkersToCreate).foreach(_ ⇒ retrieveHandler())
-    workerNeeded
+      (1 to numberOfWorkersToCreate).toList.map(_ ⇒ createWorker())
+    else
+      Nil
   }
 
-  private def createWorker(handler: Handler[T]): Unit = {
+  private def createWorker(): ActorRef = {
     val workerName = s"worker-$workerCount"
     workerCount += 1
     val worker = workerFactory(queue, handler, metricsCollector, workerName)
@@ -206,7 +144,7 @@ class WorkerPoolManager[T](
 
     workerPool = workerPool :+ worker
     metricsCollector ! Metric.PoolSize(workerPool.length)
-    inflightWorkerCreation = Math.max(0, inflightWorkerCreation - 1)
+    worker
   }
 }
 
@@ -274,13 +212,11 @@ object WorkerPoolManager {
 
   private case object ShutdownTimeout
   private case object HealthCheck
-  private[queue] case class HandlerRetrieved[T](handler: Handler[T])
-  private[queue] case class HandlerProviderFailure(ex: Throwable)
 
   def default[T](
     queue:                QueueRef,
-    handlerProvider:      HandlerProvider[T],
-    settings:             ProcessingWorkerPoolSettings,
+    handler:              Handler[T],
+    settings:             WorkerPoolSettings,
     workerFactory:        WorkerFactory,
     samplerFactory:       WorkerPoolSamplerFactory,
     autothrottlerFactory: Option[AutothrottlerFactory]
@@ -288,7 +224,7 @@ object WorkerPoolManager {
   ): Props = {
     Props(new WorkerPoolManager(
       queue,
-      handlerProvider,
+      handler,
       settings,
       workerFactory,
       samplerFactory,

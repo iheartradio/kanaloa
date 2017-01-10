@@ -18,19 +18,19 @@ import org.scalatest.concurrent.Eventually
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
-import HandlerProviders._
-class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with MockServices {
+import TestHandlerProviders._
+class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with MockServices {
 
-  type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, HandlerProvider[Any], TestWorkerFactory) ⇒ Any
+  type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, Handler[Any], TestWorkerFactory) ⇒ Any
 
-  def withWorkerPoolManager(poolSettings: ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
+  def withWorkerPoolManager(poolSettings: WorkerPoolSettings = WorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
 
     val queueProbe = TestProbe("queue")
     val serviceProbe = TestProbe("service")
-    val testHandlerProvider = HandlerProviders.simpleHandlerProvider(serviceProbe)
+    val testHandler = TestHandlerProviders.simpleHandler(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandlerProvider, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
+    val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandler, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
 
     eventually {
       qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
@@ -38,7 +38,7 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
 
     watch(qp)
     try {
-      test(qp, queueProbe, metricsCollector, testHandlerProvider, testWorkerFactory)
+      test(qp, queueProbe, metricsCollector, testHandler, testWorkerFactory)
     } finally {
       unwatch(qp)
       qp.stop()
@@ -59,7 +59,7 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
 
   "The WorkerPoolManager" should {
 
-    "create Workers on startup" in withWorkerPoolManager(ProcessingWorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "create Workers on startup" in withWorkerPoolManager(WorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       eventually {
         qp.underlyingActor.workerPool should have size 5
       }
@@ -74,30 +74,6 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
       eventually {
         qp.underlyingActor.workerPool should have size 10
       }
-    }
-
-    "does not scale workers when there is already workers creation in flight" in new MockServices {
-      import system.dispatcher
-      val promise = Promise[ActorRef]
-      val handlerProvider = fromPromise(promise, simpleResultChecker)
-      val metricsCollectorProbe = TestProbe()
-      val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(
-        TestProbe().ref,
-        handlerProvider,
-        ProcessingWorkerPoolSettings(startingPoolSize = 1),
-        WorkerFactory(None),
-        factories.workPoolSampler(metricsCollectorProbe.ref),
-        None
-      ))
-
-      qp ! ScaleTo(10) //this should be ignored
-
-      promise.success(TestProbe().ref)
-
-      metricsCollectorProbe.expectMsg(PoolSize(0))
-      metricsCollectorProbe.expectMsg(PoolSize(1))
-      metricsCollectorProbe.expectNoMsg(30.milliseconds)
-
     }
 
     "scale workers down" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
@@ -134,7 +110,7 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
     }
 
     "honor maximum pool size during AutoScale" in
-      withWorkerPoolManager(ProcessingWorkerPoolSettings(maxPoolSize = 7)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      withWorkerPoolManager(WorkerPoolSettings(maxPoolSize = 7)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         qp ! ScaleTo(10) //maximum is 7
 
         eventually {
@@ -142,7 +118,7 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
         }
       }
 
-    "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withWorkerPoolManager(ProcessingWorkerPoolSettings(healthCheckInterval = 10.milliseconds)) {
+    "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withWorkerPoolManager(WorkerPoolSettings(replenishSpeed = 10.milliseconds)) {
       (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
         workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
@@ -152,37 +128,9 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
         }
     }
 
-    "attempt to retry create Workers until it hits the minimumWorkers" in {
-      val settings = ProcessingWorkerPoolSettings(minPoolSize = 2, startingPoolSize = 2, healthCheckInterval = 10.milliseconds)
-      import system.dispatcher
-      val promise = Promise[ActorRef]
-      val handlerProvider = fromPromise(promise, simpleResultChecker)
-
-      val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(
-        TestProbe("queue").ref,
-        handlerProvider,
-        settings,
-        WorkerFactory(None),
-        factories.workPoolSampler(),
-        None
-      ))
-      expectNoMsg(200.milliseconds)
-      promise.complete(scala.util.Success(TestProbe().ref))
-      eventually {
-        qp.underlyingActor.workerPool should have size 2
-      }
-    }
-
-    "shutdown itself when all worker dies" in withWorkerPoolManager() { (qp, _, _, _, workerFactory) ⇒
-      watch(qp)
-      workerFactory.killsAllWorkers()
-      expectTerminated(qp)
-    }
-
-    "shutdown Queue and wait for Workers to terminate" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown waits for Workers to terminate" taggedAs (shutdown) in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 30.seconds)
-      queueProbe.expectMsg(Queue.Retire(30.seconds))
 
       qp ! QueryStatus()
       expectMsg(ShuttingDown)
@@ -199,52 +147,9 @@ class WorkerPoolManagerSpec extends SpecWithActorSystem with Eventually with Moc
       expectTerminated(qp)
     }
 
-    "shutdown if Queue terminates" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-
-      queueProbe.ref ! PoisonPill
-
-      eventually {
-        workerFactory.retiredCount.get() shouldBe 5 //all workers should receive a Retire signal
-      }
-
-      qp ! QueryStatus()
-      expectMsg(ShuttingDown)
-
-      //simulate the Workers all finishing up
-      workerFactory.probeMap.values.foreach { probe ⇒
-        probe.ref ! PoisonPill
-      }
-
-      expectTerminated(qp)
-
-    }
-
-    "shutdown before worker created" in {
-      import system.dispatcher
-
-      val queueProbe = TestProbe()
-      val workerPoolManager = system.actorOf(
-        WorkerPoolManager.default(
-          queueProbe.ref,
-          fromPromise(Promise[ActorRef], ResultChecker.complacent),
-          ProcessingWorkerPoolSettings(),
-          WorkerFactory(None),
-          factories.workPoolSampler(),
-          None
-        )
-      )
-      workerPoolManager ! Shutdown(Some(self))
-      queueProbe.expectMsgType[Retire]
-      queueProbe.ref ! PoisonPill
-
-      expectMsg(ShutdownSuccessfully)
-
-    }
-
     "force shutdown if timeout" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
       qp ! Shutdown(Some(self), 25.milliseconds)
-      queueProbe.expectMsg(Queue.Retire(25.milliseconds))
       //We wn't kill the Workers, and the timeout should kick in
       expectMsg(ShutdownForcefully)
       expectTerminated(qp) //should force itself to shutdown

@@ -4,14 +4,14 @@ import akka.actor._
 import akka.testkit.TestProbe
 import kanaloa.MockServices.SuicidalActor
 import kanaloa.IntegrationTests.Success
-import kanaloa.handler.{GeneralActorRefHandler, Handler, HandlerProvider}
+import kanaloa.handler.{AgentHandlerProvider, GeneralActorRefHandler, Handler, HandlerProvider}
 import kanaloa.handler.HandlerProvider.HandlerChange
 import kanaloa.queue.{Fail, Result}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
-object HandlerProviders {
+object TestHandlerProviders {
   def fromPromise[TError, TResp](
     promise:       Promise[ActorRef],
     resultChecker: Any ⇒ Either[Option[TError], TResp]
@@ -27,17 +27,41 @@ object HandlerProviders {
     }
   }
 
+  def nameFromActorRef(actorRef: ActorRef): String =
+    actorRef.path.toString.replace('/', '-')
+
   def simpleHandler(testProbe: TestProbe)(implicit system: ActorSystem): Handler[Any] =
     simpleHandler(testProbe.ref)
 
   def simpleHandler(testActor: ActorRef)(implicit system: ActorSystem): Handler[Any] =
-    new GeneralActorRefHandler("routeeHandler", testActor, system)(simpleResultChecker)
+    simpleHandler(testActor, simpleResultChecker)
+
+  def simpleHandler[TErr, TResp](testActor: ActorRef, resultChecker: Any ⇒ Either[Option[TErr], TResp])(implicit system: ActorSystem): Handler[Any] =
+    new GeneralActorRefHandler(nameFromActorRef(testActor), testActor, system)(resultChecker)
 
   def simpleHandlerProvider(testProbe: TestProbe)(implicit system: ActorSystem): HandlerProvider[Any] = {
     import system.dispatcher
-    HandlerProvider.single(new GeneralActorRefHandler("routeeHandler", testProbe.ref, system)(simpleResultChecker))
+    HandlerProvider.single(new GeneralActorRefHandler(nameFromActorRef(testProbe.ref), testProbe.ref, system)(simpleResultChecker))
   }
 
+  class MockHandlerProvider(implicit val sys: ActorSystem) extends AgentHandlerProvider[Any] {
+    override implicit def ex: ExecutionContext = sys.dispatcher
+
+    def createHandler(testProbe: TestProbe = TestProbe()): Handler[Any] = {
+      val newHandler: Handler[Any] = simpleHandler(testProbe)
+      addHandler(newHandler)
+      newHandler
+    }
+
+    def injectHandler(newHandler: Handler[Any]): Unit = {
+      addHandler(newHandler)
+    }
+
+    def terminateHandler(handler: Handler[Any]): Unit = {
+      removeHandler(handler)
+    }
+
+  }
 }
 
 trait MockServices {

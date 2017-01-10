@@ -5,6 +5,7 @@ import akka.agent.Agent
 import kanaloa.handler.GeneralActorRefHandler._
 import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded, Subscriber, HandlerChange}
 import akka.agent
+import kanaloa.util.AnyEq._
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -67,16 +68,21 @@ trait AgentHandlerProvider[T] extends HandlerProvider[T] {
   protected def broadcast(change: HandlerChange): Unit =
     agentSubscribers.get.foreach(_(change))
 
-  //todo: check duplicated handler on add
+  //todo: find a way to report failure if it's a dup, add test
   protected def addHandler(handler: Handler[T]): Unit = {
-    agentHandlers.alter(handler :: _).foreach { _ ⇒
+    agentHandlers.alter { current ⇒
+      if (!current.map(_.name).contains(handler.name))
+        handler :: current
+      else
+        current
+    }.foreach { _ ⇒
       broadcast(HandlersAdded(List(handler)))
     }
   }
 
   protected def removeHandler(handler: Handler[T]): Unit = {
-    val exists = agentHandlers.get.exists(_ == handler)
-    val result = agentHandlers.alter(_.filterNot(_ == handler))
+    val exists = agentHandlers.get.exists(_ === handler)
+    val result = agentHandlers.alter(_.filterNot(_ === handler))
     if (exists)
       result.foreach(_ ⇒ broadcast(HandlersRemoved(List(handler))))
   }

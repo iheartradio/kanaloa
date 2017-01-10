@@ -5,13 +5,13 @@ import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.handler.{Handler, GeneralActorRefHandler}
 import kanaloa.queue.Queue.RequestWork
-import kanaloa.{HandlerProviders, SpecWithActorSystem}
+import kanaloa.{TestHandlerProviders, SpecWithActorSystem}
 import org.scalatest.{ShouldMatchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 case class Result(value: Any)
 case class Fail(value: String)
-import HandlerProviders._
+import TestHandlerProviders._
 
 abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
 

@@ -9,12 +9,12 @@ import kanaloa.queue.Queue._
 import kanaloa.queue.WorkerPoolManager.{Shutdown, _}
 import kanaloa.queue.TestUtils._
 import kanaloa.{QueueSampler, MockServices, SpecWithActorSystem}
+import org.scalatest.Tag
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
 import scala.util.Random
-
 class QueueSpec extends SpecWithActorSystem {
   "Queue" should {
 
@@ -63,7 +63,7 @@ class QueueSpec extends SpecWithActorSystem {
       delegatee.expectMsg("c")
     }
 
-    "shutdown with all outstanding work done" in new QueueScope {
+    "shutdown with all outstanding work done" taggedAs (shutdown) in new QueueScope {
 
       val queue = defaultQueue()
       val workerPoolManager = initQueue(queue, numberOfWorkers = 2)
@@ -183,7 +183,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
   val metricsCollector: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): WorkerPoolManagerRef = {
-    val workerPoolProps: Props = defaultWorkerPoolProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
+    val workerPoolProps: Props = defaultWorkerPoolProps(queue, WorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
     system.actorOf(workerPoolProps)
   }
 

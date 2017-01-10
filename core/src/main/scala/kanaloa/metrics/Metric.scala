@@ -4,6 +4,7 @@ import scala.concurrent.duration._
 
 sealed trait Metric
 
+//todo: separate into DispatcherMetrics and HandlerMetrics
 object Metric {
   sealed trait Event extends Metric
 

@@ -6,6 +6,10 @@ import scala.concurrent.duration.FiniteDuration
 trait Handler[-TReq] {
   type Resp
   type Error
+
+  /**
+   * Unique name of the handler within a handlerProvider
+   */
   def name: String
 
   def handle(req: TReq): Handling[Resp, Error]

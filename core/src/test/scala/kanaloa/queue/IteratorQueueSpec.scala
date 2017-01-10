@@ -51,7 +51,8 @@ class IteratorQueueSpec extends SpecWithActorSystem {
 
       delegatee.expectMsg(DelegateeMessage("b"))
       watch(workerPoolManager)
-      workerPoolManager ! Shutdown
+
+      workerPoolManager ! Shutdown()
 
       expectTerminated(workerPoolManager)
     }

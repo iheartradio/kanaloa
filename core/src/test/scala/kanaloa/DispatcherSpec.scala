@@ -1,14 +1,15 @@
 package kanaloa
 
 import akka.actor.{ActorRefFactory, ActorRef, ActorSystem, Props}
-import akka.testkit.{ImplicitSender, TestActors, TestKit, TestProbe}
+import akka.testkit._
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.ApiProtocol._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider.HandlerChange
-import kanaloa.handler.{ResultChecker, HandlerProvider, Handler, GeneralActorRefHandler}
+import kanaloa.handler._
 import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, StatsDReporter}
+import kanaloa.queue.Result
 import kanaloa.queue.TestUtils.MessageProcessed
 import kanaloa.queue._
 import org.scalatest.OptionValues
@@ -17,10 +18,14 @@ import org.scalatest.concurrent.Eventually
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.Success
-import HandlerProviders._
+import TestHandlerProviders._
 
 class DispatcherSpec extends SpecWithActorSystem with OptionValues {
+  def fixedWorkerPoolSettings(size: Int): Dispatcher.Settings =
+    Dispatcher.defaultDispatcherSettings().copy(workerPool = WorkerPoolSettings(startingPoolSize = size, minPoolSize = size, maxPoolSize = size))
+
   implicit val noneStatsDClient: Option[StatsDClient] = None
+
   "pulling work dispatcher" should {
 
     "finish a simple list" in new ScopeWithActor {
@@ -28,13 +33,14 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val pwp = system.actorOf(Props(PullingDispatcher(
         "test",
         iterator,
-        Dispatcher.defaultDispatcherSettings().copy(workerPool = ProcessingWorkerPoolSettings(1), autothrottle = None),
+        Dispatcher.defaultDispatcherSettings().copy(workerPool = WorkerPoolSettings(1), autothrottle = None),
         testHandlerProvider(ResultChecker.expectType[SuccessResp.type]),
         None,
         None
 
       )))
 
+      watch(pwp)
       delegatee.expectMsg(1)
       delegatee.reply(SuccessResp)
       delegatee.expectMsg(3)
@@ -43,6 +49,8 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       delegatee.reply(SuccessResp)
       delegatee.expectMsg(6)
       delegatee.reply(SuccessResp)
+
+      expectTerminated(pwp)
     }
 
     "shutdown in the middle of processing a list" in new ScopeWithActor {
@@ -160,6 +168,94 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       expectMsgType[WorkFailed]
     }
 
+    "create worker pools from new handler" in new ScopeWithActor {
+      val handlerProvider = new MockHandlerProvider()
+
+      val dispatcher = system.actorOf(
+        Props(PushingDispatcher("test", fixedWorkerPoolSettings(2), handlerProvider, None))
+      )
+      val serviceOne = TestProbe()
+      handlerProvider.createHandler(serviceOne)
+
+      dispatcher ! "Moo"
+      dispatcher ! "Moo"
+      serviceOne.expectMsg("Moo")
+      serviceOne.expectMsg("Moo")
+
+      val serviceTwo = TestProbe()
+
+      handlerProvider.createHandler(serviceTwo)
+      dispatcher ! "Baa"
+      dispatcher ! "Baa"
+      serviceTwo.expectMsg("Baa")
+      serviceTwo.expectMsg("Baa")
+
+    }
+
+    "remove worker pools once handler is removed" in new ScopeWithActor {
+      val handlerProvider = new MockHandlerProvider()
+
+      val dispatcher = system.actorOf(
+        Props(PushingDispatcher("test", fixedWorkerPoolSettings(1), handlerProvider, None))
+      )
+      val serviceOne = TestProbe()
+      val serviceTwo = TestProbe()
+
+      handlerProvider.createHandler(serviceOne)
+      val handlerTwo = handlerProvider.createHandler(serviceTwo)
+
+      dispatcher ! "Moo"
+      dispatcher ! "Moo"
+      serviceOne.expectMsg("Moo")
+      serviceTwo.expectMsg("Moo")
+
+      serviceOne.reply(Result("cow"))
+      serviceTwo.reply(Result("cow"))
+      expectMsg("cow")
+      expectMsg("cow")
+
+      handlerProvider.terminateHandler(handlerTwo)
+      expectNoMsg() //give some time for termination to take effect
+      dispatcher ! "Baa"
+      dispatcher ! "Baa"
+      serviceOne.expectMsg("Baa")
+      serviceTwo.expectNoMsg()
+
+    }
+
+    "does not allow handlers with duplicated names" in new ScopeWithActor with Eventually {
+      val handlerProvider = new MockHandlerProvider()
+      import system.{dispatcher ⇒ executionContext}
+      val dispatcher = TestActorRef[PushingDispatcher[Any]](
+        Props(PushingDispatcher("test", fixedWorkerPoolSettings(1), handlerProvider, None))
+      )
+      val functionStub = (r: Any) ⇒ Future.successful("blah")
+      val handler1: Handler[Any] = new SimpleFunctionHandler(functionStub, "name1")
+
+      handlerProvider.injectHandler(handler1)
+
+      eventually {
+        dispatcher.underlyingActor.workerPools.size should be(1)
+      }
+
+      val handler2 = new SimpleFunctionHandler(functionStub, "name2")
+
+      handlerProvider.injectHandler(handler2)
+
+      eventually {
+        dispatcher.underlyingActor.workerPools.size should be(2)
+      }
+
+      val handlerDup: Handler[Any] = new SimpleFunctionHandler(functionStub, "name2")
+
+      handlerProvider.injectHandler(handlerDup)
+
+      expectNoMsg() //wait a bit for the potential check to happen
+
+      dispatcher.underlyingActor.workerPools.size should be(2)
+
+    }
+
     "let simple result check fail on unrecognized reply message" in new ScopeWithActor {
       import system.{dispatcher ⇒ ex}
       val service = system.actorOf(TestActors.echoActorProps)
@@ -173,6 +269,18 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
       dispatcher ! "3"
       expectMsgType[WorkFailed]
+    }
+
+    "shutdown before worker pool is created" in new ScopeWithActor {
+      import system.{dispatcher ⇒ ex}
+      val service = system.actorOf(TestActors.echoActorProps)
+      val dispatcher = system.actorOf(PushingDispatcher.props(
+        name = "test",
+        TestHandlerProviders.fromPromise(Promise[ActorRef](), simpleResultChecker)
+      ))
+
+      dispatcher ! ShutdownGracefully(Some(self))
+      expectMsg(ShutdownSuccessfully)
     }
 
     "receive WorkRejected messages if queue is at capacity" in new ScopeWithActor {
@@ -212,11 +320,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
         ConfigFactory.parseString(
           """
-            |kanaloa.default-dispatcher {
-            |  update-interval = 300s
-            |  circuit-breaker.enabled = off
-            |  autothrottle.enabled = off
-            |}""".stripMargin
+                |kanaloa.default-dispatcher {
+                |  update-interval = 300s
+                |  circuit-breaker.enabled = off
+                |  autothrottle.enabled = off
+                |}""".stripMargin
         ) //make sure regulator doesn't interfere
       ))
 
@@ -241,13 +349,13 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         fromPromise(Promise[ActorRef].failure(new Exception("failing backend")), ResultChecker.complacent),
         ConfigFactory.parseString(
           """
-            |kanaloa.default-dispatcher {
-            |  update-interval = 10ms
-            |  back-pressure {
-            |    duration-of-burst-allowed = 10ms
-            |    reference-delay = 2s
-            |  }
-            |}""".stripMargin
+                |kanaloa.default-dispatcher {
+                |  update-interval = 10ms
+                |  back-pressure {
+                |    duration-of-burst-allowed = 10ms
+                |    reference-delay = 2s
+                |  }
+                |}""".stripMargin
         )
       ))
 
@@ -267,13 +375,13 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         fromPromise(backendActorPromise, ResultChecker.complacent),
         ConfigFactory.parseString(
           """
-            |kanaloa.default-dispatcher {
-            |  update-interval = 50ms
-            |  back-pressure {
-            |    duration-of-burst-allowed = 30ms
-            |    reference-delay = 1s
-            |  }
-            |}""".stripMargin
+                |kanaloa.default-dispatcher {
+                |  update-interval = 50ms
+                |  back-pressure {
+                |    duration-of-burst-allowed = 30ms
+                |    reference-delay = 1s
+                |  }
+                |}""".stripMargin
         )
       ))
 
@@ -299,28 +407,26 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty, None)
       settings.workRetry === 0
       settings.autothrottle shouldBe defined
-      settings.workerPool.shutdownOnAllWorkerDeath shouldBe false
       reporter shouldBe empty
     }
 
     "use a specific default settings" in {
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.empty, None, Some("default-pulling-dispatcher"))
-      settings.workerPool.shutdownOnAllWorkerDeath shouldBe true
       settings.autothrottle shouldBe defined
     }
 
     "use default-dispatcher settings when dispatcher name is missing in the dispatchers section" in {
       val cfgStr =
         """
-            kanaloa {
-              default-dispatcher {
-                work-retry = 27
-              }
-              dispatchers {
+              kanaloa {
+                default-dispatcher {
+                  work-retry = 27
+                }
+                dispatchers {
 
+                }
               }
-            }
-          """
+            """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.workRetry === 27
@@ -329,18 +435,18 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "fall back to default-dispatcher settings when a field is missing in the dispatcher section" in {
       val cfgStr =
         """
-            kanaloa {
-              default-dispatcher {
-                work-retry = 29
-              }
-              dispatchers {
-                example {
-                  work-timeout = 1m
+              kanaloa {
+                default-dispatcher {
+                  work-retry = 29
                 }
-              }
+                dispatchers {
+                  example {
+                    work-timeout = 1m
+                  }
+                }
 
-            }
-          """
+              }
+            """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.workRetry === 29
@@ -350,16 +456,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "turn off autothrottle if set to off" in {
       val cfgStr =
         """
-            kanaloa {
-              dispatchers {
-                example {
-                  autothrottle {
-                    enabled = off
+              kanaloa {
+                dispatchers {
+                  example {
+                    autothrottle {
+                      enabled = off
+                    }
                   }
                 }
               }
-            }
-          """
+            """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.autothrottle shouldBe None
     }
@@ -367,16 +473,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "turn off circuit-breaker if set to off" in {
       val cfgStr =
         """
-            kanaloa {
-              dispatchers {
-                example {
-                  circuit-breaker {
-                    enabled = off
+              kanaloa {
+                dispatchers {
+                  example {
+                    circuit-breaker {
+                      enabled = off
+                    }
                   }
                 }
               }
-            }
-          """
+            """
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.circuitBreaker shouldBe None
     }
@@ -384,16 +490,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "parse settings that match the name" in {
       val cfgStr =
         """
-            kanaloa {
-              dispatchers {
-                example {
-                  circuit-breaker {
-                    timeout-count-threshold = 0.5
+              kanaloa {
+                dispatchers {
+                  example {
+                    circuit-breaker {
+                      timeout-count-threshold = 0.5
+                    }
                   }
                 }
               }
-            }
-          """
+            """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
       settings.circuitBreaker.get.timeoutCountThreshold === 6
@@ -402,16 +508,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "parse statsD collector " in {
       val cfgStr =
         """
-            kanaloa.default-dispatcher {
-              metrics {
-                enabled  = on
-                statsD {
-                  host = "localhost"
-                  eventSampleRate = 0.5
+              kanaloa.default-dispatcher {
+                metrics {
+                  enabled  = on
+                  statsD {
+                    host = "localhost"
+                    eventSampleRate = 0.5
+                  }
                 }
               }
-            }
-          """
+            """
       val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
 
       val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), statsDClient)
@@ -422,27 +528,27 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "turn off metrics collector when disabled at the dispatcher level" in {
       val cfgStr =
         """
-            kanaloa {
-              dispatchers {
-                example {
-                  metrics.enabled = off
+              kanaloa {
+                dispatchers {
+                  example {
+                    metrics.enabled = off
+                  }
                 }
-              }
-              dispatchers {
-                example2 { }
-              }
+                dispatchers {
+                  example2 { }
+                }
 
-              default-dispatcher {
-                metrics {
-                  enabled = on
-                  statsD {
-                    host = "localhost"
-                    eventSampleRate = 0.5
+                default-dispatcher {
+                  metrics {
+                    enabled = on
+                    statsD {
+                      host = "localhost"
+                      eventSampleRate = 0.5
+                    }
                   }
                 }
               }
-            }
-          """
+            """
       val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
       statsDClient shouldNot be(empty)
 
@@ -457,26 +563,26 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "override collector settings at the dispatcher level" in {
       val cfgStr =
         """
-            kanaloa {
-              dispatchers {
-                example {
-                  metrics {
-                    statsD {
-                      host = "localhost"
-                      eventSampleRate = 0.7
+              kanaloa {
+                dispatchers {
+                  example {
+                    metrics {
+                      statsD {
+                        host = "localhost"
+                        eventSampleRate = 0.7
+                      }
                     }
                   }
                 }
-              }
-              default-dispatcher.metrics {
-                enabled  = on
-                statsD {
-                  host = "localhost"
-                  eventSampleRate = 0.5
+                default-dispatcher.metrics {
+                  enabled  = on
+                  statsD {
+                    host = "localhost"
+                    eventSampleRate = 0.5
+                  }
                 }
               }
-            }
-          """
+            """
 
       val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
 
@@ -490,16 +596,16 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "turn off metrics collector when disabled at the config level" in {
       val cfgStr =
         """
-            kanaloa {
-              default-dispatcher.metrics {
-                enabled = off
-                statsD {
-                  host = "localhost"
-                  eventSampleRate = 0.5
+              kanaloa {
+                default-dispatcher.metrics {
+                  enabled = off
+                  statsD {
+                    host = "localhost"
+                    eventSampleRate = 0.5
+                  }
                 }
               }
-            }
-          """
+            """
       val statsDClient = StatsDClient(ConfigFactory.parseString("""kanaloa.statsD.host = 125.9.9.1 """))
 
       val (_, reporter) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), statsDClient)
@@ -510,12 +616,12 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     "throw exception when host is missing" in {
       val cfgStr =
         """
-            kanaloa {
-              statsD {
-                port = 2323
+              kanaloa {
+                statsD {
+                  port = 2323
+                }
               }
-            }
-          """
+            """
 
       intercept[ConfigException] {
         StatsDClient(ConfigFactory.parseString(cfgStr))

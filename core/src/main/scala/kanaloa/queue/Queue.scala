@@ -6,7 +6,7 @@ import kanaloa.WorkerPoolSampler
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.{MetricsCollector, Metric}
 import kanaloa.queue.Queue._
-import kanaloa.util.MessageScheduler
+import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue ⇒ ScalaQueue}
@@ -89,7 +89,7 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
           onQueuedWorkExhausted()
 
       case Unregister(worker) ⇒
-        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ == worker)))
+        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ === worker)))
         worker ! Unregistered
 
       case Terminated(worker) ⇒

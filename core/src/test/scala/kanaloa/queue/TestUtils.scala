@@ -35,11 +35,11 @@ object TestUtils {
 
     def defaultWorkerPoolProps(
       queue:            QueueRef,
-      settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: ActorRef                     = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
+      settings:         WorkerPoolSettings = WorkerPoolSettings(startingPoolSize = 1),
+      metricsCollector: ActorRef           = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
     ) = WorkerPoolManager.default(
       queue,
-      handlerProvider,
+      TestHandlerProviders.simpleHandler(delegatee.ref, resultChecker),
       settings,
       WorkerFactory(None),
       new WorkerPoolSamplerFactory {

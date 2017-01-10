@@ -327,7 +327,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
       ignoreMsg { case Success ⇒ true }
 
       watch(backend)
-      pd.underlyingActor.workerPool ! QueryStatus()
+      pd.underlyingActor.workerPools.head._2 ! QueryStatus()
       var lastPoolSize = 0
       import system.dispatcher
 
@@ -335,7 +335,7 @@ class AutothrottleWithPullingIntegration extends IntegrationSpec {
         case Terminated(`backend`) ⇒ true //it shutdowns itself after all messages are processed.
         case RunningStatus(pool) ⇒
           lastPoolSize = pool.size
-          system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.workerPool, QueryStatus(Some(self)))
+          system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.workerPools.head._2, QueryStatus(Some(self)))
           false
         case ShuttingDown ⇒ false
         case m            ⇒ throw new Exception("unexpected, " + m)
@@ -485,7 +485,7 @@ object IntegrationTests {
     }
 
     def getPoolSize(rd: Dispatcher[_]): Int = {
-      rd.workerPool ! QueryStatus()
+      rd.workerPools.head._2 ! QueryStatus() //todo: this is assuming there is only one workerPool
 
       val status = expectMsgClass(classOf[RunningStatus])
 
