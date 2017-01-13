@@ -6,6 +6,7 @@ import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
 
 trait Reporter {
   def report(metric: Metric): Unit
+  def withNewPrefix(modifier: String ⇒ String): Reporter
 }
 
 object Reporter {

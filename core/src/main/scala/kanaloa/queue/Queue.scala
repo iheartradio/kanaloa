@@ -4,7 +4,7 @@ import akka.actor._
 import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.WorkerPoolSampler
 import kanaloa.Types.QueueLength
-import kanaloa.metrics.{MetricsCollector, Metric}
+import kanaloa.metrics.Metric
 import kanaloa.queue.Queue._
 import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 

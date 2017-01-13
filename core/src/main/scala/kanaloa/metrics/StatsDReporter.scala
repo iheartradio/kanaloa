@@ -10,11 +10,11 @@ import akka.actor._
  * @param eventSampleRate sample rate for countable events (WorkEnqueued, WorkCompleted, etc)
  * @param statusSampleRate sample rate for gauged events (PoolSize, WorkQueueLength, etc)
  */
-class StatsDReporter(
-  statsD:               StatsDClient,
-  prefix:               String,
-  val eventSampleRate:  Double,
-  val statusSampleRate: Double
+case class StatsDReporter(
+  statsD:           StatsDClient,
+  prefix:           String,
+  eventSampleRate:  Double,
+  statusSampleRate: Double
 )
   extends Reporter {
 
@@ -44,9 +44,12 @@ class StatsDReporter(
       increment("work.completed")
       timing("work.processTime", processTime.toMillis.toInt, eventSampleRate)
 
-    case WorkFailed           ⇒ increment("work.failed", failureSampleRate)
-    case WorkTimedOut         ⇒ increment("work.timedOut", failureSampleRate)
-    case CircuitBreakerOpened ⇒ increment("worker.circuitBreakerOpened", failureSampleRate)
+    case WorkFailed ⇒
+      increment("work.failed", failureSampleRate)
+    case WorkTimedOut ⇒
+      increment("work.timedOut", failureSampleRate)
+    case CircuitBreakerOpened ⇒
+      increment("worker.circuitBreakerOpened", failureSampleRate)
 
     case PoolSize(size) ⇒
       gauge("pool.size", size)
@@ -67,6 +70,8 @@ class StatsDReporter(
       gauge("queue.length", length)
 
   }
+
+  override def withNewPrefix(modifier: (String) ⇒ String): Reporter = copy(prefix = modifier(prefix))
 }
 
 object StatsDReporter {

@@ -27,19 +27,21 @@ class WorkerPoolManager[T](
 ) extends Actor with ActorLogging with MessageScheduler {
   val listSelection = new ListSelection
 
-  val metricsCollector: ActorRef = samplerFactory() // todo: life management
+  val metricsCollector: ActorRef = samplerFactory(handler.name)
 
-  val autoThrottler: Option[ActorRef] = autothrottlerFactory.map(_(self, metricsCollector)) // todo: life management
-
+  val autoThrottler: Option[ActorRef] = autothrottlerFactory.map(_(self, metricsCollector))
   var workerCount = 0
 
   var workerPool: WorkerPool = Nil
 
   var inflightWorkerRemoval = 0
 
+  def reportPoolSize() =
+    metricsCollector ! Metric.PoolSize(workerPool.length)
+
   override def preStart(): Unit = {
     super.preStart()
-    metricsCollector ! Metric.PoolSize(0)
+    reportPoolSize()
     tryCreateWorkersIfNeeded(settings.startingPoolSize)
   }
 
@@ -68,7 +70,7 @@ class WorkerPoolManager[T](
       }
 
     case HealthCheck ⇒
-      metricsCollector ! PoolSize(workerPool.length) //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable
+      reportPoolSize() //also take the opportunity to report PoolSize, this is needed because statsD metrics report is not reliable
       if (!tryCreateWorkersIfNeeded(settings.minPoolSize - currentWorkers).isEmpty)
         log.debug("Number of workers in pool is below minimum. Replenished.")
 
@@ -120,7 +122,7 @@ class WorkerPoolManager[T](
     inflightWorkerRemoval = Math.max(0, inflightWorkerRemoval - 1)
     context.unwatch(worker)
     workerPool = workerPool.filter(_ != worker)
-    metricsCollector ! Metric.PoolSize(workerPool.length)
+    reportPoolSize()
   }
 
   /**
@@ -143,7 +145,7 @@ class WorkerPoolManager[T](
     context watch worker
 
     workerPool = workerPool :+ worker
-    metricsCollector ! Metric.PoolSize(workerPool.length)
+    reportPoolSize()
     worker
   }
 }
@@ -180,13 +182,15 @@ object WorkerPoolManager {
   }
 
   private[kanaloa] trait WorkerPoolSamplerFactory {
-    def apply()(implicit ac: ActorRefFactory): ActorRef
+    def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef
   }
 
   private[kanaloa] object WorkerPoolSamplerFactory {
     def apply(queueSampler: ActorRef, settings: SamplerSettings, reporter: Option[Reporter]): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
-      def apply()(implicit ac: ActorRefFactory) =
-        ac.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings))
+      def apply(handlerName: String)(implicit ac: ActorRefFactory) = {
+        val handlerSpecificReporter = reporter.map(_.withNewPrefix(_ + "." + handlerName.replace(".", "_"))) //todo: is this design brittle?
+        ac.actorOf(WorkerPoolSampler.props(handlerSpecificReporter, queueSampler, settings))
+      }
     }
   }
 

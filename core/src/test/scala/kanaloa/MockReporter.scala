@@ -8,4 +8,6 @@ class MockReporter extends Reporter {
   def reported: List[Metric] = metrics.toArray(new Array[Metric](metrics.size())).toList
   override def report(metric: Metric): Unit =
     metrics.add(metric)
+
+  override def withNewPrefix(modifier: (String) ⇒ String): Reporter = this
 }

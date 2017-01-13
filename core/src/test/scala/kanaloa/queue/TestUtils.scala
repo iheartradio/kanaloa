@@ -5,7 +5,6 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider
-import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory}
 
 object TestUtils {
@@ -43,7 +42,7 @@ object TestUtils {
       settings,
       WorkerFactory(None),
       new WorkerPoolSamplerFactory {
-        def apply()(implicit ac: ActorRefFactory): ActorRef = metricsCollector
+        def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef = metricsCollector
       },
       None
     )

@@ -8,7 +8,7 @@ import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider.HandlerChange
 import kanaloa.handler._
-import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, StatsDReporter}
+import kanaloa.metrics.{StatsDClient, Metric, StatsDReporter}
 import kanaloa.queue.Result
 import kanaloa.queue.TestUtils.MessageProcessed
 import kanaloa.queue._

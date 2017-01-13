@@ -9,7 +9,6 @@ import kanaloa.Utils.Factories
 import kanaloa.WorkerPoolSampler.{PartialUtilization, WorkerPoolSample}
 import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.handler.ResultChecker
-import kanaloa.metrics.MetricsCollector
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}

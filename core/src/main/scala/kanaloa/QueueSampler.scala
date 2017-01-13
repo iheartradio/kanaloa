@@ -7,7 +7,7 @@ import kanaloa.QueueSampler._
 import kanaloa.Sampler.{SamplerSettings, Sample, AddSample}
 import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric._
-import kanaloa.metrics.{Reporter, Metric, MetricsCollector}
+import kanaloa.metrics.{Reporter, Metric}
 import kanaloa.queue.Queue
 import kanaloa.queue.Queue.DispatchReport
 import kanaloa.util.Java8TimeExtensions._
@@ -27,9 +27,10 @@ import scala.concurrent.duration._
  *
  */
 private[kanaloa] trait QueueSampler extends Sampler {
-  mc: MetricsCollector ⇒ //todo: it's using cake pattern to mixin with MetricsCollector mainly due to performance reason, there might be ways to achieve more decoupled ways without hurting performance
 
   import settings._
+
+  def reporter: Option[Reporter]
 
   def receive = partialUtilized
 
@@ -61,9 +62,8 @@ private[kanaloa] trait QueueSampler extends Sampler {
         rep foreach publish
         context become fullyUtilized(status)
 
-      case metric: Metric ⇒
+      case metric: QueueMetric ⇒
         report(metric)
-
     }
   }
 
@@ -86,12 +86,14 @@ private[kanaloa] trait QueueSampler extends Sampler {
       case status: Queue.Status ⇒
         continue(status, None)
 
-      case metric: Metric ⇒
+      case metric: QueueMetric ⇒
         report(metric)
 
       case AddSample ⇒ //no sample is produced in the partial utilized state
     }
   }
+
+  def report(m: QueueMetric): Unit = reporter.foreach(_.report(m))
 
   /**
    *
@@ -107,7 +109,6 @@ private[kanaloa] trait QueueSampler extends Sampler {
 
     (sample, newStatus)
   }
-
 }
 
 private[kanaloa] object QueueSampler {
@@ -115,7 +116,7 @@ private[kanaloa] object QueueSampler {
   class QueueSamplerImpl(
     val reporter: Option[Reporter],
     val settings: SamplerSettings
-  ) extends MetricsCollector with QueueSampler
+  ) extends QueueSampler
 
   def props(
     reporter: Option[Reporter],

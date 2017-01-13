@@ -8,14 +8,14 @@ import kanaloa.WorkerPoolSampler._
 import kanaloa.Sampler._
 import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric._
-import kanaloa.metrics.{Reporter, Metric, MetricsCollector}
+import kanaloa.metrics.{WorkerPoolMetricsCollector, Reporter, Metric}
 import kanaloa.queue.Queue
 import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._
 
 /**
- *  Mixed-in with [[MetricsCollector]] to which all [[Metric]] are sent to.
+ *  Mixed-in with [[WorkerPoolMetricsCollector]] to which all [[Metric]] are sent to.
  *  Behind the scene it also collects performance [[WorkerPoolSample]] from [[WorkCompleted]] and [[WorkFailed]]
  *  when the system is in fullyUtilized state, namely when number
  *  of idle workers is less than [[kanaloa.Sampler.SamplerSettings]]
@@ -27,7 +27,7 @@ import scala.concurrent.duration._
  *
  */
 private[kanaloa] trait WorkerPoolSampler extends Sampler {
-  mc: MetricsCollector ⇒ //todo: it's using cake pattern to mixin with MetricsCollector mainly due to performance reason, there might be ways to achieve more decoupled ways without hurting performance
+  mc: WorkerPoolMetricsCollector ⇒ //todo: it's using cake pattern to mixin with WorkerPoolMetricsCollector mainly due to performance reason, there might be ways to achieve more decoupled ways without hurting performance
 
   def queueSampler: ActorRef
 
@@ -55,7 +55,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
         )
       )
 
-    case metric: Metric ⇒
+    case metric: WorkerPoolMetric ⇒
       handle(metric) {
         case WorkCompleted(processTime) ⇒
           val newWorkDone = s.workDone + 1
@@ -95,7 +95,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
         PoolStatus(poolSize = status.poolSize, workingWorkers = status.workingWorkers)
       )
 
-    case metric: Metric ⇒
+    case metric: WorkerPoolMetric ⇒
       handle(metric) {
         case PoolSize(s) ⇒
           context become partialUtilized(status.copy(poolSize = s))
@@ -175,7 +175,7 @@ private[kanaloa] object WorkerPoolSampler {
     val reporter:     Option[Reporter],
     val queueSampler: ActorRef,
     val settings:     SamplerSettings
-  ) extends MetricsCollector with WorkerPoolSampler
+  ) extends WorkerPoolMetricsCollector with WorkerPoolSampler
 
   def props(
     reporter:     Option[Reporter],

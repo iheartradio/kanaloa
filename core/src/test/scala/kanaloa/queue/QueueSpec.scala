@@ -8,7 +8,7 @@ import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
 import kanaloa.queue.WorkerPoolManager.{Shutdown, _}
 import kanaloa.queue.TestUtils._
-import kanaloa.{QueueSampler, MockServices, SpecWithActorSystem}
+import kanaloa.{WorkerPoolSampler, QueueSampler, MockServices, SpecWithActorSystem}
 import org.scalatest.Tag
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -151,7 +151,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
       )
 
       val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
-      val workerPool: ActorRef = TestActorRef(defaultWorkerPoolProps(queue, metricsCollector = metricsCollector))
+      val workerPool: ActorRef = TestActorRef(defaultWorkerPoolProps(queue, metricsCollector = workerPoolMetricsCollector))
 
       watch(workerPool)
 
@@ -180,10 +180,15 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
-  val metricsCollector: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
+  val queueSampler: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
+  val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(None, queueSampler))
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): WorkerPoolManagerRef = {
-    val workerPoolProps: Props = defaultWorkerPoolProps(queue, WorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
+    val workerPoolProps: Props = defaultWorkerPoolProps(
+      queue,
+      WorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize),
+      workerPoolMetricsCollector
+    )
     system.actorOf(workerPoolProps)
   }
 
@@ -193,13 +198,13 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     sendResultsTo: Option[ActorRef] = None
   ): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, metricsCollector, workSetting, sendResultsTo),
+      iteratorQueueProps(iterator, queueSampler, workSetting, sendResultsTo),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(
-      Queue.default(metricsCollector, workSetting),
+      Queue.default(queueSampler, workSetting),
       "default-queue-" + Random.nextInt(100000)
     )
 
@@ -209,9 +214,15 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: ActorRef = system.actorOf(QueueSampler.props(Some(new Reporter {
+  def mockReporter = new Reporter {
     def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-  })))
+
+    def withNewPrefix(modifier: (String) ⇒ String): Reporter = this
+  }
+
+  override val queueSampler: ActorRef = system.actorOf(QueueSampler.props(Some(mockReporter)))
+
+  override val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(Some(mockReporter), queueSampler))
 
 }
 

@@ -8,7 +8,7 @@ import kanaloa.Dispatcher.{ShutdownTimedOut, UnSubscribePerformanceMetrics, Subs
 import kanaloa.Regulator.DroppingRate
 import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
 import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
-import kanaloa.metrics.{StatsDClient, Metric, MetricsCollector, Reporter}
+import kanaloa.metrics.{StatsDClient, Metric, Reporter}
 import kanaloa.queue.Queue.{Retire, Enqueue, EnqueueRejected}
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._

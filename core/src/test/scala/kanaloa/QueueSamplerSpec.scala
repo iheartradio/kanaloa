@@ -8,7 +8,7 @@ import kanaloa.Sampler._
 import kanaloa.Types.QueueLength
 import kanaloa.QueueSampler._
 import kanaloa.metrics.Metric._
-import kanaloa.metrics.{Metric, MetricsCollector, Reporter}
+import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually

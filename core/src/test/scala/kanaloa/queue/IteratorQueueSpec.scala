@@ -60,7 +60,7 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     "does not retrieve work without workers" in new QueueScope with MockServices with MockitoSugar with Eventually {
       import org.mockito.Mockito._
       val iterator = mock[Iterator[String]]
-      val queue = system.actorOf(Queue.ofIterator(iterator, metricsCollector, WorkSettings(), Some(self)))
+      val queue = system.actorOf(Queue.ofIterator(iterator, queueSampler, WorkSettings(), Some(self)))
 
       expectNoMsg(40.milliseconds)
       verifyNoMoreInteractions(iterator)

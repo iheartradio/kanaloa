@@ -26,7 +26,7 @@ object Utils {
     def workPoolSampler(
       returnRef: ActorRef
     ): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
-      def apply()(implicit ac: ActorRefFactory): ActorRef = returnRef
+      def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef = returnRef
     }
 
   }
