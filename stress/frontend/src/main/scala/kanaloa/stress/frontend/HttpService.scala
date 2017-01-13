@@ -8,6 +8,8 @@ import akka.stream.ActorMaterializer
 import akka.pattern.{ AskTimeoutException, ask }
 import akka.util.Timeout
 import kanaloa.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.handler.HandlerProvider
 import kanaloa.metrics.StatsDClient
 import kanaloa.stress.backend.BackendApp._
 import kanaloa.stress.backend.MockBackend
@@ -15,7 +17,7 @@ import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
 import scala.io.StdIn._
 import com.typesafe.config.ConfigFactory
-import kanaloa.{ ClusterAwareHandlerProvider$, PushingDispatcher }
+import kanaloa.{ ClusterAwareHandlerProvider, PushingDispatcher }
 import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
@@ -57,23 +59,23 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
 
   lazy val remoteBackendRouter = system.actorOf(FromConfig.props(), "backendRouter")
 
-  val resultChecker: ResultChecker = {
+  val resultChecker: ResultChecker[MockBackend.Respond, String] = {
     case r: MockBackend.Respond ⇒
       Right(r)
     case other ⇒
-      Left("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other)
+      Left(Some("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other))
   }
 
   lazy val dispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "with-local-backend",
-      localBackend,
+      HandlerProvider.actorRef("localBackend", localBackend)(resultChecker),
       cfg
-    )(resultChecker), "local-dispatcher")
+    ), "local-dispatcher")
 
   lazy val localUnThrottledBackendWithKanaloa = system.actorOf(PushingDispatcher.props(
     name = "with-local-unthrottled-backend",
-    localUnThrottledBackend,
+    HandlerProvider.actorRef("localUnthrottledBackend", localUnThrottledBackend)(resultChecker),
     ConfigFactory.parseString(
       """
         |kanaloa.default-dispatcher {
@@ -84,14 +86,14 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
         |}
       """.stripMargin
     ).withFallback(cfg)
-  )(resultChecker), "local-unthrottled-dispatcher")
+  ), "local-unthrottled-dispatcher")
 
   lazy val clusterDispatcher =
     system.actorOf(PushingDispatcher.props(
       name = "with-remote-backend",
-      ClusterAwareHandlerProvider("backend", "backend"),
+      new ClusterAwareHandlerProvider("backend", "backend")(resultChecker),
       cfg
-    )(resultChecker), "cluster-dispatcher")
+    ), "cluster-dispatcher")
 
   def testRoute(rootPath: String, destination: ActorRef) =
     get {
