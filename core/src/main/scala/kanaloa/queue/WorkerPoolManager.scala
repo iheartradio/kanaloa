@@ -25,6 +25,7 @@ class WorkerPoolManager[T](
   samplerFactory:       WorkerPoolSamplerFactory,
   autothrottlerFactory: Option[AutothrottlerFactory]
 ) extends Actor with ActorLogging with MessageScheduler {
+
   val listSelection = new ListSelection
 
   val metricsCollector: ActorRef = samplerFactory(handler.name)
@@ -188,7 +189,9 @@ object WorkerPoolManager {
   private[kanaloa] object WorkerPoolSamplerFactory {
     def apply(queueSampler: ActorRef, settings: SamplerSettings, reporter: Option[Reporter]): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
       def apply(handlerName: String)(implicit ac: ActorRefFactory) = {
-        val handlerSpecificReporter = reporter.map(_.withNewPrefix(_ + "." + handlerName.replace(".", "_"))) //todo: is this design brittle?
+
+        val handlerPrefix = handlerName.replaceAll("[^A-Za-z0-9()\\[\\]]", "_")
+        val handlerSpecificReporter = reporter.map(_.withNewPrefix(_ + "." + handlerPrefix)) //todo: is this design brittle?
         ac.actorOf(WorkerPoolSampler.props(handlerSpecificReporter, queueSampler, settings))
       }
     }

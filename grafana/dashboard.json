@@ -1,6 +1,6 @@
 {
-  "title": "Kanaloa Dispatcher",
-  "originalTitle": "Kanaloa Dispatcher",
+  "title": "Kanaloa Dispatcher - v5.0",
+  "originalTitle": "Kanaloa Dispatcher - v5.0",
   "tags": [],
   "style": "dark",
   "timezone": "browser",
@@ -8,184 +8,6 @@
   "hideControls": false,
   "sharedCrosshair": false,
   "rows": [
-    {
-      "collapse": false,
-      "editable": true,
-      "height": "250px",
-      "panels": [
-        {
-          "aliasColors": {
-            "failure": "#E24D42"
-          },
-          "bars": false,
-          "datasource": null,
-          "editable": true,
-          "error": false,
-          "fill": 1,
-          "grid": {
-            "threshold1": null,
-            "threshold1Color": "rgba(216, 200, 27, 0.27)",
-            "threshold2": null,
-            "threshold2Color": "rgba(234, 112, 112, 0.22)"
-          },
-          "id": 5,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": true,
-            "hideEmpty": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "total": false,
-            "values": true
-          },
-          "lines": true,
-          "linewidth": 2,
-          "links": [],
-          "nullPointMode": "connected",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [],
-          "span": 6,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
-              "textEditor": true
-            }
-          ],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Throughput",
-          "tooltip": {
-            "msResolution": false,
-            "shared": true,
-            "value_type": "cumulative"
-          },
-          "type": "graph",
-          "xaxis": {
-            "show": true
-          },
-          "yaxes": [
-            {
-              "format": "short",
-              "label": "per second",
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ]
-        },
-        {
-          "aliasColors": {
-            "failure": "#E24D42"
-          },
-          "bars": false,
-          "datasource": null,
-          "editable": true,
-          "error": false,
-          "fill": 1,
-          "grid": {
-            "threshold1": null,
-            "threshold1Color": "rgba(216, 200, 27, 0.27)",
-            "threshold2": null,
-            "threshold2Color": "rgba(234, 112, 112, 0.22)"
-          },
-          "id": 6,
-          "legend": {
-            "alignAsTable": false,
-            "avg": false,
-            "current": true,
-            "hideEmpty": true,
-            "max": false,
-            "min": false,
-            "rightSide": false,
-            "show": true,
-            "total": false,
-            "values": true
-          },
-          "lines": true,
-          "linewidth": 2,
-          "links": [],
-          "nullPointMode": "connected",
-          "percentage": false,
-          "pointradius": 5,
-          "points": false,
-          "renderer": "flot",
-          "seriesOverrides": [
-            {
-              "alias": "/error/",
-              "color": "#C15C17"
-            },
-            {
-              "alias": "/timeout/",
-              "color": "#962D82"
-            }
-          ],
-          "span": 6,
-          "stack": false,
-          "steppedLine": false,
-          "targets": [
-            {
-              "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
-              "textEditor": true
-            },
-            {
-              "refId": "B",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
-              "textEditor": true
-            }
-          ],
-          "timeFrom": null,
-          "timeShift": null,
-          "title": "Failures",
-          "tooltip": {
-            "msResolution": false,
-            "shared": true,
-            "value_type": "cumulative"
-          },
-          "type": "graph",
-          "xaxis": {
-            "show": true
-          },
-          "yaxes": [
-            {
-              "format": "short",
-              "label": "per second",
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            },
-            {
-              "format": "short",
-              "label": "",
-              "logBase": 1,
-              "max": null,
-              "min": null,
-              "show": true
-            }
-          ]
-        }
-      ],
-      "showTitle": false,
-      "title": "Row 1"
-    },
     {
       "collapse": false,
       "editable": true,
@@ -372,6 +194,184 @@
       "height": "250px",
       "panels": [
         {
+          "aliasColors": {
+            "failure": "#E24D42"
+          },
+          "bars": false,
+          "datasource": null,
+          "editable": true,
+          "error": false,
+          "fill": 1,
+          "grid": {
+            "threshold1": null,
+            "threshold1Color": "rgba(216, 200, 27, 0.27)",
+            "threshold2": null,
+            "threshold2Color": "rgba(234, 112, 112, 0.22)"
+          },
+          "id": 5,
+          "legend": {
+            "alignAsTable": false,
+            "avg": false,
+            "current": true,
+            "hideEmpty": true,
+            "max": false,
+            "min": false,
+            "rightSide": false,
+            "show": true,
+            "total": false,
+            "values": true
+          },
+          "lines": true,
+          "linewidth": 2,
+          "links": [],
+          "nullPointMode": "connected",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "span": 6,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "refId": "A",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.$serviceInstance.work.completed.rate, '.*$namespace.(.*).work.completed.rate', '\\1')",
+              "textEditor": true
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Throughput",
+          "tooltip": {
+            "msResolution": false,
+            "shared": true,
+            "value_type": "cumulative"
+          },
+          "type": "graph",
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": "per second",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {
+            "failure": "#E24D42"
+          },
+          "bars": false,
+          "datasource": null,
+          "editable": true,
+          "error": false,
+          "fill": 1,
+          "grid": {
+            "threshold1": null,
+            "threshold1Color": "rgba(216, 200, 27, 0.27)",
+            "threshold2": null,
+            "threshold2Color": "rgba(234, 112, 112, 0.22)"
+          },
+          "id": 6,
+          "legend": {
+            "alignAsTable": false,
+            "avg": false,
+            "current": true,
+            "hideEmpty": true,
+            "max": false,
+            "min": false,
+            "rightSide": false,
+            "show": true,
+            "total": false,
+            "values": true
+          },
+          "lines": true,
+          "linewidth": 2,
+          "links": [],
+          "nullPointMode": "connected",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "/error/",
+              "color": "#C15C17"
+            },
+            {
+              "alias": "/timeout/",
+              "color": "#962D82"
+            }
+          ],
+          "span": 6,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "refId": "A",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.$serviceInstance.work.failed.rate, '.*$namespace.(.*).work.failed.*', '\\1 (error)')",
+              "textEditor": true
+            },
+            {
+              "refId": "B",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.$serviceInstance.work.timedOut.rate, '.*$namespace.(.*).work.timedOut.*', '\\1 (timeout)')",
+              "textEditor": true
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Failures",
+          "tooltip": {
+            "msResolution": false,
+            "shared": true,
+            "value_type": "cumulative"
+          },
+          "type": "graph",
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": "per second",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": "",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ]
+        }
+      ],
+      "showTitle": false,
+      "title": "Row 1"
+    },
+    {
+      "collapse": false,
+      "editable": true,
+      "height": "250px",
+      "panels": [
+        {
           "aliasColors": {},
           "bars": false,
           "datasource": null,
@@ -486,7 +486,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.$hostName.work.processTime.mean,  '.*$namespace.(.*).work.processTime.*','\\1')",
+              "target": "aliasSub(stats.timers.$namespace.$dispatcherName.$hostName.$serviceInstance.work.processTime.mean,  '.*$namespace.(.*).work.processTime.*','\\1')",
               "textEditor": true
             }
           ],
@@ -565,7 +565,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.$serviceInstance.worker.circuitBreakerOpened.count,  '.*$namespace.(.*).queue.*', '\\1')",
               "textEditor": true
             }
           ],
@@ -642,12 +642,12 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.$serviceInstance.pool.size, '.*$namespace.(.*).pool.size', '\\1 (size)')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
+              "target": "aliasSub(stats.gauges.$namespace.$dispatcherName.$hostName.$serviceInstance.pool.utilized, '.*$namespace.(.*).pool.utilized', '\\1 (utilized)')",
               "textEditor": true
             }
           ],
@@ -921,7 +921,7 @@
           {
             "text": "All",
             "value": "$__all",
-            "selected": false
+            "selected": true
           }
         ],
         "query": "stats.timers.$namespace.*",
@@ -935,8 +935,7 @@
         "allFormat": "wildcard",
         "current": {
           "text": "All",
-          "value": "$__all",
-          "tags": []
+          "value": "$__all"
         },
         "datasource": null,
         "hide": 0,
@@ -958,6 +957,24 @@
         "regex": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "type": "query",
+        "datasource": null,
+        "refresh": 0,
+        "name": "serviceInstance",
+        "hide": 0,
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": false
+          }
+        ],
+        "includeAll": true,
+        "multi": false,
+        "label": "backend",
+        "query": "stats.timers.$namespace.$dispatcherName.$hostName.*"
       }
     ]
   },
