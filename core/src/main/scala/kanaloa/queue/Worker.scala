@@ -109,11 +109,14 @@ private[queue] class Worker[T](
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
   def handleRouteeResponse(outstanding: Outstanding): Receive = {
 
-    case wr: WorkResult[handler.Error, handler.Resp] if wr.workId === outstanding.workId ⇒ {
+    case wr: WorkResult[handler.Resp, handler.Error] if wr.workId === outstanding.workId ⇒ {
 
       wr.result.instruction.foreach { //todo: these instructions should happen at the workerPool level once it's workerPool per handler
-        case Terminate         ⇒ self ! Retire
-        case Hold(duration)    ⇒ delayBeforeNextWork = Some(duration)
+        case Terminate ⇒
+          log.warning("Handler requested to terminate worker pool")
+          self ! Retire
+        case Hold(duration) ⇒
+          delayBeforeNextWork = Some(duration)
         case RetryIn(duration) ⇒ //todo: implement this retry
       }
 
@@ -138,19 +141,22 @@ private[queue] class Worker[T](
 
   }
 
-  private def retryOrAbandon(outstanding: Outstanding, error: Any): Unit = {
+  private def retryOrAbandon(outstanding: Outstanding, error: handler.Error): Unit = {
     outstanding.cancel()
-    val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage)
+    val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
+      s"due to $e"
+    }.getOrElse("")
+
     if (outstanding.retried < outstanding.work.settings.retry) {
       log.info(s"Retry work $outstanding due to error $errorDesc")
       sendWorkToHandler(outstanding.work, outstanding.retried + 1)
     } else {
       def message = {
         val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
-        s"Processing of '${outstanding.workDescription}' failed $retryMessage due to error $errorDesc"
+        s"Processing of '${outstanding.workDescription}' failed $retryMessage $errorDesc"
       }
       log.warning(s"$message, work abandoned")
-      outstanding.fail(WorkFailed(message + s" due to $errorDesc"))
+      outstanding.fail(WorkFailed(message))
       self ! WorkFinished
     }
   }
@@ -230,7 +236,7 @@ private[queue] class Worker[T](
       handling.cancellable.foreach(_.cancel())
     }
 
-    lazy val workDescription = descriptionOf(work.messageToDelegatee, work.settings.lengthOfDisplayForMessage)
+    lazy val workDescription = descriptionOf(work.messageToDelegatee, work.settings.lengthOfDisplayForMessage).get
 
     def reportResult(result: Any): Unit = work.replyTo.foreach(_ ! result)
 
@@ -260,14 +266,20 @@ private[queue] object Worker {
     Props(new Worker[T](queue, metricsCollector, handler, circuitBreakerSettings)).withDeploy(Deploy.local)
   }
 
-  private[queue] def descriptionOf(any: Any, maxLength: Int): String = {
-    val msgString = any.toString
-    if (msgString.length < maxLength)
-      msgString
-    else {
-      val firstWhitespaceAfterMax = msgString.indexWhere(c ⇒ (c.isWhitespace || !c.isLetterOrDigit), maxLength)
-      val truncateAt = if (firstWhitespaceAfterMax < 0) maxLength else firstWhitespaceAfterMax
-      msgString.take(truncateAt).trim + "..."
+  private[queue] def descriptionOf(any: Any, maxLength: Int): Option[String] = {
+    any match {
+      case None ⇒ None
+      case other ⇒ Some {
+        val msgString = other.toString
+        if (msgString.length < maxLength)
+          msgString
+        else {
+          val firstWhitespaceAfterMax = msgString.indexWhere(c ⇒ (c.isWhitespace || !c.isLetterOrDigit), maxLength)
+          val truncateAt = if (firstWhitespaceAfterMax < 0) maxLength else firstWhitespaceAfterMax
+          msgString.take(truncateAt).trim + "..."
+        }
+      }
     }
+
   }
 }

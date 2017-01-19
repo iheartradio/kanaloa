@@ -31,7 +31,9 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
 
   def queueSampler: ActorRef
 
-  queueSampler ! Subscribe(self)
+  override def preStart(): Unit = {
+    queueSampler ! Subscribe(self)
+  }
 
   override def postStop(): Unit = {
     queueSampler ! Unsubscribe(self)

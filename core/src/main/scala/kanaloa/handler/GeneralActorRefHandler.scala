@@ -32,13 +32,12 @@ class GeneralActorRefHandler[TResp, TError](
 
   val maxConcurrentHandling = 100000000 //the actual max concurrent handling is controlled by the kanaloa, this number is just a hard limit, not suggesting that the concurrent handling should be allowed to go there.
   val index = new AtomicCyclicInt(0, maxConcurrentHandling)
-  val cancelled = new AtomicBoolean(false)
 
   override def handle(req: Any): Handling[Resp, Error] = new Handling[Resp, Error] {
     val promise: Promise[Either[Interrupted, Any]] = Promise()
-
+    val cancelled = new AtomicBoolean(false)
     val handlerActor = factory.actorOf(
-      handlerActorProps(promise, actor),
+      handlerActorProps(promise, actor, cancelled),
       s"${name}-handler-of-${actor.path.name}_${index.incrementAndGet()}"
     )
 
@@ -47,9 +46,10 @@ class GeneralActorRefHandler[TResp, TError](
     import factory.dispatcher
 
     override val result: Future[Result[Resp, Error]] = promise.future.map {
-      case Left(TargetTerminated) ⇒ Result(Left(None), Some(Terminate))
-      case Left(Cancelled)        ⇒ Result(Left(None), None)
-      case Right(m)               ⇒ Result(resultChecker(m), None)
+      case Left(TargetTerminated) ⇒
+        Result(Left(None), Some(Terminate))
+      case Left(Cancelled) ⇒ Result(Left(None), None)
+      case Right(m)        ⇒ Result(resultChecker(m), None)
     }
 
     override val cancellable: Option[Cancellable] = Some(new Cancellable {
@@ -67,10 +67,11 @@ class GeneralActorRefHandler[TResp, TError](
 object GeneralActorRefHandler {
   type ResultChecker[TResp, TError] = Any ⇒ Either[Option[TError], TResp]
 
-  private class HandlerActor(promise: Promise[Either[Interrupted, Any]], target: ActorRef) extends Actor {
+  private class HandlerActor(promise: Promise[Either[Interrupted, Any]], target: ActorRef, cancelled: AtomicBoolean) extends Actor {
     context watch target
 
     def complete(r: Either[Interrupted, Any]): Unit = {
+      cancelled.set(true)
       promise.tryComplete(Success(r))
       context stop self
     }
@@ -87,7 +88,7 @@ object GeneralActorRefHandler {
     }
   }
 
-  private def handlerActorProps(promise: Promise[Either[Interrupted, Any]], target: ActorRef): Props = Props(new HandlerActor(promise, target))
+  private def handlerActorProps(promise: Promise[Either[Interrupted, Any]], target: ActorRef, cancelled: AtomicBoolean): Props = Props(new HandlerActor(promise, target, cancelled))
 
   private case object Cancel
 

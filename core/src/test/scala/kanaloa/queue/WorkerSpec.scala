@@ -64,15 +64,15 @@ class WorkerFunctionSpec extends WordSpecLike with ShouldMatchers {
   import Worker.descriptionOf
   "descriptionOf" should {
     "not truncate if it's below maxLength" in {
-      descriptionOf("this is a short message", 100) shouldBe "this is a short message"
+      descriptionOf("this is a short message", 100) shouldBe Some("this is a short message")
     }
 
     "truncate at the first whitespace after maxLength" in {
-      descriptionOf("this is a short message", 12) shouldBe "this is a short..."
+      descriptionOf("this is a short message", 12) shouldBe Some("this is a short...")
     }
 
     "truncate at maxLength if there is no whitespace within" in {
-      descriptionOf("thisisashortmessage", 4) shouldBe "this..."
+      descriptionOf("thisisashortmessage", 4) shouldBe Some("this...")
     }
   }
 }

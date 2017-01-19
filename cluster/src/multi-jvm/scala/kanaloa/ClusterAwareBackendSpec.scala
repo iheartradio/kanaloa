@@ -1,6 +1,7 @@
 package kanaloa
 
 
+import akka.actor.Actor.Receive
 import akka.actor._
 import akka.cluster.ClusterSpec
 import akka.pattern.ask
@@ -9,9 +10,11 @@ import akka.routing.{GetRoutees, Routees}
 import akka.testkit._
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import kanaloa.ClusterAwareBackendLoadBalance2Spec.DelayedEcho
 import kanaloa.ClusterAwareBackendSpec._
 import kanaloa.handler.{HandlerProvider, ResultChecker}
 import kanaloa.metrics.StatsDClient
+import kanaloa.util.MessageScheduler
 import org.scalatest.Tag
 
 import scala.concurrent.Await
@@ -138,8 +141,92 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
 
       }
 
-      enterBarrier("second-finished")
+      enterBarrier("finished")
     }
 
   }
 }
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode1 extends ClusterAwareBackendLoadBalance2Spec
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode2 extends ClusterAwareBackendLoadBalance2Spec
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode3 extends ClusterAwareBackendLoadBalance2Spec
+
+class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
+  "A ClusterAwareBackend" must {
+    "allow instance to leave cluster without losing requests" taggedAs (Tag("loadBalancing")) in within(15 seconds) {
+
+      awaitClusterUp(first, second, third)
+
+      val servicePath = "service2"
+
+
+      runOn(third) {
+        system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
+        enterBarrier("servicesStarted")
+        enterBarrier("first100messages")
+      }
+
+      runOn(second) {
+        val service = system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
+        enterBarrier("servicesStarted")
+        enterBarrier("first100messages")
+        cluster leave myself
+        watch(service)
+        Thread.sleep(400)
+        service ! PoisonPill
+        expectTerminated(service)
+      }
+
+
+      runOn(first) {
+        enterBarrier("servicesStarted")
+        val backend: HandlerProvider[Any] = new ClusterAwareHandlerProvider(servicePath, serviceClusterRole)(ResultChecker.expectType[EchoMessage])
+        val dispatcher = system.actorOf(PushingDispatcher.props(
+          name = "test",
+          backend,
+          kanaloaConfig
+        ))
+
+        val numOfMessagesBeforeOneNodeLeaving = 50
+        val numOfMessagesAfterOneNodeLeaving = 150
+        val totalMsgs = numOfMessagesAfterOneNodeLeaving + numOfMessagesBeforeOneNodeLeaving
+
+        def sendMessages(num: Int): Unit = {
+          (1 to num).foreach { _ =>
+            Thread.sleep(10)
+            dispatcher ! EchoMessage(1)
+          }
+        }
+
+        sendMessages( numOfMessagesBeforeOneNodeLeaving )
+
+        enterBarrier("first100messages")
+
+        sendMessages( numOfMessagesAfterOneNodeLeaving )
+
+
+        val (succeeds, failures) = receiveN(totalMsgs).partition(
+          _ == EchoMessage(1)
+        )
+
+        withClue(s"${failures.size} requests failed: ${failures.distinct.mkString(", ")} ") {
+          succeeds.length shouldBe totalMsgs
+        }
+
+      }
+
+      enterBarrier("finished")
+    }
+
+  }
+}
+
+object ClusterAwareBackendLoadBalance2Spec {
+  case class Reply(m: Any, replyTo: ActorRef)
+  class DelayedEcho extends Actor with ActorLogging with MessageScheduler {
+    override def receive: Receive = {
+      case Reply(m, replyTo) => replyTo ! m
+      case m => delayedMsg(10.milliseconds, Reply(m, sender))
+    }
+  }
+}
+
