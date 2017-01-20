@@ -2,14 +2,13 @@ package kanaloa
 
 import java.time.{LocalDateTime ⇒ Time}
 
-import akka.actor.{Props, Actor, ActorRef, Terminated}
+import akka.actor.{Props, ActorRef}
 import kanaloa.QueueSampler.{PartialUtilized, FullyUtilized}
 import kanaloa.WorkerPoolSampler._
 import kanaloa.Sampler._
-import kanaloa.Types.{QueueLength, Speed}
+import kanaloa.Types.Speed
 import kanaloa.metrics.Metric._
 import kanaloa.metrics.{WorkerPoolMetricsCollector, Reporter, Metric}
-import kanaloa.queue.Queue
 import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._

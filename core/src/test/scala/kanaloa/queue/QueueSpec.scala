@@ -180,8 +180,8 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
 class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
-  val queueSampler: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
-  val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(None, queueSampler))
+  lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
+  lazy val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(None, queueSampler))
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): WorkerPoolManagerRef = {
     val workerPoolProps: Props = defaultWorkerPoolProps(
@@ -220,9 +220,9 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
     def withNewPrefix(modifier: (String) ⇒ String): Reporter = this
   }
 
-  override val queueSampler: ActorRef = system.actorOf(QueueSampler.props(Some(mockReporter)))
+  override lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(Some(mockReporter)))
 
-  override val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(Some(mockReporter), queueSampler))
+  override lazy val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(Some(mockReporter), queueSampler))
 
 }
 
