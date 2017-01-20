@@ -11,7 +11,8 @@ val commonSettings = Seq(
     "-Ywarn-adapted-args", // Warn if an argument list is modified to match the receiver
     "-Ywarn-inaccessible",
     "-Ywarn-dead-code",
-    "-Ywarn-numeric-widen"
+    "-Ywarn-numeric-widen",
+    "-language:existentials"
   ),
   organization in Global := "com.iheart",
   name := "kanaloa"
