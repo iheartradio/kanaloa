@@ -5,6 +5,7 @@ import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.ApiProtocol._
 import kanaloa.Dispatcher.{ShutdownTimedOut, UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
+import kanaloa.PushingDispatcher.GracePeriodDone
 import kanaloa.Regulator.DroppingRate
 import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
 import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
@@ -12,6 +13,7 @@ import kanaloa.metrics.{StatsDClient, Metric, Reporter}
 import kanaloa.queue.Queue.{Retire, Enqueue, EnqueueRejected}
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
+import kanaloa.util.MessageScheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.namemappers.implicits.hyphenCase
@@ -21,7 +23,7 @@ import scala.concurrent.duration._
 import scala.reflect._
 import scala.util.Random
 
-trait Dispatcher[T] extends Actor with ActorLogging {
+trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
   def name: String
   def settings: Dispatcher.Settings
   def handlerProvider: HandlerProvider[T]
@@ -47,6 +49,11 @@ trait Dispatcher[T] extends Actor with ActorLogging {
   var workerPoolIndex: Int = 0
 
   var workerPools: List[(HandlerName, WorkerPoolRef)] = handlerProvider.handlers.map(createWorkerPool)
+
+  var inGracePeriod = workerPools.isEmpty
+
+  if (inGracePeriod) //during initial grace period request (will be placed in queue) won't get rejected even when the backend is not online yet.
+    delayedMsg(settings.initialGracePeriod, GracePeriodDone)
 
   handlerProvider.subscribe(self ! _)
 
@@ -82,7 +89,7 @@ trait Dispatcher[T] extends Actor with ActorLogging {
     case ShutdownGracefully(reportBack, timeout) ⇒
       queue ! Retire
       shutdown(reportBack, timeout)
-
+    case GracePeriodDone ⇒ inGracePeriod = false
     case Terminated(`queue`) ⇒ //todo: this is only expected in pulling dispatcher. so should make it more safe in pushing( like restart queue)
       shutdown(None, settings.workerPool.defaultShutdownTimeout)
 
@@ -92,6 +99,7 @@ trait Dispatcher[T] extends Actor with ActorLogging {
     case HandlersAdded(handlers: List[Handler[T]]) ⇒
       val (dups, rest) = handlers.partition(h ⇒ workerPools.exists(_._1 === h.name))
       workerPools = workerPools ++ rest.map(createWorkerPool)
+      inGracePeriod = false //out of grace period as soon as we see the first handler
       if (!dups.isEmpty)
         log.error(s"New Handler received but their names are duplicates ${dups.map(_.name).mkString(",")}")
 
@@ -140,6 +148,7 @@ object Dispatcher {
     workRetry:                 Int                            = 0,
     updateInterval:            FiniteDuration                 = 1.second,
     lengthOfDisplayForMessage: Int                            = 200,
+    initialGracePeriod:        FiniteDuration                 = 1.second,
     workerPool:                WorkerPoolSettings,
     regulator:                 Option[Regulator.Settings],
     circuitBreaker:            Option[CircuitBreakerSettings],
@@ -233,16 +242,24 @@ case class PushingDispatcher[T: ClassTag](
   }
 
   private def dropOrEnqueue(m: Any, replyTo: ActorRef): Unit = {
+    def drop(reason: String): Unit = {
+      queueSampler ! Metric.WorkRejected
+      sender ! WorkRejected(s"Request rejected by kanaloa dispatcher $name, $reason")
+    }
+
     if (droppingRate.value > 0 &&
       (droppingRate.value == 1 || random.nextDouble() < droppingRate.value)) {
-      queueSampler ! Metric.WorkRejected
-      sender ! WorkRejected(s"Over capacity or capacity is down, request is dropped under random dropping rate ${droppingRate.value} by kanaloa dispatcher $name")
+      drop(s"Over capacity or capacity is down, request is dropped under random dropping rate ${droppingRate.value}")
+    } else if (workerPools.isEmpty && !inGracePeriod) {
+      drop("The backend service is non longer working.")
     } else
       queue ! Enqueue(m, false, Some(replyTo))
   }
 }
 
 object PushingDispatcher {
+
+  case object GracePeriodDone
   def props[T: ClassTag, A](
     name:            String,
     handlerProvider: A,

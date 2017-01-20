@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicLong
 import akka.actor._
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit, TestProbe}
 import com.typesafe.config.ConfigFactory
-import kanaloa.ApiProtocol.{QueryStatus, ShutdownGracefully, ShutdownSuccessfully}
+import kanaloa.ApiProtocol.{WorkRejected, QueryStatus, ShutdownGracefully, ShutdownSuccessfully}
 import kanaloa.Dispatcher.SubscribePerformanceMetrics
 import kanaloa.IntegrationTests._
 import kanaloa.WorkerPoolSampler.{Report, WorkerPoolSample}
@@ -22,7 +22,7 @@ import scala.language.reflectiveCalls
 
 trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
 
-  val verbose = true
+  val verbose = false
 
   private lazy val logLevel = if (verbose) "INFO" else "OFF"
 
@@ -136,6 +136,38 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
     shutdown(pd)
 
     backend.underlyingActor.count === messagesSent
+
+  }
+}
+
+class PushingDispatcherAutoShutdownIntegration extends IntegrationSpec {
+
+  "reject requests when backend died" in new TestScope {
+
+    val backend = TestActorRef[SimpleBackend]
+
+    val pd = system.actorOf(PushingDispatcher.props(
+      "test-pushing",
+      handlerWith(backend),
+      ConfigFactory.parseString(
+        s"""
+          kanaloa.dispatchers.test-pushing {
+          }
+        """
+      )
+    ))
+
+    ignoreMsg { case Success ⇒ true }
+
+    watch(pd)
+
+    backend ! PoisonPill
+
+    Thread.sleep(60)
+
+    pd ! 1
+
+    expectMsgType[WorkRejected]
 
   }
 }

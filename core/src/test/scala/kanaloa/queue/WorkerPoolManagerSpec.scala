@@ -11,6 +11,7 @@ import kanaloa.handler._
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
+import kanaloa.queue.Worker.DelayBeforeNextWork
 import kanaloa.queue.WorkerPoolManager.{WorkerFactory, ScaleTo, Shutdown, ShuttingDown}
 import kanaloa._
 import kanaloa.queue.TestUtils.{MessageProcessed, DelegateeMessage}
@@ -155,9 +156,17 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
       expectTerminated(wpm) //should force itself to shutdown
     }
 
-    "shutdown itself if the handler indicates so" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown itself when given the handler instruction" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       wpm ! Terminate
       expectTerminated(wpm)
+
+    }
+
+    "Slow down all workers when given the handler instruction" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      wpm ! Hold(10.milliseconds)
+      workerFactory.probeMap.values.foreach { probe ⇒
+        probe.expectMsg(DelayBeforeNextWork(10.milliseconds))
+      }
 
     }
   }
