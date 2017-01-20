@@ -6,11 +6,12 @@ import akka.actor._
 import kanaloa.ApiProtocol._
 import kanaloa.Sampler.SamplerSettings
 import kanaloa.WorkerPoolSampler
-import kanaloa.handler.Handler
+import kanaloa.handler.{Hold, Terminate, Handler}
 import kanaloa.handler.HandlerProvider.HandlerChange
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue.Retire
+import kanaloa.queue.Worker.DelayBeforeNextWork
 import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.MessageScheduler
 import kanaloa.util.AnyEq._
@@ -49,6 +50,12 @@ class WorkerPoolManager[T](
   def currentWorkers = workerPool.size - inflightWorkerRemoval
 
   val receive: Receive = {
+    case kanaloa.handler.Terminate ⇒
+      log.warning("Handler requested to terminate worker pool")
+      shutdown()
+
+    case kanaloa.handler.Hold(duration) ⇒
+      workerPool.foreach(_ ! DelayBeforeNextWork(duration))
 
     case ScaleTo(newPoolSize, reason) if inflightWorkerRemoval === 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
@@ -175,9 +182,9 @@ object WorkerPoolManager {
   }
 
   private[kanaloa] object WorkerFactory {
-    def apply(circuitBreakerSettings: Option[CircuitBreakerSettings]): WorkerFactory = new WorkerFactory {
+    val default: WorkerFactory = new WorkerFactory {
       def apply[T](q: QueueRef, h: Handler[T], mc: QueueRef, name: String)(implicit ac: ActorRefFactory): QueueRef = {
-        ac.actorOf(Worker.default(q, h, mc, circuitBreakerSettings), name)
+        ac.actorOf(Worker.default(q, h, mc), name)
       }
     }
   }

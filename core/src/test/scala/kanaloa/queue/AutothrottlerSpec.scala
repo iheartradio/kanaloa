@@ -226,7 +226,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
         queue.ref,
         testHandler(ResultChecker.expectType),
         WorkerPoolSettings(),
-        WorkerFactory(None),
+        WorkerFactory.default,
         factories.workPoolSampler(),
         None
       ))
@@ -247,7 +247,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
           queue.ref,
           testHandler(ResultChecker.expectType),
           WorkerPoolSettings(),
-          WorkerFactory(None),
+          WorkerFactory.default,
           factories.workPoolSampler(),
           None
         )

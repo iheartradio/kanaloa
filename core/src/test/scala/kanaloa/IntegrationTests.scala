@@ -138,7 +138,6 @@ class MinimalPushingDispatcherIntegration extends IntegrationSpec {
     backend.underlyingActor.count === messagesSent
 
   }
-
 }
 
 class PullingDispatcherIntegration extends IntegrationSpec {

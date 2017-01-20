@@ -15,10 +15,9 @@ import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 import scala.concurrent.duration._
 
 private[queue] class Worker[T](
-  queue:                  QueueRef,
-  metricsCollector:       ActorRef,
-  handler:                Handler[T],
-  circuitBreakerSettings: Option[CircuitBreakerSettings]
+  queue:            QueueRef,
+  metricsCollector: ActorRef,
+  handler:          Handler[T]
 
 ) extends Actor with ActorLogging with MessageScheduler {
 
@@ -29,8 +28,6 @@ private[queue] class Worker[T](
   var delayBeforeNextWork: Option[FiniteDuration] = None
 
   var workCounter: Long = 0
-
-  private val circuitBreaker: Option[CircuitBreaker] = circuitBreakerSettings.map(new CircuitBreaker(_))
 
   def receive = waitingForWork
 
@@ -45,7 +42,12 @@ private[queue] class Worker[T](
     context stop self
   }
 
-  val waitingForWork: Receive = {
+  val handleHoldMessage: Receive = {
+    case DelayBeforeNextWork(value) ⇒
+      delayBeforeNextWork = Some(value)
+  }
+
+  val waitingForWork: Receive = handleHoldMessage orElse {
     case qs: QueryStatus                  ⇒ qs reply Idle
 
     case work: Work[T]                    ⇒ sendWorkToHandler(work, 0)
@@ -57,7 +59,7 @@ private[queue] class Worker[T](
     case Worker.Retire                    ⇒ becomeUnregisteringIdle()
   }
 
-  def working(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding) orElse {
+  def working(outstanding: Outstanding): Receive = handleHoldMessage orElse handleRouteeResponse(outstanding) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
 
     //we are done with this Work, ask for more and wait for it
@@ -111,21 +113,14 @@ private[queue] class Worker[T](
 
     case wr: WorkResult[handler.Resp, handler.Error] if wr.workId === outstanding.workId ⇒ {
 
-      wr.result.instruction.foreach { //todo: these instructions should happen at the workerPool level once it's workerPool per handler
-        case Terminate ⇒
-          log.warning("Handler requested to terminate worker pool")
-          self ! Retire
-        case Hold(duration) ⇒
-          delayBeforeNextWork = Some(duration)
-        case RetryIn(duration) ⇒ //todo: implement this retry
-      }
+      wr.result.instruction.foreach(context.parent ! _) //forward instruction back to parent the WorkerPoolManager
 
       wr.result.reply match {
         case Right(res) ⇒
           outstanding.success(res)
           self ! WorkFinished
 
-        case Left(e) ⇒ //todo: to be addressed by
+        case Left(e) ⇒ //todo: to be addressed by #188
           retryOrAbandon(outstanding, e)
       }
 
@@ -138,7 +133,6 @@ private[queue] class Worker[T](
       log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
       self ! WorkFinished
-
   }
 
   private def retryOrAbandon(outstanding: Outstanding, error: handler.Error): Unit = {
@@ -178,24 +172,8 @@ private[queue] class Worker[T](
 
   private def askMoreWork(): Unit = {
     maybeDelayedMsg(delayBeforeNextWork, RequestWork(self), queue)
+    delayBeforeNextWork = None
     context become waitingForWork
-  }
-
-  private class CircuitBreaker(settings: CircuitBreakerSettings) {
-    def resetTimeoutCount(): Unit = {
-      timeoutCount = 0
-      delayBeforeNextWork = None
-    }
-
-    def incrementTimeoutCount(): Unit = {
-      timeoutCount = timeoutCount + 1
-      if (timeoutCount >= settings.timeoutCountThreshold) {
-        delayBeforeNextWork = Some(settings.openDurationBase * timeoutCount.toLong)
-        if (timeoutCount === settings.timeoutCountThreshold) //just crossed the threshold
-          metricsCollector ! Metric.CircuitBreakerOpened
-      }
-
-    }
   }
 
   protected case class Outstanding(
@@ -209,20 +187,17 @@ private[queue] class Worker[T](
     def success(result: Any): Unit = {
       done(result)
       val duration = startAt.until(LocalDateTime.now)
-      circuitBreaker.foreach(_.resetTimeoutCount())
       metricsCollector ! Metric.WorkCompleted(duration)
     }
 
     def fail(result: Any): Unit = {
       done(result)
-      circuitBreaker.foreach(_.resetTimeoutCount())
       metricsCollector ! Metric.WorkFailed
     }
 
     def timeout(): Unit = {
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
       handling.cancellable.foreach(_.cancel())
-      circuitBreaker.foreach(_.incrementTimeoutCount())
       metricsCollector ! Metric.WorkTimedOut
     }
 
@@ -247,12 +222,14 @@ private[queue] object Worker {
   case class WorkResult[TResp, TError](workId: Long, result: Result[TResp, TError])
 
   private case object HandlerTimeout
+  case class DelayBeforeNextWork(value: FiniteDuration)
   case object Retire
 
   sealed trait WorkerStatus
   case object UnregisteringIdle extends WorkerStatus
   case object Idle extends WorkerStatus
   case object Working extends WorkerStatus
+
   case object WaitingToTerminate extends WorkerStatus
 
   private[queue] case object WorkFinished
@@ -263,7 +240,7 @@ private[queue] object Worker {
     metricsCollector:       ActorRef,
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None
   ): Props = {
-    Props(new Worker[T](queue, metricsCollector, handler, circuitBreakerSettings)).withDeploy(Deploy.local)
+    Props(new Worker[T](queue, metricsCollector, handler)).withDeploy(Deploy.local)
   }
 
   private[queue] def descriptionOf(any: Any, maxLength: Int): Option[String] = {

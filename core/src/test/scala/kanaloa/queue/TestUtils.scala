@@ -40,7 +40,7 @@ object TestUtils {
       queue,
       TestHandlerProviders.simpleHandler(delegatee.ref, resultChecker),
       settings,
-      WorkerFactory(None),
+      WorkerFactory.default,
       new WorkerPoolSamplerFactory {
         def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef = metricsCollector
       },

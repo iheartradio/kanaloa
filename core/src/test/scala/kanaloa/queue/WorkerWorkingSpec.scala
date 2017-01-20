@@ -70,12 +70,6 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
     }
 
-    "fail Work and terminate if Terminated(routee)" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
-      routeeProbe.ref ! PoisonPill
-      expectMsgType[WorkFailed]
-      expectTerminated(worker)
-    }
-
     "transition to 'waitingToTerminate' if Terminated(queue)" in withWorkingWorker() { (worker, queueProbe, _, work, _) ⇒
       queueProbe.ref ! PoisonPill
       assertWorkerStatus(worker, Worker.WaitingToTerminate)
@@ -137,63 +131,6 @@ class WorkerWorkingSpec extends WorkerSpec {
 
   }
 
-  "A Working Worker with circuit breaker" should {
-    val cbs = Some(CircuitBreakerSettings(openDurationBase = 50.milliseconds, timeoutCountThreshold = 2))
-    val ws = WorkSettings(timeout = 5.milliseconds)
-    "not trigger circuit breaker when counter is below threshold" in withWorkingWorker(ws, cbs) {
-      (worker, queueProbe, _, work, _) ⇒
-        //after one time out,
-        queueProbe.expectMsg(40.milliseconds, RequestWork(worker))
-
-        worker.underlyingActor.delayBeforeNextWork should be(empty)
-
-    }
-
-    "triggers circuit breaker when counter above threshold, report metrics" in withWorkingWorker(ws, cbs) { (worker, queueProbe, routeeProbe, work, metricCollectorProbe) ⇒
-      queueProbe.expectMsg(RequestWork(worker))
-      queueProbe.send(worker, work) //second time out
-
-      metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
-      metricCollectorProbe.expectMsg(Metric.CircuitBreakerOpened)
-      queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
-      worker.underlyingActor.delayBeforeNextWork should contain(cbs.get.openDurationBase * 2)
-
-    }
-
-    "reset circuit breaker when a success is received" in withWorkingWorker(ws, cbs) {
-      (worker, queueProbe, routeeProbe, work, _) ⇒
-        queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(messageToDelegatee = "work2")) //second time out
-
-        queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
-
-        queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(messageToDelegatee = "work3", settings = WorkSettings()))
-
-        routeeProbe.expectMsgAllOf("work2", "work3")
-        routeeProbe.reply(Result("Response"))
-
-        queueProbe.expectMsg(RequestWork(worker)) //should immediately receive work request
-        worker.underlyingActor.delayBeforeNextWork should be(empty)
-
-    }
-
-    "reset circuit breaker when a regular failure  is received" in withWorkingWorker(ws, cbs) {
-      (worker, queueProbe, routeeProbe, work, _) ⇒
-
-        queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(messageToDelegatee = "work2")) //second time out
-
-        queueProbe.expectNoMsg((cbs.get.openDurationBase * 2 * 0.9).asInstanceOf[FiniteDuration]) //should not get request for work within delay
-
-        queueProbe.expectMsg(RequestWork(worker))
-        queueProbe.send(worker, work.copy(messageToDelegatee = "work3", settings = WorkSettings()))
-        routeeProbe.expectMsgAllOf("work2", "work3")
-        routeeProbe.reply(Fail("sad red panda"))
-
-        queueProbe.expectMsg(30.milliseconds, RequestWork(worker)) //should immediately receive work request
-    }
-  }
 }
 
 class SimpleRoutingActor(actors: Set[ActorRef]) extends Actor {

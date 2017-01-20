@@ -7,7 +7,7 @@ import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
 import kanaloa.ApiProtocol.{ShutdownGracefully, ShutdownForcefully, QueryStatus, ShutdownSuccessfully}
-import kanaloa.handler.{ResultChecker, Handler, GeneralActorRefHandler, HandlerProvider}
+import kanaloa.handler._
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
 import kanaloa.queue.Queue.Retire
@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 import TestHandlerProviders._
 class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with MockServices {
 
-  type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, Handler[Any], TestWorkerFactory) ⇒ Any
+  type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, TestProbe, TestWorkerFactory) ⇒ Any
 
   def withWorkerPoolManager(poolSettings: WorkerPoolSettings = WorkerPoolSettings(defaultShutdownTimeout = 500.milliseconds))(test: QueueTest) {
 
@@ -30,18 +30,18 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
     val testHandler = TestHandlerProviders.simpleHandler(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val qp = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandler, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
+    val wpm = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandler, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
 
     eventually {
-      qp.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
+      wpm.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
     }
 
-    watch(qp)
+    watch(wpm)
     try {
-      test(qp, queueProbe, metricsCollector, testHandler, testWorkerFactory)
+      test(wpm, queueProbe, metricsCollector, serviceProbe, testWorkerFactory)
     } finally {
-      unwatch(qp)
-      qp.stop()
+      unwatch(wpm)
+      wpm.stop()
     }
   }
 
@@ -59,26 +59,26 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
 
   "The WorkerPoolManager" should {
 
-    "create Workers on startup" in withWorkerPoolManager(WorkerPoolSettings(startingPoolSize = 5)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "create Workers on startup" in withWorkerPoolManager(WorkerPoolSettings(startingPoolSize = 5)) { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       eventually {
-        qp.underlyingActor.workerPool should have size 5
+        wpm.underlyingActor.workerPool should have size 5
       }
     }
 
-    "report pool size on startup" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "report pool size on startup" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
       metricsCollector.expectMsg(PoolSize(0))
     }
 
-    "scale workers up" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      qp ! ScaleTo(10)
+    "scale workers up" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      wpm ! ScaleTo(10)
       eventually {
-        qp.underlyingActor.workerPool should have size 10
+        wpm.underlyingActor.workerPool should have size 10
       }
     }
 
-    "scale workers down" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "scale workers down" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
-      qp ! ScaleTo(4) //kill 1 Worker
+      wpm ! ScaleTo(4) //kill 1 Worker
 
       eventually {
         workerFactory.retiredCount.get() shouldBe 1
@@ -89,14 +89,14 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
       workerFactory.probeMap.values.take(1).foreach(_.ref ! PoisonPill)
 
       eventually {
-        qp.underlyingActor.workerPool should have size 4
+        wpm.underlyingActor.workerPool should have size 4
       }
       //just to be safe(to make sure that some other Retire messages didn't sneak by after we reached 2 earlier)
       workerFactory.retiredCount.get shouldBe 1
     }
 
-    "honor minimum pool size during AutoScale" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-      qp ! ScaleTo(1) //minimum is 3, starts at 5
+    "honor minimum pool size during AutoScale" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      wpm ! ScaleTo(1) //minimum is 3, starts at 5
 
       eventually {
         workerFactory.retiredCount.get() shouldBe 2
@@ -105,34 +105,34 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
       workerFactory.probeMap.values.take(2).foreach(_.ref ! PoisonPill)
 
       eventually {
-        qp.underlyingActor.workerPool should have size 3
+        wpm.underlyingActor.workerPool should have size 3
       }
     }
 
     "honor maximum pool size during AutoScale" in
-      withWorkerPoolManager(WorkerPoolSettings(maxPoolSize = 7)) { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
-        qp ! ScaleTo(10) //maximum is 7
+      withWorkerPoolManager(WorkerPoolSettings(maxPoolSize = 7)) { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+        wpm ! ScaleTo(10) //maximum is 7
 
         eventually {
-          qp.underlyingActor.workerPool should have size 7
+          wpm.underlyingActor.workerPool should have size 7
         }
       }
 
     "attempt to keep the number of Workers at the minimumWorkers when worker dies" in withWorkerPoolManager(WorkerPoolSettings(replenishSpeed = 10.milliseconds)) {
-      (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
         workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
         eventually {
-          qp.underlyingActor.workerPool should have size 3
+          wpm.underlyingActor.workerPool should have size 3
           workerFactory.probeMap should have size 3 //should only be 3 workers
         }
     }
 
-    "shutdown waits for Workers to terminate" taggedAs (shutdown) in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "shutdown waits for Workers to terminate" taggedAs (shutdown) in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
-      qp ! Shutdown(Some(self), 30.seconds)
+      wpm ! Shutdown(Some(self), 30.seconds)
 
-      qp ! QueryStatus()
+      wpm ! QueryStatus()
       expectMsg(ShuttingDown)
 
       //when the Queue is told to shutDown, it will send
@@ -144,15 +144,21 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
       }
 
       expectMsg(ShutdownSuccessfully)
-      expectTerminated(qp)
+      expectTerminated(wpm)
     }
 
-    "force shutdown if timeout" in withWorkerPoolManager() { (qp, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+    "force shutdown if timeout" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
 
-      qp ! Shutdown(Some(self), 25.milliseconds)
+      wpm ! Shutdown(Some(self), 25.milliseconds)
       //We wn't kill the Workers, and the timeout should kick in
       expectMsg(ShutdownForcefully)
-      expectTerminated(qp) //should force itself to shutdown
+      expectTerminated(wpm) //should force itself to shutdown
+    }
+
+    "shutdown itself if the handler indicates so" in withWorkerPoolManager() { (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
+      wpm ! Terminate
+      expectTerminated(wpm)
+
     }
   }
 

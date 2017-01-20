@@ -55,7 +55,7 @@ trait Dispatcher[T] extends Actor with ActorLogging {
       queue,
       handler,
       settings.workerPool,
-      WorkerFactory(settings.circuitBreaker),
+      WorkerFactory.default,
       WorkerPoolSamplerFactory(queueSampler, settings.samplerSettings, reporter),
       settings.autothrottle.map(AutothrottlerFactory.apply)
     )
