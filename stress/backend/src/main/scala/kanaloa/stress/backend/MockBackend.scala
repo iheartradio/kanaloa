@@ -73,6 +73,9 @@ object MockBackend {
       case Request("overflow") ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
         context become overflow
+      case Request("error") ⇒
+        log.warning("Error command received. Switching to error mode.")
+        context become error
       case Request(msg) ⇒
         requestsHandling += 1
 
@@ -113,6 +116,13 @@ object MockBackend {
       case _ => //just pretend to be dead
     }
 
+    val error: Receive = {
+      case Request("throttled") ⇒
+        log.info("Back command received. Switching back to normal mode.")
+        context become throttled
+      case _ => sender ! Error("in error mode")
+    }
+
     val direct: Receive = {
       case Request("overflow") ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
@@ -131,6 +141,7 @@ object MockBackend {
   }
 
   case class Request(msg: String)
+  case class Error(msg: String)
   case class Respond(msg: String)
   case class Petition(msg: String, replyTo: ActorRef, latency: FiniteDuration)
   case class Appease(msg: String, replyTo: ActorRef)

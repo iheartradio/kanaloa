@@ -48,7 +48,7 @@ class KanaloaClusterSimulation extends StressSimulation(
     rampUp = 1.minutes,
     path = "cluster_kanaloa",
     name = "Overflow a cluster with kanaloa in front",
-    capRps = 450,
+    capRps = 200,
     maxBackendThroughputRPS = 200
   )
 )

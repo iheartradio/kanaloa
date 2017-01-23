@@ -62,6 +62,8 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
   val resultChecker: ResultChecker[MockBackend.Respond, String] = {
     case r: MockBackend.Respond ⇒
       Right(r)
+    case r: MockBackend.Error ⇒
+      Left(Some(r.msg))
     case other ⇒
       Left(Some("Dispatcher: MockBackend.Respond() acceptable only. Received: " + other))
   }

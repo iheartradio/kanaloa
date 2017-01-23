@@ -102,6 +102,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       inGracePeriod = false //out of grace period as soon as we see the first handler
       if (!dups.isEmpty)
         log.error(s"New Handler received but their names are duplicates ${dups.map(_.name).mkString(",")}")
+      log.info(s"New handlers: ${handlers.map(_.name).mkString(", ")} added.")
 
     case HandlersRemoved(handlers: List[Handler[T]]) ⇒
       val removedNames = handlers.map(_.name)
