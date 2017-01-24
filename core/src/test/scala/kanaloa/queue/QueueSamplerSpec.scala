@@ -1,15 +1,14 @@
-package kanaloa
+package kanaloa.queue
 
 import java.time.{LocalDateTime ⇒ Time}
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.TestProbe
-import kanaloa.Sampler._
+import kanaloa.SpecWithActorSystem
 import kanaloa.Types.QueueLength
-import kanaloa.QueueSampler._
-import kanaloa.metrics.Metric._
 import kanaloa.metrics.{Metric, Reporter}
-import kanaloa.queue.Queue
+import kanaloa.queue.QueueSampler.{FullyUtilized, PartialUtilized, QueueSample}
+import kanaloa.queue.Sampler.{AddSample, Subscribe, SamplerSettings}
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar

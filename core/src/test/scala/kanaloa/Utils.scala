@@ -3,7 +3,7 @@ package kanaloa
 import akka.actor.ActorDSL._
 import akka.actor.{ActorRef, ActorRefFactory, ActorSystem}
 import akka.testkit.TestProbe
-import kanaloa.Sampler.SamplerSettings
+import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.metrics.Reporter
 import kanaloa.queue.WorkerPoolManager.WorkerPoolSamplerFactory
 object Utils {

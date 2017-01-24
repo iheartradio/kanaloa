@@ -4,9 +4,8 @@ import java.time.{Duration ⇒ JDuration, LocalDateTime ⇒ Time}
 
 import akka.actor._
 import kanaloa.ApiProtocol.QueryStatus
-import kanaloa.WorkerPoolSampler
-import kanaloa.WorkerPoolSampler._
-import kanaloa.Sampler._
+import kanaloa.queue.WorkerPoolSampler._
+import kanaloa.queue.Sampler._
 import kanaloa.Types.Speed
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.WorkerPoolManager.ScaleTo

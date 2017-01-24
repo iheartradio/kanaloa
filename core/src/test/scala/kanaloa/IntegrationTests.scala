@@ -9,7 +9,8 @@ import com.typesafe.config.ConfigFactory
 import kanaloa.ApiProtocol.{WorkRejected, QueryStatus, ShutdownGracefully, ShutdownSuccessfully}
 import kanaloa.Dispatcher.SubscribePerformanceMetrics
 import kanaloa.IntegrationTests._
-import kanaloa.WorkerPoolSampler.{Report, WorkerPoolSample}
+import kanaloa.queue.QueueSampler
+import kanaloa.queue.WorkerPoolSampler.{Report, WorkerPoolSample}
 import kanaloa.handler.{HandlerProvider, GeneralActorRefHandler}
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.metrics.StatsDClient

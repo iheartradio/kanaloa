@@ -1,28 +1,19 @@
-package kanaloa
+package kanaloa.queue
 
 import java.time.{LocalDateTime ⇒ Time}
 
 import akka.actor.{Props, Actor, ActorRef, Terminated}
-import kanaloa.QueueSampler._
-import kanaloa.Sampler.{SamplerSettings, Sample, AddSample}
+import kanaloa.queue.QueueSampler._
+import kanaloa.queue.Sampler.{SamplerSettings, Sample, AddSample}
 import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric._
 import kanaloa.metrics.{Reporter, Metric}
-import kanaloa.queue.Queue
-import kanaloa.queue.Queue.DispatchReport
 import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._
 
 /**
- *  Mixed-in with [[MetricsCollector]] to which all [[Metric]] are sent to.
- *  Behind the scene it also collects performance [[QueueSample]] from [[WorkCompleted]] and [[WorkFailed]]
- *  when the system is in fullyUtilized state, namely when number
- *  of idle workers is less than [[kanaloa.Sampler.SamplerSettings]]
- *  It internally publishes these [[QueueSample]]s as well as [[PartialUtilized]] data
- *  which are only for internal tuning purpose, and should not be
- *  confused with the [[Metric]] used for realtime monitoring.
- *  It can be subscribed using [[kanaloa.Sampler.Subscribe]] message.
+ *  It can be subscribed using [[kanaloa.queue.Sampler.Subscribe]] message.
  *  It publishes [[QueueSample]]s and [[PartialUtilized]] number to subscribers.
  *
  */

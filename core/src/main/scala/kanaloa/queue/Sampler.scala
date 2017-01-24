@@ -1,7 +1,7 @@
-package kanaloa
+package kanaloa.queue
 
 import akka.actor.{Terminated, ActorRef, Actor}
-import kanaloa.Sampler._
+import kanaloa.queue.Sampler._
 
 import scala.concurrent.duration._
 

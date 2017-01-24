@@ -4,17 +4,13 @@ import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor._
 import kanaloa.ApiProtocol._
-import kanaloa.Sampler.SamplerSettings
-import kanaloa.WorkerPoolSampler
-import kanaloa.handler.{Hold, Terminate, Handler}
-import kanaloa.handler.HandlerProvider.HandlerChange
-import kanaloa.metrics.Metric.PoolSize
+import kanaloa.handler.Handler
 import kanaloa.metrics.{Metric, Reporter}
-import kanaloa.queue.Queue.Retire
+import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.queue.Worker.DelayBeforeNextWork
 import kanaloa.queue.WorkerPoolManager._
-import kanaloa.util.MessageScheduler
 import kanaloa.util.AnyEq._
+import kanaloa.util.MessageScheduler
 
 import scala.concurrent.duration._
 

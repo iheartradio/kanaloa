@@ -1,8 +1,8 @@
 package kanaloa.metrics
 
 import akka.actor._
-import kanaloa.WorkerPoolSampler
-import kanaloa.Sampler.SamplerSettings
+import kanaloa.queue.WorkerPoolSampler
+import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.metrics.Metric.{WorkerPoolMetric}
 
 /**

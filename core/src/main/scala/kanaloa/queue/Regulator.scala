@@ -1,15 +1,16 @@
-package kanaloa
+package kanaloa.queue
 
-import akka.actor._
-import kanaloa.QueueSampler.{Report, PartialUtilized, QueueSample}
 import java.time.{LocalDateTime ⇒ Time}
-import kanaloa.Regulator.Status
+
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric
+import kanaloa.queue.QueueSampler.{PartialUtilized, QueueSample, Report}
+import kanaloa.queue.Regulator._
+import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._
-import Regulator._
-import Types._
-import kanaloa.util.Java8TimeExtensions._
+
 /**
  * A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced)
  * suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.
@@ -38,7 +39,7 @@ import kanaloa.util.Java8TimeExtensions._
  *
  * @param metricsCollector [[QueueSampler]] actor that provides Performance samples,
  *                         this also controls the TupdateRate with frequency of samples
- * @param regulatee        [[PushingDispatcher]] actor that receive the dropping probability update
+ * @param regulatee        [[kanaloa.PushingDispatcher]] actor that receive the dropping probability update
  */
 class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: ActorRef) extends Actor with ActorLogging {
 

@@ -1,29 +1,22 @@
-package kanaloa
+package kanaloa.queue
 
 import java.time.{LocalDateTime ⇒ Time}
 
-import akka.actor.{Props, ActorRef}
-import kanaloa.QueueSampler.{PartialUtilized, FullyUtilized}
-import kanaloa.WorkerPoolSampler._
-import kanaloa.Sampler._
+import akka.actor.{ActorRef, Props}
 import kanaloa.Types.Speed
 import kanaloa.metrics.Metric._
-import kanaloa.metrics.{WorkerPoolMetricsCollector, Reporter, Metric}
+import kanaloa.metrics.{Metric, Reporter, WorkerPoolMetricsCollector}
+import kanaloa.queue.QueueSampler.{PartialUtilized, FullyUtilized}
+import kanaloa.queue.WorkerPoolSampler._
 import kanaloa.util.Java8TimeExtensions._
-
+import Sampler._
 import scala.concurrent.duration._
 
 /**
  *  Mixed-in with [[WorkerPoolMetricsCollector]] to which all [[Metric]] are sent to.
- *  Behind the scene it also collects performance [[WorkerPoolSample]] from [[WorkCompleted]] and [[WorkFailed]]
+ *  Behind the scene it also collects performance [[kanaloa.queue.WorkerPoolSampler.WorkerPoolSample]] from [[WorkCompleted]] and [[WorkFailed]]
  *  when the system is in fullyUtilized state, namely when number
- *  of idle workers is less than [[kanaloa.Sampler.SamplerSettings]]
- *  It internally publishes these [[WorkerPoolSample]]s as well as [[PartialUtilization]] data
- *  which are only for internal tuning purpose, and should not be
- *  confused with the [[Metric]] used for realtime monitoring.
- *  It can be subscribed using [[kanaloa.Sampler.Subscribe]] message.
- *  It publishes [[WorkerPoolSample]]s and [[PartialUtilization]] number to subscribers.
- *
+ *  of idle workers is less than [[kanaloa.queue.Sampler.SamplerSettings]]
  */
 private[kanaloa] trait WorkerPoolSampler extends Sampler {
   mc: WorkerPoolMetricsCollector ⇒ //todo: it's using cake pattern to mixin with WorkerPoolMetricsCollector mainly due to performance reason, there might be ways to achieve more decoupled ways without hurting performance
@@ -38,8 +31,6 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
     queueSampler ! Unsubscribe(self)
     super.postStop()
   }
-
-  import settings._
 
   def receive = partialUtilized(PartialUtilizedPoolStatus())
 
@@ -108,7 +99,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
    * @return a reset status if completes, the original status if not.
    */
   private def tryComplete(status: PoolStatus): (Option[Report], PoolStatus) = {
-    val sample = status.toSample(minSampleDuration)
+    val sample = status.toSample(settings.minSampleDuration)
 
     val newStatus = if (sample.fold(false)(_.workDone > 0))
       status.copy(workDone = 0, start = Time.now, avgProcessTime = None) //if sample is valid and there is work done restart the counter

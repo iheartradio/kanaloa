@@ -4,22 +4,18 @@ import akka.actor.{ActorRef, ActorSystem, PoisonPill, Terminated}
 import akka.testkit._
 import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.DurationFunctions._
-import kanaloa.Sampler.SamplerSettings
-import kanaloa.Utils.Factories
-import kanaloa.WorkerPoolSampler.{PartialUtilization, WorkerPoolSample}
+import kanaloa.queue.WorkerPoolSampler.{PartialUtilization, WorkerPoolSample}
 import kanaloa.Types.{Speed, QueueLength}
 import kanaloa.handler.ResultChecker
 import kanaloa.queue.Autothrottler._
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, ScaleTo, Shutdown}
 import kanaloa.queue.Worker.{Idle, Working}
-import kanaloa.{Utils, WorkerPoolSampler, ScopeWithActor, SpecWithActorSystem}
+import kanaloa.{Utils, ScopeWithActor, SpecWithActorSystem}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
-import scala.util.Random
-import org.mockito.Mockito._
 
 class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventually with MockitoSugar {
 

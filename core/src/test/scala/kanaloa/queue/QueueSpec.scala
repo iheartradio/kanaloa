@@ -2,16 +2,14 @@ package kanaloa.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
+import kanaloa.ApiProtocol.{ShutdownSuccessfully}
 import kanaloa.handler.GeneralActorRefHandler
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
 import kanaloa.queue.WorkerPoolManager.{Shutdown, _}
 import kanaloa.queue.TestUtils._
-import kanaloa.{WorkerPoolSampler, QueueSampler, MockServices, SpecWithActorSystem}
-import org.scalatest.Tag
+import kanaloa.SpecWithActorSystem
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
 import scala.util.Random

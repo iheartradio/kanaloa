@@ -2,7 +2,6 @@ package kanaloa.queue
 
 import akka.actor._
 import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
-import kanaloa.WorkerPoolSampler
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue._

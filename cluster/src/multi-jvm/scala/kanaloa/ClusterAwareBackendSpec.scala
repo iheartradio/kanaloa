@@ -171,7 +171,7 @@ class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
         enterBarrier("first100messages")
         cluster leave myself
         watch(service)
-        Thread.sleep(400)
+        Thread.sleep(500) //wait for the leaveto take effect before killing self. 
         service ! PoisonPill
         expectTerminated(service)
       }

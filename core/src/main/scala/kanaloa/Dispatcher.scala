@@ -6,7 +6,8 @@ import com.typesafe.config.{Config, ConfigFactory}
 import kanaloa.ApiProtocol._
 import kanaloa.Dispatcher.{ShutdownTimedOut, UnSubscribePerformanceMetrics, SubscribePerformanceMetrics, Settings}
 import kanaloa.PushingDispatcher.GracePeriodDone
-import kanaloa.Regulator.DroppingRate
+import kanaloa.queue._
+import Regulator.DroppingRate
 import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
 import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, Reporter}

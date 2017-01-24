@@ -1,15 +1,19 @@
-package kanaloa
+package kanaloa.queue
+
+import java.time.{LocalDateTime ⇒ Time}
 
 import akka.testkit.TestProbe
-import kanaloa.QueueSampler.{PartialUtilized, QueueSample}
-import kanaloa.Regulator.{DroppingRate, Status, Settings}
-import kanaloa.Sampler.Subscribe
-import kanaloa.Types.{Speed, QueueLength}
+import Regulator._
+import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric
-import concurrent.duration._
-import DurationFunctions._
-import java.time.{LocalDateTime ⇒ Time}
+import kanaloa.queue.QueueSampler._
+import kanaloa.queue.Sampler.Subscribe
 import kanaloa.util.Java8TimeExtensions._
+import kanaloa.DurationFunctions._
+
+import kanaloa.SpecWithActorSystem
+
+import scala.concurrent.duration._
 
 class RegulatorSpec extends SpecWithActorSystem {
   def sample(
