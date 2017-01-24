@@ -117,11 +117,12 @@ private[kanaloa] object WorkerPoolSampler {
     poolSize:       Int = 0
   )
   private case class PoolStatus(
-    workDone:       Int              = 0,
-    workingWorkers: Int              = 0,
-    start:          Time             = Time.now,
-    poolSize:       Int              = 0,
-    avgProcessTime: Option[Duration] = None
+    workDone:            Int              = 0,
+    workingWorkers:      Int              = 0,
+    start:               Time             = Time.now,
+    poolSize:            Int              = 0,
+    avgProcessTime:      Option[Duration] = None,
+    consecutiveTimeouts: Int              = 0
   ) {
 
     def toSample(minSampleDuration: Duration): Option[WorkerPoolSample] = {
@@ -160,10 +161,9 @@ private[kanaloa] object WorkerPoolSampler {
    *
    * @param numOfBusyWorkers
    */
-  //todo: move this to queue sampler
   case class PartialUtilization(numOfBusyWorkers: Int) extends Report
 
-  class MetricsCollectorImpl(
+  class WorkerPoolSamplerImpl(
     val reporter:     Option[Reporter],
     val queueSampler: ActorRef,
     val settings:     SamplerSettings
@@ -173,5 +173,5 @@ private[kanaloa] object WorkerPoolSampler {
     reporter:     Option[Reporter],
     queueSampler: ActorRef,
     settings:     SamplerSettings  = SamplerSettings()
-  ): Props = Props(new MetricsCollectorImpl(reporter, queueSampler, settings))
+  ): Props = Props(new WorkerPoolSamplerImpl(reporter, queueSampler, settings))
 }
