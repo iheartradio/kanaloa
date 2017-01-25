@@ -7,6 +7,7 @@ import akka.actor.{ActorRef, ActorRefFactory, PoisonPill, Props}
 import akka.testkit.TestActor.AutoPilot
 import akka.testkit.{TestActorRef, TestActor, TestProbe}
 import kanaloa.ApiProtocol.{ShutdownGracefully, ShutdownForcefully, QueryStatus, ShutdownSuccessfully}
+import kanaloa.TestUtils.MockActors
 import kanaloa.handler._
 import kanaloa.metrics.Metric
 import kanaloa.metrics.Metric.PoolSize
@@ -14,13 +15,14 @@ import kanaloa.queue.Queue.Retire
 import kanaloa.queue.Worker.DelayBeforeNextWork
 import kanaloa.queue.WorkerPoolManager.{WorkerFactory, ScaleTo, Shutdown, ShuttingDown}
 import kanaloa._
-import kanaloa.queue.TestUtils.{MessageProcessed, DelegateeMessage}
+import kanaloa.queue.QueueTestUtils.{MessageProcessed, DelegateeMessage}
 import org.scalatest.concurrent.Eventually
 import scala.collection.mutable.{Map ⇒ MMap}
 import scala.concurrent.{Promise, Future}
 import scala.concurrent.duration._
-import TestHandlerProviders._
-class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with MockServices {
+import TestUtils.HandlerProviders._
+
+class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with MockActors {
 
   type QueueTest = (TestActorRef[WorkerPoolManager[Any]], TestProbe, TestProbe, TestProbe, TestWorkerFactory) ⇒ Any
 
@@ -28,10 +30,18 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
 
     val queueProbe = TestProbe("queue")
     val serviceProbe = TestProbe("service")
-    val testHandler = TestHandlerProviders.simpleHandler(serviceProbe)
+    val testHandler = TestUtils.HandlerProviders.simpleHandler(serviceProbe)
     val testWorkerFactory = new TestWorkerFactory()
     val metricsCollector = TestProbe("metrics-collector")
-    val wpm = TestActorRef[WorkerPoolManager[Any]](WorkerPoolManager.default(queueProbe.ref, testHandler, poolSettings, testWorkerFactory, factories.workPoolSampler(metricsCollector.ref), None))
+    val wpm = TestActorRef[WorkerPoolManager[Any]](
+      factories.workerPoolManagerProps(
+        queueProbe.ref,
+        testHandler,
+        poolSettings,
+        testWorkerFactory,
+        factories.workerPoolSamplerFactory(metricsCollector.ref)
+      )
+    )
 
     eventually {
       wpm.underlyingActor.workerPool should have size poolSettings.startingPoolSize.toLong
@@ -207,9 +217,9 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
 
 }
 
-class AutothrottleWhenWorkingSpec extends SpecWithActorSystem with Eventually {
+class ResizingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
 
-  "autothrottle" should {
+  "resizing" should {
 
     "send PoolSize metric when pool size changes" in new MetricCollectorScope {
 

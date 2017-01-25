@@ -6,8 +6,10 @@ import kanaloa.ApiProtocol.{ShutdownSuccessfully}
 import kanaloa.handler.GeneralActorRefHandler
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
+import kanaloa.TestUtils._
+import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.queue.WorkerPoolManager.{Shutdown, _}
-import kanaloa.queue.TestUtils._
+import kanaloa.queue.QueueTestUtils._
 import kanaloa.SpecWithActorSystem
 import org.scalatest.concurrent.Eventually
 
@@ -176,10 +178,12 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
   }
 }
 
-class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
+class QueueScope(implicit system: ActorSystem, factories: Factories) extends ScopeWithQueue {
 
   lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
-  lazy val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(None, queueSampler))
+  lazy val workerPoolMetricsCollector: ActorRef = factories.workerPoolSampler(
+    factories.workerPoolSamplerFactory(queueSampler = queueSampler, settings = SamplerSettings())
+  )
 
   def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): WorkerPoolManagerRef = {
     val workerPoolProps: Props = defaultWorkerPoolProps(
@@ -208,7 +212,7 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
 
 }
 
-class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
+class MetricCollectorScope(implicit system: ActorSystem, factories: Factories) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
@@ -220,7 +224,10 @@ class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
 
   override lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(Some(mockReporter)))
 
-  override lazy val workerPoolMetricsCollector: ActorRef = system.actorOf(WorkerPoolSampler.props(Some(mockReporter), queueSampler))
-
+  override lazy val workerPoolMetricsCollector: ActorRef =
+    factories.workerPoolSampler(
+      factories.workerPoolSamplerFactory(queueSampler = queueSampler, settings = SamplerSettings()),
+      Some(mockReporter)
+    )
 }
 

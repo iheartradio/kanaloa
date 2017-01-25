@@ -2,7 +2,6 @@ package kanaloa.metrics
 
 import akka.actor._
 import kanaloa.queue.WorkerPoolSampler
-import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.metrics.Metric.{WorkerPoolMetric}
 
 /**
@@ -12,14 +11,17 @@ import kanaloa.metrics.Metric.{WorkerPoolMetric}
 trait WorkerPoolMetricsCollector extends Actor {
 
   def reporter: Option[Reporter]
+  def metricsForwardTo: Option[ActorRef]
 
   protected def handle(metric: WorkerPoolMetric)(pf: PartialFunction[WorkerPoolMetric, Unit]): Unit = {
     report(metric)
     pf.applyOrElse(metric, (_: WorkerPoolMetric) ⇒ ())
   }
 
-  protected def report(metric: WorkerPoolMetric): Unit =
+  protected final def report(metric: WorkerPoolMetric): Unit = {
     reporter.foreach(_.report(metric))
+    metricsForwardTo.foreach(_ ! metric)
+  }
 
 }
 

@@ -48,7 +48,7 @@ class GeneralActorRefHandler[TResp, TError](
     override val result: Future[Result[Resp, Error]] = promise.future.map {
       case Left(TargetTerminated) ⇒
         Result(Left(None), Some(Terminate))
-      case Left(Cancelled) ⇒ Result(Left(None), None)
+      case Left(Cancelled) ⇒ Result(Left(None), None) //Note: this result is going to be ignored by the worker since it cancels it. find a way to
       case Right(m)        ⇒ Result(resultChecker(m), None)
     }
 

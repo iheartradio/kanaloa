@@ -27,6 +27,7 @@ object Metric {
   case object WorkFailed extends Event with WorkerPoolMetric
   case class WorkCompleted(processTime: Duration) extends Event with WorkerPoolMetric
   case object CircuitBreakerOpened extends Event with WorkerPoolMetric
+  case object CircuitBreakerClosed extends Event with WorkerPoolMetric
 
   case class PoolSize(size: Int) extends Status with WorkerPoolMetric
   case class PoolUtilized(numWorkers: Int) extends Status with WorkerPoolMetric

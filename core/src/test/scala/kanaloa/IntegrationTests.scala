@@ -206,7 +206,7 @@ class PullingDispatcherIntegration extends IntegrationSpec {
 
 class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
 
-  "can remain sane when all workers are constantly failing" in new TestScope with MockServices {
+  "can remain sane when all workers are constantly failing" in new TestScope with TestUtils.MockActors {
     val backend = system.actorOf(suicidal(1.milliseconds), "suicidal-backend")
     val iterator = Stream.continually("a").iterator
 

@@ -1,9 +1,10 @@
 package kanaloa.queue
 
 import kanaloa.ApiProtocol.ShutdownSuccessfully
-import kanaloa.{SpecWithActorSystem, MockServices}
+import kanaloa.SpecWithActorSystem
+import kanaloa.TestUtils.MockActors
 import kanaloa.queue.WorkerPoolManager.Shutdown
-import kanaloa.queue.TestUtils._
+import kanaloa.queue.QueueTestUtils._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
 
@@ -57,7 +58,7 @@ class IteratorQueueSpec extends SpecWithActorSystem {
       expectTerminated(workerPoolManager)
     }
 
-    "does not retrieve work without workers" in new QueueScope with MockServices with MockitoSugar with Eventually {
+    "does not retrieve work without workers" in new QueueScope with MockActors with MockitoSugar with Eventually {
       import org.mockito.Mockito._
       val iterator = mock[Iterator[String]]
       val queue = system.actorOf(Queue.ofIterator(iterator, queueSampler, WorkSettings(), Some(self)))

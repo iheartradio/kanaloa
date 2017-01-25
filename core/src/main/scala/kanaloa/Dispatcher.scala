@@ -12,7 +12,7 @@ import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
 import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, Reporter}
 import kanaloa.queue.Queue.{Retire, Enqueue, EnqueueRejected}
-import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
+import kanaloa.queue.WorkerPoolManager.{CircuitBreakerFactory, WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
 import kanaloa.util.MessageScheduler
 import net.ceedubs.ficus.Ficus._
@@ -64,8 +64,10 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       handler,
       settings.workerPool,
       WorkerFactory.default,
-      WorkerPoolSamplerFactory(queueSampler, settings.samplerSettings, reporter),
-      settings.autothrottle.map(AutothrottlerFactory.apply)
+      WorkerPoolSamplerFactory(queueSampler, settings.samplerSettings),
+      settings.autothrottle.map(AutothrottlerFactory.apply),
+      settings.circuitBreaker.map(CircuitBreakerFactory.apply),
+      reporter
     )
 
     val workerPool = context.actorOf(props, s"worker-pool-manager-$workerPoolIndex")

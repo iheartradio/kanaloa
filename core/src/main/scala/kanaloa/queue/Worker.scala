@@ -45,12 +45,19 @@ private[queue] class Worker[T](
   val handleHoldMessage: Receive = {
     case DelayBeforeNextWork(value) ⇒
       delayBeforeNextWork = Some(value)
+    case CancelDelay ⇒
+      delayBeforeNextWork = None
   }
 
   val waitingForWork: Receive = handleHoldMessage orElse {
-    case qs: QueryStatus                  ⇒ qs reply Idle
+    case qs: QueryStatus ⇒ qs reply Idle
 
-    case work: Work[T]                    ⇒ sendWorkToHandler(work, 0)
+    case work: Work[T] ⇒
+      if (delayBeforeNextWork.isDefined) {
+        sender ! Rejected(work, "onHold")
+        askMoreWork()
+      } else
+        sendWorkToHandler(work, 0)
 
     //If there is no work left, or if the Queue dies, the Worker stops as well
     case NoWorkLeft | Terminated(`queue`) ⇒ finish("Queue reports no Work left")
@@ -59,11 +66,9 @@ private[queue] class Worker[T](
     case Worker.Retire                    ⇒ becomeUnregisteringIdle()
   }
 
-  def working(outstanding: Outstanding): Receive = handleHoldMessage orElse handleRouteeResponse(outstanding) orElse {
+  def working(outstanding: Outstanding): Receive = handleHoldMessage orElse handleRouteeResponse(outstanding)(askMoreWork()) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
 
-    //we are done with this Work, ask for more and wait for it
-    case WorkFinished                     ⇒ askMoreWork()
     case w: Work[_]                       ⇒ sender() ! Rejected(w, "Busy")
 
     //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
@@ -74,7 +79,7 @@ private[queue] class Worker[T](
   }
 
   //This state waits for Work to complete, and then stops the Actor
-  def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding) orElse {
+  def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding)(finish(s"Finished work, time to retire")) orElse {
     case qs: QueryStatus                           ⇒ qs reply WaitingToTerminate
 
     //ignore these, since all we care about is the Work completing one way or another
@@ -82,8 +87,6 @@ private[queue] class Worker[T](
 
     case w: Work[_]                                ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
-    case WorkFinished ⇒
-      finish(s"Finished work, time to retire") //work is done, terminate
   }
 
   //in this state, we have told the Queue to Unregister this Worker, so we are waiting for an acknowledgement
@@ -109,19 +112,18 @@ private[queue] class Worker[T](
   }
 
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
-  def handleRouteeResponse(outstanding: Outstanding): Receive = {
+  def handleRouteeResponse(outstanding: Outstanding)(onComplete: ⇒ Unit): Receive = {
 
     case wr: WorkResult[handler.Resp, handler.Error] if wr.workId === outstanding.workId ⇒ {
-
       wr.result.instruction.foreach(context.parent ! _) //forward instruction back to parent the WorkerPoolManager
 
       wr.result.reply match {
         case Right(res) ⇒
           outstanding.success(res)
-          self ! WorkFinished
+          onComplete
 
         case Left(e) ⇒ //todo: to be addressed by #188
-          retryOrAbandon(outstanding, e)
+          retryOrAbandon(outstanding, e)(onComplete)
       }
 
     }
@@ -132,10 +134,10 @@ private[queue] class Worker[T](
     case HandlerTimeout ⇒
       log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
-      self ! WorkFinished
+      onComplete
   }
 
-  private def retryOrAbandon(outstanding: Outstanding, error: handler.Error): Unit = {
+  private def retryOrAbandon(outstanding: Outstanding, error: handler.Error)(onComplete: ⇒ Unit): Unit = {
     outstanding.cancel()
     val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
       s"due to $e"
@@ -151,7 +153,7 @@ private[queue] class Worker[T](
       }
       log.warning(s"$message, work abandoned")
       outstanding.fail(WorkFailed(message))
-      self ! WorkFinished
+      onComplete
     }
   }
 
@@ -197,7 +199,7 @@ private[queue] class Worker[T](
 
     def timeout(): Unit = {
       done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
-      handling.cancellable.foreach(_.cancel())
+      cancel()
       metricsCollector ! Metric.WorkTimedOut
     }
 
@@ -223,6 +225,7 @@ private[queue] object Worker {
 
   private case object HandlerTimeout
   case class DelayBeforeNextWork(value: FiniteDuration)
+  case object CancelDelay
   case object Retire
 
   sealed trait WorkerStatus
@@ -231,8 +234,6 @@ private[queue] object Worker {
   case object Working extends WorkerStatus
 
   case object WaitingToTerminate extends WorkerStatus
-
-  private[queue] case object WorkFinished
 
   def default[T](
     queue:                  QueueRef,

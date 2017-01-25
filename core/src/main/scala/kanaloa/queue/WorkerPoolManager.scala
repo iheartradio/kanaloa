@@ -7,7 +7,7 @@ import kanaloa.ApiProtocol._
 import kanaloa.handler.Handler
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Sampler.SamplerSettings
-import kanaloa.queue.Worker.DelayBeforeNextWork
+import kanaloa.queue.Worker.{CancelDelay, DelayBeforeNextWork}
 import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.AnyEq._
 import kanaloa.util.MessageScheduler
@@ -15,17 +15,26 @@ import kanaloa.util.MessageScheduler
 import scala.concurrent.duration._
 
 class WorkerPoolManager[T](
-  queue:                QueueRef,
-  handler:              Handler[T],
-  settings:             WorkerPoolSettings,
-  workerFactory:        WorkerFactory,
-  samplerFactory:       WorkerPoolSamplerFactory,
-  autothrottlerFactory: Option[AutothrottlerFactory]
+  queue:                 QueueRef,
+  handler:               Handler[T],
+  settings:              WorkerPoolSettings,
+  workerFactory:         WorkerFactory,
+  samplerFactory:        WorkerPoolSamplerFactory,
+  autothrottlerFactory:  Option[AutothrottlerFactory],
+  circuitBreakerFactory: Option[CircuitBreakerFactory],
+  baseReporter:          Option[Reporter]
 ) extends Actor with ActorLogging with MessageScheduler {
+
+  val reporter: Option[Reporter] = {
+    val handlerPrefix = handler.name.replaceAll("[^A-Za-z0-9()\\[\\]]", "_")
+    baseReporter.map(_.withNewPrefix(_ + "." + handlerPrefix))
+  }
+
+  val circuitBreaker = circuitBreakerFactory.map(_(self, reporter))
 
   val listSelection = new ListSelection
 
-  val metricsCollector: ActorRef = samplerFactory(handler.name)
+  val metricsCollector: ActorRef = samplerFactory(reporter, circuitBreaker)
 
   val autoThrottler: Option[ActorRef] = autothrottlerFactory.map(_(self, metricsCollector))
   var workerCount = 0
@@ -52,6 +61,9 @@ class WorkerPoolManager[T](
 
     case kanaloa.handler.Hold(duration) ⇒
       workerPool.foreach(_ ! DelayBeforeNextWork(duration))
+
+    case UnHold ⇒
+      workerPool.foreach(_ ! CancelDelay)
 
     case ScaleTo(newPoolSize, reason) if inflightWorkerRemoval === 0 ⇒
       log.debug(s"Command to scale to $newPoolSize, currently at ${workerPool.size} due to ${reason.getOrElse("no reason given")}")
@@ -185,17 +197,34 @@ object WorkerPoolManager {
     }
   }
 
+  private[kanaloa] trait CircuitBreakerFactory {
+    def apply(
+      workerPoolManagerRef: WorkerPoolManagerRef,
+      reporter:             Option[Reporter]
+    )(implicit arf: ActorRefFactory): ActorRef
+  }
+
+  private[kanaloa] object CircuitBreakerFactory {
+    def apply(settings: CircuitBreakerSettings): CircuitBreakerFactory = new CircuitBreakerFactory {
+      def apply(
+        workerPoolManagerRef: WorkerPoolManagerRef,
+        reporter:             Option[Reporter]
+      )(implicit arf: ActorRefFactory): ActorRef =
+        arf.actorOf(CircuitBreaker.props(workerPoolManagerRef, settings, reporter))
+    }
+  }
+
   private[kanaloa] trait WorkerPoolSamplerFactory {
-    def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef
+    def apply(reporter: Option[Reporter], metricsForwardTo: Option[ActorRef])(implicit ac: ActorRefFactory): ActorRef
   }
 
   private[kanaloa] object WorkerPoolSamplerFactory {
-    def apply(queueSampler: ActorRef, settings: SamplerSettings, reporter: Option[Reporter]): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
-      def apply(handlerName: String)(implicit ac: ActorRefFactory) = {
-
-        val handlerPrefix = handlerName.replaceAll("[^A-Za-z0-9()\\[\\]]", "_")
-        val handlerSpecificReporter = reporter.map(_.withNewPrefix(_ + "." + handlerPrefix)) //todo: is this design brittle?
-        ac.actorOf(WorkerPoolSampler.props(handlerSpecificReporter, queueSampler, settings))
+    def apply(
+      queueSampler: ActorRef,
+      settings:     SamplerSettings
+    ): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
+      def apply(reporter: Option[Reporter], metricsForwardTo: Option[ActorRef])(implicit arf: ActorRefFactory) = {
+        arf.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings, metricsForwardTo))
       }
     }
   }
@@ -215,6 +244,8 @@ object WorkerPoolManager {
     assert(numOfWorkers >= 0)
   }
 
+  case object UnHold
+
   case class RunningStatus(pool: WorkerPool)
   case object ShuttingDown
 
@@ -224,13 +255,14 @@ object WorkerPoolManager {
   private case object HealthCheck
 
   def default[T](
-    queue:                QueueRef,
-    handler:              Handler[T],
-    settings:             WorkerPoolSettings,
-    workerFactory:        WorkerFactory,
-    samplerFactory:       WorkerPoolSamplerFactory,
-    autothrottlerFactory: Option[AutothrottlerFactory]
-
+    queue:                 QueueRef,
+    handler:               Handler[T],
+    settings:              WorkerPoolSettings,
+    workerFactory:         WorkerFactory,
+    samplerFactory:        WorkerPoolSamplerFactory,
+    autothrottlerFactory:  Option[AutothrottlerFactory],
+    circuitBreakerFactory: Option[CircuitBreakerFactory],
+    baseReporter:          Option[Reporter]
   ): Props = {
     Props(new WorkerPoolManager(
       queue,
@@ -238,7 +270,9 @@ object WorkerPoolManager {
       settings,
       workerFactory,
       samplerFactory,
-      autothrottlerFactory
+      autothrottlerFactory,
+      circuitBreakerFactory,
+      baseReporter
     )).withDeploy(Deploy.local)
   }
 

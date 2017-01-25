@@ -5,9 +5,11 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider
+import kanaloa.metrics.Reporter
+import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory}
 
-object TestUtils {
+object QueueTestUtils {
 
   case class DelegateeMessage(msg: String)
   case class MessageProcessed(msg: String)
@@ -35,15 +37,17 @@ object TestUtils {
     def defaultWorkerPoolProps(
       queue:            QueueRef,
       settings:         WorkerPoolSettings = WorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: ActorRef           = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref))
+      metricsCollector: ActorRef           = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref, SamplerSettings(), None))
     ) = WorkerPoolManager.default(
       queue,
-      TestHandlerProviders.simpleHandler(delegatee.ref, resultChecker),
+      TestUtils.HandlerProviders.simpleHandler(delegatee.ref, resultChecker),
       settings,
       WorkerFactory.default,
       new WorkerPoolSamplerFactory {
-        def apply(handlerName: String)(implicit ac: ActorRefFactory): ActorRef = metricsCollector
+        def apply(reporter: Option[Reporter], mft: Option[ActorRef])(implicit ac: ActorRefFactory): ActorRef = metricsCollector
       },
+      None,
+      None,
       None
     )
   }

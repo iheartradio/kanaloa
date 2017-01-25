@@ -96,7 +96,8 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
 
       case r: Rejected[T] ⇒
         log.debug(s"work rejected by worker, reason given by worker is '${r.reason}'")
-        dispatchWorkAndBecome(state.copy(workBuffer = state.workBuffer.enqueue(r.work)))
+        dispatchWorkAndBecome(state.copy(workBuffer =
+          r.work +: state.workBuffer))
     }
   }
 

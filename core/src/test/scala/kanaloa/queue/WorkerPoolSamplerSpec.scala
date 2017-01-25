@@ -29,7 +29,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
     val ps = system.actorOf(WorkerPoolSampler.props(None, queueSamplerProbe.ref, SamplerSettings(
       sampleInterval = sampleInterval,
       minSampleDurationRatio = minSampleDurationRatio
-    )))
+    ), None))
     ps ! FullyUtilized //set it in the busy mode
     ps ! PoolSize(startingPoolSize)
     val subscriberProbe = TestProbe()
@@ -201,7 +201,8 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
 
     "forward metrics to metric reporter" in {
       val reporter = mock[Reporter]
-      val p = system.actorOf(WorkerPoolSampler.props(Some(reporter), TestProbe().ref))
+      val p =
+        factories.workerPoolSampler(reporter = Some(reporter))
       val ps = PoolSize(3)
       p ! ps
 
@@ -213,7 +214,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
 
     "report metrics when becoming fully utilized and received Sample" in {
       val reporter = mock[Reporter]
-      val mc = system.actorOf(WorkerPoolSampler.props(Some(reporter), TestProbe().ref))
+      val mc = factories.workerPoolSampler(reporter = Some(reporter))
 
       mc ! PoolSize(4)
       mc ! FullyUtilized

@@ -49,7 +49,9 @@ case class StatsDReporter(
     case WorkTimedOut ⇒
       increment("work.timedOut", failureSampleRate)
     case CircuitBreakerOpened ⇒
-      increment("worker.circuitBreakerOpened", failureSampleRate)
+      gauge("worker.circuitBreakerOpened", 1)
+    case CircuitBreakerClosed ⇒
+      gauge("worker.circuitBreakerOpened", 0)
 
     case PoolSize(size) ⇒
       gauge("pool.size", size)

@@ -164,14 +164,17 @@ private[kanaloa] object WorkerPoolSampler {
   case class PartialUtilization(numOfBusyWorkers: Int) extends Report
 
   class WorkerPoolSamplerImpl(
-    val reporter:     Option[Reporter],
-    val queueSampler: ActorRef,
-    val settings:     SamplerSettings
+    val reporter:         Option[Reporter],
+    val queueSampler:     ActorRef,
+    val settings:         SamplerSettings,
+    val metricsForwardTo: Option[ActorRef]
   ) extends WorkerPoolMetricsCollector with WorkerPoolSampler
 
   def props(
-    reporter:     Option[Reporter],
-    queueSampler: ActorRef,
-    settings:     SamplerSettings  = SamplerSettings()
-  ): Props = Props(new WorkerPoolSamplerImpl(reporter, queueSampler, settings))
+    reporter:         Option[Reporter],
+    queueSampler:     ActorRef,
+    settings:         SamplerSettings,
+    metricsForwardTo: Option[ActorRef]
+
+  ): Props = Props(new WorkerPoolSamplerImpl(reporter, queueSampler, settings, metricsForwardTo))
 }

@@ -4,13 +4,13 @@ import akka.actor.{ActorRefFactory, ActorRef, ActorSystem, Props}
 import akka.testkit._
 import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 import kanaloa.ApiProtocol._
-import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.TestUtils.MockReporter
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider.HandlerChange
 import kanaloa.handler._
 import kanaloa.metrics.{StatsDClient, Metric, StatsDReporter}
 import kanaloa.queue.Result
-import kanaloa.queue.TestUtils.MessageProcessed
+import kanaloa.queue.QueueTestUtils.MessageProcessed
 import kanaloa.queue._
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.Eventually
@@ -18,7 +18,7 @@ import org.scalatest.concurrent.Eventually
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.Success
-import TestHandlerProviders._
+import TestUtils.HandlerProviders._
 
 class DispatcherSpec extends SpecWithActorSystem with OptionValues {
   def fixedWorkerPoolSettings(size: Int): Dispatcher.Settings =
@@ -98,7 +98,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       resultProbe.expectMsg(1)
       backendProb.expectMsg(1)
 
-      resultProbe.expectNoMsg(30.milliseconds)
+      resultProbe.expectNoMsg(50.milliseconds)
 
       watch(dispatcher)
 
@@ -130,7 +130,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       expectMsg(ShutdownSuccessfully)
     }
 
-    "shutdown before worker created" in new ScopeWithActor with MockServices {
+    "shutdown before worker created" in new ScopeWithActor with TestUtils.MockActors {
       val iterator = Stream.continually(1).iterator
       import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -276,7 +276,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       val service = system.actorOf(TestActors.echoActorProps)
       val dispatcher = system.actorOf(PushingDispatcher.props(
         name = "test",
-        TestHandlerProviders.fromPromise(Promise[ActorRef](), simpleResultChecker)
+        TestUtils.HandlerProviders.fromPromise(Promise[ActorRef](), simpleResultChecker)
       ))
 
       dispatcher ! ShutdownGracefully(Some(self))
@@ -342,7 +342,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     //todo: move this to integration test once the integration re-org test PR is merged.
-    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with MockServices {
+    "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with TestUtils.MockActors {
       import system.dispatcher
       val pd = system.actorOf(PushingDispatcher.props(
         "test",
@@ -367,7 +367,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
     }
 
     //todo: move this to integration test once the integration re-org test PR is merged. 
-    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with MockServices {
+    "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with TestUtils.MockActors {
       import scala.concurrent.ExecutionContext.Implicits.global
       val backendActorPromise = Promise[ActorRef]
       val dispatcher = system.actorOf(PushingDispatcher.props(
