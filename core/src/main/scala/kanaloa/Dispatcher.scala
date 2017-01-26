@@ -150,7 +150,6 @@ object Dispatcher {
 
   case class Settings(
     workTimeout:               FiniteDuration                 = 1.minute,
-    workRetry:                 Int                            = 0,
     updateInterval:            FiniteDuration                 = 1.second,
     lengthOfDisplayForMessage: Int                            = 200,
     initialGracePeriod:        FiniteDuration                 = 1.second,
@@ -160,7 +159,7 @@ object Dispatcher {
     autothrottle:              Option[AutothrottleSettings]
   ) {
     val samplerSettings = Sampler.SamplerSettings(updateInterval)
-    lazy val workSettings = WorkSettings(workRetry, workTimeout, lengthOfDisplayForMessage)
+    lazy val workSettings = WorkSettings(workTimeout, lengthOfDisplayForMessage)
   }
 
   //todo: move this out of Dispatcher object

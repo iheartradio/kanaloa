@@ -405,7 +405,6 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
   "readConfig" should {
     "use default settings when nothing is in config" in {
       val (settings, reporter) = Dispatcher.readConfig("example", ConfigFactory.empty, None)
-      settings.workRetry === 0
       settings.autothrottle shouldBe defined
       reporter shouldBe empty
     }
@@ -420,7 +419,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         """
               kanaloa {
                 default-dispatcher {
-                  work-retry = 27
+                  work-timeout = 1s
                 }
                 dispatchers {
 
@@ -429,7 +428,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
-      settings.workRetry === 27
+      settings.workTimeout === 1.second
     }
 
     "fall back to default-dispatcher settings when a field is missing in the dispatcher section" in {
@@ -437,7 +436,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         """
               kanaloa {
                 default-dispatcher {
-                  work-retry = 29
+                  initial-grace-period = 2s
                 }
                 dispatchers {
                   example {
@@ -449,7 +448,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
-      settings.workRetry === 29
+      settings.initialGracePeriod === 2.seconds
       settings.autothrottle shouldBe defined
     }
 

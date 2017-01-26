@@ -123,7 +123,7 @@ private[queue] class Worker[T](
           onComplete
 
         case Left(e) ⇒ //todo: to be addressed by #188
-          retryOrAbandon(outstanding, e)(onComplete)
+          abandon(outstanding, e)(onComplete)
       }
 
     }
@@ -137,24 +137,21 @@ private[queue] class Worker[T](
       onComplete
   }
 
-  private def retryOrAbandon(outstanding: Outstanding, error: handler.Error)(onComplete: ⇒ Unit): Unit = {
+  private def abandon(outstanding: Outstanding, error: handler.Error)(onComplete: ⇒ Unit): Unit = {
     outstanding.cancel()
     val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
       s"due to $e"
     }.getOrElse("")
 
-    if (outstanding.retried < outstanding.work.settings.retry) {
-      log.info(s"Retry work $outstanding due to error $errorDesc")
-      sendWorkToHandler(outstanding.work, outstanding.retried + 1)
-    } else {
-      def message = {
-        val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
-        s"Processing of '${outstanding.workDescription}' failed $retryMessage $errorDesc"
-      }
-      log.warning(s"$message, work abandoned")
-      outstanding.fail(WorkFailed(message))
-      onComplete
+    def message = {
+      val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
+      s"Processing of '${outstanding.workDescription}' failed $retryMessage $errorDesc"
     }
+
+    log.warning(s"$message, work abandoned")
+    outstanding.fail(WorkFailed(message))
+    onComplete
+
   }
 
   private def sendWorkToHandler(work: Work[T], retried: Int): Unit = {

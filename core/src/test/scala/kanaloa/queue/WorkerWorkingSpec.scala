@@ -50,15 +50,6 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkFailed)
     }
 
-    "apply retries on failed Work, transitions to 'idle'" in withWorkingWorker(WorkSettings(retry = 1)) { (worker, queueProbe, routeeProbe, work, _) ⇒
-      routeeProbe.reply(Fail("sad panda :(")) //first fail
-      routeeProbe.expectMsg(work.messageToDelegatee)
-      routeeProbe.reply(Fail("still a sad panda :( :("))
-      expectMsgType[WorkFailed]
-      queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
-      assertWorkerStatus(worker, Worker.Idle)
-    }
-
     "time out Work, transitions to 'idle'" in withWorkingWorker(WorkSettings(timeout = 5.milliseconds)) { (worker, queueProbe, routeeProbe, work, _) ⇒
       expectMsgType[WorkTimedOut]
       queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle

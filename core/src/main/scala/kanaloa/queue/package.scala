@@ -18,7 +18,6 @@ package kanaloa.queue {
   private[queue] case class Rejected[T](work: Work[T], reason: String)
 
   case class WorkSettings(
-    retry:                     Int            = 0,
     timeout:                   FiniteDuration = 30.seconds,
     lengthOfDisplayForMessage: Int            = 300
   )
