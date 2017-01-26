@@ -92,7 +92,8 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
     case ShutdownGracefully(reportBack, timeout) ⇒
       queue ! Retire
       shutdown(reportBack, timeout)
-    case GracePeriodDone ⇒ inGracePeriod = false
+    case GracePeriodDone ⇒
+      inGracePeriod = false //todo: #191 reject all queued work if there is no worker pool created
     case Terminated(`queue`) ⇒ //todo: this is only expected in pulling dispatcher. so should make it more safe in pushing( like restart queue)
       shutdown(None, settings.workerPool.defaultShutdownTimeout)
 
