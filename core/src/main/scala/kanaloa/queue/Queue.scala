@@ -1,11 +1,14 @@
 package kanaloa.queue
 
+import java.time.LocalDateTime
+
 import akka.actor._
 import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue._
 import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
+import kanaloa.util.Java8TimeExtensions._
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue ⇒ ScalaQueue}
@@ -71,7 +74,7 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def handleWork(state: InternalState, isRetiring: Boolean): Receive = {
-    def dispatchWorkAndBecome(state: InternalState): InternalState = {
+    def dispatchWorkAndNext(state: InternalState): InternalState = {
       val newState = dispatchWork(state)
       next(newState)
       newState
@@ -83,12 +86,12 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
     {
       case RequestWork(requester) ⇒
         context watch requester
-        val newState = dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)))
+        val newState = dispatchWorkAndNext(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)))
         if (newState.workBuffer.isEmpty && !newState.queuedWorkers.isEmpty && !isRetiring)
           onQueuedWorkExhausted()
 
       case Unregister(worker) ⇒
-        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ === worker)))
+        dispatchWorkAndNext(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ === worker)))
         worker ! Unregistered
 
       case Terminated(worker) ⇒
@@ -96,7 +99,7 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
 
       case r: Rejected[T] ⇒
         log.debug(s"work rejected by worker, reason given by worker is '${r.reason}'")
-        dispatchWorkAndBecome(state.copy(workBuffer =
+        dispatchWorkAndNext(state.copy(workBuffer =
           r.work +: state.workBuffer))
     }
   }

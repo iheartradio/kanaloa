@@ -150,7 +150,7 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
         TestProbe().ref
       )
 
-      val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
+      val queue: QueueRef = defaultQueue(WorkSettings(serviceTimeout = 60.milliseconds))
       val workerPool: ActorRef = TestActorRef(defaultWorkerPoolProps(queue, metricsCollector = workerPoolMetricsCollector))
 
       watch(workerPool)

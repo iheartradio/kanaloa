@@ -1,6 +1,7 @@
 import akka.actor.ActorRef
 import scala.concurrent.duration._
-
+import java.time.LocalDateTime
+import kanaloa.util.Java8TimeExtensions._
 package kanaloa {
 
   package object queue {
@@ -13,14 +14,29 @@ package kanaloa {
 
 package kanaloa.queue {
 
-  private[queue] case class Work[T](messageToDelegatee: T, replyTo: Option[ActorRef] = None, settings: WorkSettings = WorkSettings())
+  private[queue] case class Work[T](
+    messageToDelegatee: T,
+    replyTo:            Option[ActorRef] = None,
+    settings:           WorkSettings     = WorkSettings(),
+    receivedAt:         LocalDateTime    = LocalDateTime.now //todo: what's the performance
+  ) {
+    def expired: Boolean =
+      settings.requestTimeout.fold(false) { to ⇒ receivedAt.until(LocalDateTime.now) > to }
+  }
 
   private[queue] case class Rejected[T](work: Work[T], reason: String)
 
   case class WorkSettings(
-    timeout:                   FiniteDuration = 30.seconds,
-    lengthOfDisplayForMessage: Int            = 300
-  )
+    serviceTimeout:            FiniteDuration         = 30.seconds,
+    lengthOfDisplayForMessage: Int                    = 300,
+    atLeastOnce:               Boolean                = false,
+    requestTimeout:            Option[FiniteDuration] = None
+
+  ) {
+    requestTimeout.foreach { rt ⇒
+      assert(rt > serviceTimeout, "request timeout, if set, must be longer than service timeout")
+    }
+  }
 
   /**
    * see reference.conf

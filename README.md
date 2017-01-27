@@ -55,7 +55,9 @@ kanaloa {
       worker-pool {
        starting-pool-size = 8
       }
-      work-timeout = 3s
+      default-work-settings {
+       service-timeout = 3s
+      }
     }
   }
 }

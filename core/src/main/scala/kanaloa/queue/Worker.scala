@@ -54,7 +54,7 @@ private[queue] class Worker[T](
 
     case work: Work[T] ⇒
       if (delayBeforeNextWork.isDefined) {
-        sender ! Rejected(work, "onHold")
+        queue ! Rejected(work, "onHold")
         askMoreWork()
       } else
         sendWorkToHandler(work, 0)
@@ -69,7 +69,7 @@ private[queue] class Worker[T](
   def working(outstanding: Outstanding): Receive = handleHoldMessage orElse handleRouteeResponse(outstanding)(askMoreWork()) orElse {
     case qs: QueryStatus                  ⇒ qs reply Working
 
-    case w: Work[_]                       ⇒ sender() ! Rejected(w, "Busy")
+    case w: Work[_]                       ⇒ queue ! Rejected(w, "Busy")
 
     //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
     case Terminated(`queue`) | NoWorkLeft ⇒ context become waitingToTerminate(outstanding)
@@ -132,7 +132,7 @@ private[queue] class Worker[T](
       log.error("Received a response for a request which has already been serviced")
 
     case HandlerTimeout ⇒
-      log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.timeout} work ${outstanding.work.messageToDelegatee} abandoned")
+      log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.serviceTimeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
       onComplete
   }
@@ -163,7 +163,7 @@ private[queue] class Worker[T](
     handling.result.foreach { r ⇒
       self ! WorkResult(newWorkId, r)
     }
-    val timeout = delayedMsg(work.settings.timeout, HandlerTimeout)
+    val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout)
     val out = Outstanding(work, newWorkId, timeout, handling, retried)
     context become working(out)
 
@@ -194,9 +194,17 @@ private[queue] class Worker[T](
       metricsCollector ! Metric.WorkFailed
     }
 
-    def timeout(): Unit = {
-      done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.timeout}"))
+    def retry(): Unit = {
+      queue ! Rejected(work, "No response from service within timeout, retry.")
       cancel()
+    }
+
+    def timeout(): Unit = {
+      if (work.settings.atLeastOnce && !work.expired)
+        retry()
+      else
+        done(WorkTimedOut(s"Delegatee didn't respond within ${work.settings.serviceTimeout}"))
+
       metricsCollector ! Metric.WorkTimedOut
     }
 

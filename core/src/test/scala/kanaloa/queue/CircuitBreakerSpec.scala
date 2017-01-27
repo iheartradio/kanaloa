@@ -91,7 +91,7 @@ object CircuitBreakerSpec {
     lazy val queue = system.actorOf(
       Queue.default(
         TestProbe().ref,
-        WorkSettings(timeout = 20.milliseconds)
+        WorkSettings(serviceTimeout = 20.milliseconds)
       )
     )
 

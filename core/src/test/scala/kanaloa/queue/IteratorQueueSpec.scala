@@ -44,7 +44,7 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     }
 
     "abandon work when delegatee times out" in new QueueScope {
-      val workerPoolManager = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(timeout = 288.milliseconds)))
+      val workerPoolManager = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(serviceTimeout = 288.milliseconds)))
 
       delegatee.expectMsg(DelegateeMessage("a"))
 

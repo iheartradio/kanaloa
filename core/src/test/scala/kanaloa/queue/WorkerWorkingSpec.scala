@@ -20,7 +20,7 @@ class WorkerWorkingSpec extends WorkerSpec {
     "reject Work" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
       val work = Work("moreWork")
       worker ! work
-      expectMsg(Rejected(work, "Busy"))
+      queueProbe.expectMsg(Rejected(work, "Busy"))
     }
 
     "handle successful Work, transitions to 'idle'" in withWorkingWorker() { (worker, queueProbe, routeeProbe, work, _) ⇒
@@ -50,13 +50,13 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkFailed)
     }
 
-    "time out Work, transitions to 'idle'" in withWorkingWorker(WorkSettings(timeout = 5.milliseconds)) { (worker, queueProbe, routeeProbe, work, _) ⇒
+    "time out Work, transitions to 'idle'" in withWorkingWorker(WorkSettings(serviceTimeout = 5.milliseconds)) { (worker, queueProbe, routeeProbe, work, _) ⇒
       expectMsgType[WorkTimedOut]
       queueProbe.expectMsg(RequestWork(worker)) //asks for more Work now because it is idle
       assertWorkerStatus(worker, Worker.Idle)
     }
 
-    "report timeout work to metricsCollector'" in withWorkingWorker(WorkSettings(timeout = 5.milliseconds)) { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
+    "report timeout work to metricsCollector'" in withWorkingWorker(WorkSettings(serviceTimeout = 5.milliseconds)) { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
       expectMsgType[WorkTimedOut]
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
     }
@@ -101,14 +101,14 @@ class WorkerWorkingSpec extends WorkerSpec {
       val worker = TestActorRef[Worker[Any]](Worker.default(queueProbe.ref, handler, metricsCollectorProbe.ref))
 
       //send the first message, with an aggressive timeout, just so we can have this message timeout
-      queueProbe.send(worker, Work(RoutedMessage(routeeA.ref, "AMessage"), Some(self), WorkSettings(timeout = 1.millisecond)))
+      queueProbe.send(worker, Work(RoutedMessage(routeeA.ref, "AMessage"), Some(self), WorkSettings(serviceTimeout = 1.millisecond)))
 
       routeeA.expectMsg("AMessage")
       expectMsgType[WorkTimedOut]
 
       queueProbe.expectMsgType[RequestWork]
       //now send a message to the second actor
-      queueProbe.send(worker, Work(RoutedMessage(routeeB.ref, "BMessage"), Some(self), WorkSettings(timeout = 10.minutes)))
+      queueProbe.send(worker, Work(RoutedMessage(routeeB.ref, "BMessage"), Some(self), WorkSettings(serviceTimeout = 10.minutes)))
 
       routeeB.expectMsg("BMessage")
       //Now, have A respond, it should be ignored
