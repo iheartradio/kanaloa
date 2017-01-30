@@ -21,5 +21,5 @@ object HandlerProviderAdaptor {
   implicit def id[T, H](implicit ev: H <:< HandlerProvider[T]): HandlerProviderAdaptor[H, T] = ev
 
   implicit def fromSimpleFunction[TReq, TResp](implicit ex: ExecutionContext): HandlerProviderAdaptor[TReq ⇒ Future[TResp], TReq] =
-    (f: TReq ⇒ Future[TResp]) ⇒ HandlerProvider.single(new SimpleFunctionHandler(f, s"AnonymousFunction-$index.incrementAndGet()")) //todo: is there a better way to auto name
+    (f: TReq ⇒ Future[TResp]) ⇒ HandlerProvider.single(new SimpleFunctionHandler(f, s"AnonymousFunction-$index.incrementAndGet()"))
 }

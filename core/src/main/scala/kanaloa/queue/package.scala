@@ -18,7 +18,7 @@ package kanaloa.queue {
     messageToDelegatee: T,
     replyTo:            Option[ActorRef] = None,
     settings:           WorkSettings     = WorkSettings(),
-    receivedAt:         LocalDateTime    = LocalDateTime.now //todo: what's the performance
+    receivedAt:         LocalDateTime    = LocalDateTime.now //a < 1 microsecond cost
   ) {
     def expired: Boolean =
       settings.requestTimeout.fold(false) { to ⇒ receivedAt.until(LocalDateTime.now) > to }
