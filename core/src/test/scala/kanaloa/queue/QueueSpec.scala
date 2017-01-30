@@ -119,7 +119,6 @@ class QueueSpec extends SpecWithActorSystem {
     expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.Retiring))
     //after the the Retiring state is expired, the Queue goes away
     expectTerminated(queue, 75.milliseconds)
-    //TODO: need to have more tests for Queue <=> Worker messaging
 
   }
 }

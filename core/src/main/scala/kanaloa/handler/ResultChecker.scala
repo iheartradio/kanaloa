@@ -12,9 +12,12 @@ object ResultChecker {
    * @tparam ExpectedResultT
    * @return
    */
-  def expectType[ExpectedResultT: ClassTag]: ResultChecker[ExpectedResultT, String] = (re: Any) ⇒ re match {
-    case t: ExpectedResultT if classTag[ExpectedResultT].runtimeClass.isInstance(t) ⇒ Right(t)
-    case e ⇒ Left(Some(s"Unexpected message $e"))
+  def expectType[ExpectedResultT: ClassTag]: ResultChecker[ExpectedResultT, String] = (re: Any) ⇒ {
+    val cls = classTag[ExpectedResultT].runtimeClass
+    re match {
+      case t: ExpectedResultT if cls.isInstance(t) ⇒ Right(t)
+      case e                                       ⇒ Left(Some(s"Unexpected message $e"))
+    }
   }
 
   /**

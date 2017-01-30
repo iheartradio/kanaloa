@@ -84,7 +84,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       context become shuttingDown(reportTo, timeout)
       import context.dispatcher
       context.system.scheduler.scheduleOnce(timeout, self, ShutdownTimedOut)
-      workerPools.foreach(_._2 ! WorkerPoolManager.Shutdown(Some(self), timeout)) //todo: do not timeout workerpool shutdown
+      workerPools.foreach(_._2 ! WorkerPoolManager.Shutdown(Some(self), timeout))
     }
   }
 
@@ -94,7 +94,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       shutdown(reportBack, timeout)
     case GracePeriodDone ⇒
       inGracePeriod = false //todo: #191 reject all queued work if there is no worker pool created
-    case Terminated(`queue`) ⇒ //todo: this is only expected in pulling dispatcher. so should make it more safe in pushing( like restart queue)
+    case Terminated(`queue`) ⇒ //todo: #191 this is only expected in pulling dispatcher.
       shutdown(None, settings.workerPool.defaultShutdownTimeout)
 
     case SubscribePerformanceMetrics(actor)   ⇒ queueSampler ! Sampler.Subscribe(actor)
@@ -112,7 +112,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       val removedNames = handlers.map(_.name)
       workerPools.collect {
         case (handlerName, workerPool) if removedNames.contains(handlerName) ⇒
-          workerPool ! WorkerPoolManager.Shutdown() //todo: make the shutdown timeout configuratble
+          workerPool ! WorkerPoolManager.Shutdown(timeout = settings.workerPool.defaultShutdownTimeout)
       }
 
   }: Receive) orElse monitorWorkerPools(None, false) orElse extraReceive
@@ -161,7 +161,7 @@ object Dispatcher {
 
   }
 
-  //todo: move this out of Dispatcher object
+  //todo: maybe move this out of Dispatcher object?
   private[kanaloa] def kanaloaConfig(rootConfig: Config = ConfigFactory.empty) = {
     val referenceConfig = ConfigFactory.defaultReference(getClass.getClassLoader).getConfig("kanaloa")
 
@@ -227,6 +227,8 @@ case class PushingDispatcher[T: ClassTag](
     context.actorOf(Regulator.props(rs, queueSampler, self), "regulator")
   }
 
+  private val clz = classTag[T].runtimeClass
+  private val isAny = classTag[T] == classTag[Any]
   /**
    * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying [[Queue]] and the
    * sender will be set as the receiver of any results of the downstream [[kanaloa.handler.Handler]].  This receive will disable any acks, and in the event of an [[EnqueueRejected]],
@@ -237,10 +239,9 @@ case class PushingDispatcher[T: ClassTag](
   override def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m: T if classTag[T].runtimeClass.isInstance(m) ⇒ //todo: avoid this extra check when unnecessary (such as a method interface or the T is Any)
-
-      queueSampler ! Metric.WorkReceived
+    case m: T if isAny || clz.isInstance(m) ⇒
       dropOrEnqueue(m, sender)
+      queueSampler ! Metric.WorkReceived
     case unrecognized ⇒ sender ! WorkFailed("unrecognized request")
   }
 

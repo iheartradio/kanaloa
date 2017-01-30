@@ -19,7 +19,7 @@ import scala.concurrent.duration._
  *  of idle workers is less than [[kanaloa.queue.Sampler.SamplerSettings]]
  */
 private[kanaloa] trait WorkerPoolSampler extends Sampler {
-  mc: WorkerPoolMetricsCollector ⇒ //todo: it's using cake pattern to mixin with WorkerPoolMetricsCollector mainly due to performance reason, there might be ways to achieve more decoupled ways without hurting performance
+  mc: WorkerPoolMetricsCollector ⇒
 
   def queueSampler: ActorRef
 
