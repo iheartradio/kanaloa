@@ -517,7 +517,7 @@ object IntegrationTests {
     }
 
     def getPoolSize(rd: Dispatcher[_]): Int = {
-      rd.workerPools.head._2 ! QueryStatus() //todo: this is assuming there is only one workerPool
+      rd.workerPools.head._2 ! QueryStatus() //note: this is assuming there is only one workerPool
 
       val status = expectMsgClass(classOf[RunningStatus])
 

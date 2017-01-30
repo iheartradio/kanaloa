@@ -341,7 +341,6 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       (received.length.toDouble / numOfWork.toDouble) shouldBe 0.5 +- 0.07
     }
 
-    //todo: move this to integration test once the integration re-org test PR is merged.
     "start to reject work when worker creation fails" in new ScopeWithActor with Eventually with TestUtils.MockActors {
       import system.dispatcher
       val pd = system.actorOf(PushingDispatcher.props(
@@ -366,7 +365,6 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
 
     }
 
-    //todo: move this to integration test once the integration re-org test PR is merged. 
     "be able to pick up work after worker finally becomes available" in new ScopeWithActor with Eventually with TestUtils.MockActors {
       import scala.concurrent.ExecutionContext.Implicits.global
       val backendActorPromise = Promise[ActorRef]
