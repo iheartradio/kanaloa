@@ -15,11 +15,6 @@ class WorkerIdleSpec extends WorkerSpec {
       expectTerminated(worker)
     }
 
-    "terminate if Queue terminates" in withIdleWorker() { (worker, queueProbe, _, _) ⇒
-      queueProbe.ref ! PoisonPill
-      expectTerminated(worker)
-    }
-
     "send work to Routee and becomes Working" in withIdleWorker() { (worker, _, routeeProbe, _) ⇒
       worker ! Work("work")
       routeeProbe.expectMsg("work")

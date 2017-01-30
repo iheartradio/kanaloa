@@ -61,11 +61,6 @@ class WorkerWorkingSpec extends WorkerSpec {
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
     }
 
-    "transition to 'waitingToTerminate' if Terminated(queue)" in withWorkingWorker() { (worker, queueProbe, _, work, _) ⇒
-      queueProbe.ref ! PoisonPill
-      assertWorkerStatus(worker, Worker.WaitingToTerminate)
-    }
-
     "transition to 'waitingToTerminate' if NoWorkLeft'" in withWorkingWorker() { (worker, _, _, work, _) ⇒
       worker ! NoWorkLeft
       assertWorkerStatus(worker, Worker.WaitingToTerminate)

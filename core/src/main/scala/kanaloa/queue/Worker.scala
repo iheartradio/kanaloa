@@ -33,7 +33,6 @@ private[queue] class Worker[T](
 
   override def preStart(): Unit = {
     super.preStart()
-    context watch queue //todo: is this necessary? Maybe we should let supervisor to take care of this kind of management.
     queue ! RequestWork(self)
   }
 
@@ -60,19 +59,20 @@ private[queue] class Worker[T](
         sendWorkToHandler(work, 0)
 
     //If there is no work left, or if the Queue dies, the Worker stops as well
-    case NoWorkLeft | Terminated(`queue`) ⇒ finish("Queue reports no Work left")
+    case NoWorkLeft ⇒ finish("Queue reports no Work left")
 
     //if the Routee dies or the Worker is told to Retire, it needs to Unregister from the Queue before terminating
-    case Worker.Retire                    ⇒ becomeUnregisteringIdle()
+    case Worker.Retire ⇒
+      becomeUnregisteringIdle()
   }
 
   def working(outstanding: Outstanding): Receive = handleHoldMessage orElse handleRouteeResponse(outstanding)(askMoreWork()) orElse {
-    case qs: QueryStatus                  ⇒ qs reply Working
+    case qs: QueryStatus ⇒ qs reply Working
 
-    case w: Work[_]                       ⇒ queue ! Rejected(w, "Busy")
+    case w: Work[_]      ⇒ queue ! Rejected(w, "Busy")
 
     //if there is no work left, or if the Queue dies, the Actor must wait for the Work to finish before terminating
-    case Terminated(`queue`) | NoWorkLeft ⇒ context become waitingToTerminate(outstanding)
+    case NoWorkLeft      ⇒ context become waitingToTerminate(outstanding)
 
     case Worker.Retire ⇒
       context become waitingToTerminate(outstanding) //when busy no need to unregister, because it's not in the queue's list.
@@ -80,12 +80,12 @@ private[queue] class Worker[T](
 
   //This state waits for Work to complete, and then stops the Actor
   def waitingToTerminate(outstanding: Outstanding): Receive = handleRouteeResponse(outstanding)(finish(s"Finished work, time to retire")) orElse {
-    case qs: QueryStatus                           ⇒ qs reply WaitingToTerminate
+    case qs: QueryStatus     ⇒ qs reply WaitingToTerminate
 
     //ignore these, since all we care about is the Work completing one way or another
-    case Retire | Terminated(`queue`) | NoWorkLeft ⇒
+    case Retire | NoWorkLeft ⇒
 
-    case w: Work[_]                                ⇒ sender() ! Rejected(w, "Retiring") //safety first
+    case w: Work[_]          ⇒ sender() ! Rejected(w, "Retiring") //safety first
 
   }
 
@@ -108,6 +108,7 @@ private[queue] class Worker[T](
 
   def becomeUnregisteringIdle(): Unit = {
     queue ! Unregister(self)
+    context watch queue //queue might die first
     context become unregisteringIdle
   }
 
