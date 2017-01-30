@@ -123,7 +123,7 @@ private[queue] class Worker[T](
           outstanding.success(res)
           onComplete
 
-        case Left(e) ⇒ //todo: to be addressed by #188
+        case Left(e) ⇒
           abandon(outstanding, e)(onComplete)
       }
 

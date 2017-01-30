@@ -59,7 +59,7 @@ case class StatsDReporter(
     case DropRate(value) ⇒
       gauge("queue.dropRate", value)
 
-    case PoolUtilized(numWorkers) ⇒ //todo: move this to the worker pool sampler side.
+    case PoolUtilized(numWorkers) ⇒
       gauge("pool.utilized", numWorkers)
 
     case BurstMode(inBurst) ⇒

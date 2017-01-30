@@ -55,7 +55,7 @@ package kanaloa.queue {
     maxPoolSize:             Int            = 400,
     replenishSpeed:          FiniteDuration = 1.second,
     logRouteeRetrievalError: Boolean        = true,
-    defaultShutdownTimeout:  FiniteDuration = 30.seconds //todo: move this to the dispatcher settings
+    defaultShutdownTimeout:  FiniteDuration = 30.seconds
   )
 
   /**
