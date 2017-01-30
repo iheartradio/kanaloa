@@ -6,7 +6,7 @@ import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.handler.{Handler, GeneralActorRefHandler}
 import kanaloa.queue.Queue.RequestWork
 import kanaloa.SpecWithActorSystem
-import org.scalatest.{ShouldMatchers, WordSpecLike, OptionValues}
+import org.scalatest.{Matchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 case class Result(value: Any)
@@ -60,7 +60,7 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
   }
 }
 
-class WorkerFunctionSpec extends WordSpecLike with ShouldMatchers {
+class WorkerFunctionSpec extends WordSpecLike with Matchers {
   import Worker.descriptionOf
   "descriptionOf" should {
     "not truncate if it's below maxLength" in {

@@ -358,11 +358,11 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
                 |}""".stripMargin
         )
       ))
-
+      implicit val pc = PatienceConfig(5.seconds, 40.milliseconds)
       eventually {
         (1 to 100).foreach(_ ⇒ pd ! "a work")
         expectMsgType[WorkRejected](20.milliseconds)
-      }(PatienceConfig(5.seconds, 40.milliseconds))
+      }
 
     }
 
@@ -384,19 +384,20 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
                 |}""".stripMargin
         )
       ))
+      implicit val pc = PatienceConfig(5.seconds, 40.milliseconds)
 
       //reach the point that it starts to reject work
       eventually {
         (1 to 30).foreach(_ ⇒ dispatcher ! "a work")
         expectMsgType[WorkRejected](20.milliseconds)
-      }(PatienceConfig(5.seconds, 40.milliseconds))
+      }
 
       backendActorPromise.complete(Success(system.actorOf(TestActors.echoActorProps)))
       //recovers after the worker become available
       eventually {
         dispatcher ! "a work"
         expectMsg(10.milliseconds, "a work")
-      }(PatienceConfig(5.seconds, 40.milliseconds))
+      }
 
     }
 

@@ -107,7 +107,7 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
 
       val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
 
-      scaleCmd.reason.value shouldBe "exploring"
+      scaleCmd.reason.value should be("exploring")
     }
 
     "does not optimize when not currently maxed" in new AutothrottleScope {

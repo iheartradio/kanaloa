@@ -16,12 +16,12 @@ import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.metrics.StatsDClient
 import kanaloa.queue.WorkerPoolManager.{RunningStatus, ShuttingDown}
 import kanaloa.util.Java8TimeExtensions._
-import org.scalatest.{ShouldMatchers, WordSpecLike}
+import org.scalatest.{Matchers, WordSpecLike}
 
 import scala.concurrent.duration._
 import scala.language.reflectiveCalls
 
-trait IntegrationSpec extends WordSpecLike with ShouldMatchers {
+trait IntegrationSpec extends WordSpecLike with Matchers {
 
   val verbose = false
 

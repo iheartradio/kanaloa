@@ -7,7 +7,7 @@ import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded, Subscrib
 import akka.agent
 import kanaloa.util.AnyEq._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Promise, ExecutionContext, Future}
 
 trait HandlerProvider[-T] {
   def handlers: List[Handler[T]]
@@ -68,16 +68,23 @@ trait AgentHandlerProvider[T] extends HandlerProvider[T] {
   protected def broadcast(change: HandlerChange): Unit =
     agentSubscribers.get.foreach(_(change))
 
-  //todo: find a way to report failure if it's a dup, add test
-  protected def addHandler(handler: Handler[T]): Unit = {
+  protected def addHandler(handler: Handler[T]): Future[Boolean] = {
+    val resultP = Promise[Boolean]()
     agentHandlers.alter { current ⇒
-      if (!current.map(_.name).contains(handler.name))
+      if (!current.map(_.name).contains(handler.name)) {
+        resultP.trySuccess(true)
         handler :: current
-      else
+      } else {
+        resultP.trySuccess(false)
         current
-    }.foreach { _ ⇒
-      broadcast(HandlersAdded(List(handler)))
+      }
     }
+    resultP.future.map { result ⇒
+      if (result)
+        broadcast(HandlersAdded(List(handler)))
+      result
+    }
+
   }
 
   protected def removeHandler(handler: Handler[T]): Unit = {

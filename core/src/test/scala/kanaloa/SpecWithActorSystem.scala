@@ -7,7 +7,7 @@ import org.scalatest.concurrent.ScaledTimeSpans
 import org.scalatest._
 
 abstract class SpecWithActorSystem(_sys: ActorSystem) extends TestKit(_sys)
-  with ImplicitSender with WordSpecLike with BeforeAndAfterAll with ShouldMatchers with ScaledTimeSpans {
+  with ImplicitSender with WordSpecLike with BeforeAndAfterAll with Matchers with ScaledTimeSpans {
 
   def this() = this(ActorSystem("Spec"))
 
