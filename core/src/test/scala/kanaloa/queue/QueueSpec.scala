@@ -2,7 +2,7 @@ package kanaloa.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.ApiProtocol.{WorkRejected, ShutdownSuccessfully}
+import kanaloa.ApiProtocol.{WorkTimedOut, WorkRejected, ShutdownSuccessfully}
 import kanaloa.handler.GeneralActorRefHandler
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
@@ -154,6 +154,38 @@ class QueueSpec extends SpecWithActorSystem {
     expectMsg(WorkRejected("discard them"))
     expectMsg(WorkRejected("discard them"))
     expectNoMsg()
+
+  }
+
+  "abandon work directly when the work is stale" in new QueueScope {
+    val queue = defaultQueue(WorkSettings(serviceTimeout = 95.milliseconds, requestTimeout = Some(100.milliseconds)))
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
+
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    queue ! Enqueue("b", sendResultsTo = None)
+    queue ! Enqueue("c", sendResultsTo = Some(self))
+
+    service.expectMsg("a")
+    expectNoMsg(60.milliseconds)
+    service.reply(MessageProcessed("reply for A"))
+    expectMsg("reply for A")
+
+    queue ! Enqueue("d", sendResultsTo = Some(self))
+
+    service.expectMsg("b")
+    expectNoMsg(60.milliseconds) //120ms passed
+    service.reply(MessageProcessed("replyB")) //the worker will now try to grab work c but it is stale
+
+    service.expectMsg("d") //service gets d instead
+    expectMsgType[WorkTimedOut]
+
+    //back to normal business
+    queue ! Enqueue("e", sendResultsTo = Some(self))
+    service.reply(MessageProcessed("replyD"))
+    expectMsg("replyD")
+    service.expectMsg("e") //service gets d instead
+    service.reply(MessageProcessed("replyE"))
+    expectMsg("replyE")
 
   }
 }

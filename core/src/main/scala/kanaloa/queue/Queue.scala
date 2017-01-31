@@ -3,7 +3,7 @@ package kanaloa.queue
 import java.time.LocalDateTime
 
 import akka.actor._
-import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
+import kanaloa.ApiProtocol.{WorkTimedOut, QueryStatus, WorkRejected}
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue._
@@ -134,9 +134,16 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
       (worker, queuedWorkers) ← state.queuedWorkers.dequeueOption
       (work, workBuffer) ← state.workBuffer.dequeueOption
     } yield {
-      worker ! work
-      context unwatch worker
-      state.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = state.countOfWorkSent + 1)
+      if (!work.expired) {
+        worker ! work
+        context unwatch worker
+        state.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = state.countOfWorkSent + 1)
+      } else {
+        work.replyTo.foreach(_ ! WorkTimedOut(s"Stale work: stayed too long in the queue than request timeout ${workSettings.requestTimeout}"))
+        metricsCollector ! Metric.WorkShedded
+        state.copy(workBuffer = workBuffer)
+      }
+
     }) match {
       case Some(newState) ⇒ dispatchWork(newState, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒

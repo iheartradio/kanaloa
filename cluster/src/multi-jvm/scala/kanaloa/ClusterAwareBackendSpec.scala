@@ -209,7 +209,7 @@ class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
           _ == EchoMessage(1)
         )
 
-        withClue(s"${failures.size} requests failed: ${failures.distinct.mkString(", ")} ") {
+        withClue(s"${failures.size} requests failed: ${failures.distinct.map(f => s"${f.getClass}: $f").mkString(", ")} ") {
           succeeds.length shouldBe totalMsgs
         }
 

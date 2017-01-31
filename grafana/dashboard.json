@@ -63,6 +63,11 @@
               "alias": "/rejected/",
               "color": "#C15C17",
               "linewidth": 5
+            },
+            {
+              "alias": "/shedded/",
+              "color": "#F17C37",
+              "linewidth": 5
             }
           ],
           "span": 6,
@@ -77,6 +82,11 @@
             {
               "refId": "B",
               "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.rejected.rate, '.*$namespace.(.*).work.rejected.rate', '\\1 (rejected)')",
+              "textEditor": true
+            },
+            {
+              "refId": "C",
+              "target": "aliasSub(stats.counters.$namespace.$dispatcherName.$hostName.work.shedded.rate, '.*$namespace.(.*).work.shedded.rate', '\\1 (shedded)')",
               "textEditor": true
             }
           ],

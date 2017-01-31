@@ -41,9 +41,9 @@ class AgentHandlerProviderSpec extends AsyncWordSpec with Matchers with Eventual
 
       val newHandler = new TestHandler("Hanlder1")
 
-      h.addHandler(newHandler).map { _ ⇒
-        changes should contain(HandlersAdded(List(newHandler)))
-      }
+      h.addHandler(newHandler)
+
+      eventually(changes should contain(HandlersAdded(List(newHandler))))
 
     }
 
@@ -54,14 +54,13 @@ class AgentHandlerProviderSpec extends AsyncWordSpec with Matchers with Eventual
 
       h.subscribe { c ⇒ changes = c :: changes }
 
-      val rF = for {
+      for {
         _ ← h.addHandler(new TestHandler("Hanlder1"))
         r ← h.addHandler(new TestHandler("Hanlder1"))
       } yield r
 
-      rF.map { _ ⇒
-        changes.length should be(1)
-      }
+      Thread.sleep(100)
+      changes.length should be(1)
     }
   }
 }

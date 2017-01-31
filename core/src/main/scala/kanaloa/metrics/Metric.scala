@@ -17,6 +17,8 @@ object Metric {
 
   case object WorkRejected extends Event with QueueMetric
 
+  case object WorkShedded extends Event with QueueMetric
+
   case class DropRate(value: Double) extends Status with QueueMetric
   case class BurstMode(inBurst: Boolean) extends Status with QueueMetric
   case class WorkQueueLength(length: Int) extends Status with QueueMetric

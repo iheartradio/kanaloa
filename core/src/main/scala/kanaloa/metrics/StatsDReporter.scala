@@ -39,6 +39,7 @@ case class StatsDReporter(
   def report(metric: Metric): Unit = metric match {
     case WorkReceived ⇒ increment("work.received")
     case WorkRejected ⇒ increment("work.rejected", Math.min(1d, eventSampleRate * 3d))
+    case WorkShedded  ⇒ increment("work.shedded", Math.min(1d, eventSampleRate * 3d))
 
     case WorkCompleted(processTime) ⇒
       increment("work.completed")
