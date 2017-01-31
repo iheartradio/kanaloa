@@ -149,13 +149,13 @@ object Dispatcher {
   private case object ShutdownTimedOut
 
   case class Settings(
-    updateInterval:      FiniteDuration                 = 1.second,
-    defaultWorkSettings: WorkSettings,
-    initialGracePeriod:  FiniteDuration                 = 1.second,
-    workerPool:          WorkerPoolSettings,
-    regulator:           Option[Regulator.Settings],
-    circuitBreaker:      Option[CircuitBreakerSettings],
-    autothrottle:        Option[AutothrottleSettings]
+    updateInterval:     FiniteDuration                 = 1.second,
+    workSettings:       WorkSettings,
+    initialGracePeriod: FiniteDuration                 = 1.second,
+    workerPool:         WorkerPoolSettings,
+    regulator:          Option[Regulator.Settings],
+    circuitBreaker:     Option[CircuitBreakerSettings],
+    autothrottle:       Option[AutothrottleSettings]
   ) {
     val samplerSettings = Sampler.SamplerSettings(updateInterval)
 
@@ -221,7 +221,7 @@ case class PushingDispatcher[T: ClassTag](
   extends Dispatcher[T] {
   val random = new Random(23)
   var droppingRate: DroppingRate = DroppingRate(0)
-  protected lazy val queueProps = Queue.default(queueSampler, settings.defaultWorkSettings)
+  protected lazy val queueProps = Queue.default(queueSampler, settings.workSettings)
 
   settings.regulator.foreach { rs ⇒
     context.actorOf(Regulator.props(rs, queueSampler, self), "regulator")
@@ -284,7 +284,7 @@ case class PullingDispatcher[T](
 ) extends Dispatcher[T] {
   protected def queueProps = QueueOfIterator.props(
     iterator,
-    settings.defaultWorkSettings,
+    settings.workSettings,
     queueSampler,
     sendResultsTo
   )

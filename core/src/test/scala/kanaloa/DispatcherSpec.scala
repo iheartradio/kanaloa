@@ -418,7 +418,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
         """
               kanaloa {
                 default-dispatcher {
-                  default-work-settings {
+                  work-settings {
                     service-timeout = 1s
                   }
                 }
@@ -429,7 +429,7 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
             """
 
       val (settings, _) = Dispatcher.readConfig("example", ConfigFactory.parseString(cfgStr), None)
-      settings.defaultWorkSettings.serviceTimeout === 1.second
+      settings.workSettings.serviceTimeout === 1.second
     }
 
     "fall back to default-dispatcher settings when a field is missing in the dispatcher section" in {

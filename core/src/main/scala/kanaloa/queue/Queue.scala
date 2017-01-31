@@ -15,7 +15,7 @@ import scala.collection.immutable.{Queue ⇒ ScalaQueue}
 import scala.concurrent.duration._
 
 trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
-  def defaultWorkSettings: WorkSettings
+  def workSettings: WorkSettings
   def metricsCollector: ActorRef
 
   val initialState = InternalState()
@@ -36,7 +36,7 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
   final def processing(state: InternalState): Receive =
     handleWork(state, false) orElse {
       case e @ Enqueue(workMessage: T, sendAcks, sendResultsTo) ⇒
-        val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
+        val newWork = Work(workMessage, sendResultsTo, workSettings)
         val newBuffer: ScalaQueue[Work[T]] = state.workBuffer.enqueue(newWork)
         val newStatus: InternalState = dispatchWork(state.copy(workBuffer = newBuffer))
         if (sendAcks) {
@@ -148,17 +148,17 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
 }
 
 case class DefaultQueue[T](
-  defaultWorkSettings: WorkSettings,
-  metricsCollector:    ActorRef
+  workSettings:     WorkSettings,
+  metricsCollector: ActorRef
 ) extends Queue[T] {
   def fullyUtilized(state: InternalState): Boolean = state.queuedWorkers.length == 0 && state.workBuffer.length > 0
 }
 
 class QueueOfIterator[T](
-  private val iterator:    Iterator[T],
-  val defaultWorkSettings: WorkSettings,
-  val metricsCollector:    ActorRef,
-  sendResultsTo:           Option[ActorRef] = None
+  private val iterator: Iterator[T],
+  val workSettings:     WorkSettings,
+  val metricsCollector: ActorRef,
+  sendResultsTo:        Option[ActorRef] = None
 ) extends Queue[T] {
   import QueueOfIterator._
 
@@ -185,14 +185,14 @@ class QueueOfIterator[T](
 
 object QueueOfIterator {
   def props[T](
-    iterator:            Iterator[T],
-    defaultWorkSettings: WorkSettings,
-    metricsCollector:    ActorRef,
-    sendResultsTo:       Option[ActorRef] = None
+    iterator:         Iterator[T],
+    workSettings:     WorkSettings,
+    metricsCollector: ActorRef,
+    sendResultsTo:    Option[ActorRef] = None
   ): Props =
     Props(new QueueOfIterator(
       iterator,
-      defaultWorkSettings,
+      workSettings,
       metricsCollector,
       sendResultsTo
     )).withDeploy(Deploy.local)
