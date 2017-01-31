@@ -248,14 +248,14 @@ class ResizingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
       )
       workerPoolManager ! ScaleTo(1)
       expectNoMsg(20.millisecond) //wait for retire to take effect
-      delegatee.expectMsgType[DelegateeMessage]
+      service.expectMsgType[DelegateeMessage]
 
-      delegatee.reply(MessageProcessed("ar"))
+      service.reply(MessageProcessed("ar"))
 
       expectMsg("ar")
-      delegatee.expectMsgType[DelegateeMessage]
+      service.expectMsgType[DelegateeMessage]
 
-      delegatee.reply(MessageProcessed("br"))
+      service.reply(MessageProcessed("br"))
       expectMsg("br")
 
     }
@@ -268,7 +268,7 @@ class ResizingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
         ),
         numberOfWorkers = 2
       )
-      delegatee.expectMsgType[DelegateeMessage]
+      service.expectMsgType[DelegateeMessage]
 
       expectNoMsg(20.millisecond) //wait for both workers get occupied
 
@@ -276,13 +276,13 @@ class ResizingWhenWorkingSpec extends SpecWithActorSystem with Eventually {
 
       expectNoMsg(20.millisecond) //wait for one of the workers got into retiring
 
-      delegatee.reply(MessageProcessed("ar"))
+      service.reply(MessageProcessed("ar"))
 
-      delegatee.expectMsgType[DelegateeMessage]
+      service.expectMsgType[DelegateeMessage]
 
       expectMsg("ar")
 
-      delegatee.reply(MessageProcessed("br"))
+      service.reply(MessageProcessed("br"))
       expectMsg("br")
 
     }

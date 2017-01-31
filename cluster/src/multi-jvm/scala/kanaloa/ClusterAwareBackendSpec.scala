@@ -37,6 +37,7 @@ object ClusterAwareBackendSpec extends ClusterConfig {
     """
       |kanaloa {
       |  default-dispatcher {
+      |  initial-grace-period = 20s #cluster handler needs more time to boot up.
       |    worker-pool.starting-pool-size = 2
       |  }
       |}

@@ -30,9 +30,9 @@ object QueueTestUtils {
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 
-    val delegatee = TestProbe()
+    val service = TestProbe()
 
-    val handlerProvider = HandlerProvider.actorRef("test", delegatee.ref)(resultChecker)
+    val handlerProvider = HandlerProvider.actorRef("test", service.ref)(resultChecker)
 
     def defaultWorkerPoolProps(
       queue:            QueueRef,
@@ -40,7 +40,7 @@ object QueueTestUtils {
       metricsCollector: ActorRef           = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref, SamplerSettings(), None))
     ) = WorkerPoolManager.default(
       queue,
-      TestUtils.HandlerProviders.simpleHandler(delegatee.ref, resultChecker),
+      TestUtils.HandlerProviders.simpleHandler(service.ref, resultChecker),
       settings,
       WorkerFactory.default,
       new WorkerPoolSamplerFactory {

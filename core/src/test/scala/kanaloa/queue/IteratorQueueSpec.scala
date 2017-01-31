@@ -15,27 +15,27 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     "Process through a list of tasks in sequence with one worker" in new QueueScope {
       val workerPoolManager = initQueue(iteratorQueue(List("a", "b", "c").iterator))
 
-      delegatee.expectMsg(DelegateeMessage("a"))
-      delegatee.reply(MessageProcessed("a"))
-      delegatee.expectMsg(DelegateeMessage("b"))
-      delegatee.reply(MessageProcessed("b"))
-      delegatee.expectMsg(DelegateeMessage("c"))
-      delegatee.reply(MessageProcessed("c"))
+      service.expectMsg(DelegateeMessage("a"))
+      service.reply(MessageProcessed("a"))
+      service.expectMsg(DelegateeMessage("b"))
+      service.reply(MessageProcessed("b"))
+      service.expectMsg(DelegateeMessage("c"))
+      service.reply(MessageProcessed("c"))
     }
 
     "shutdown with all outstanding work done from the queue side" in new QueueScope {
       val workerPoolManager = initQueue(iteratorQueue(List("a", "b", "c", "d").iterator, sendResultsTo = Some(self)))
 
-      delegatee.expectMsg(DelegateeMessage("a"))
-      delegatee.reply(MessageProcessed("a"))
-      delegatee.expectMsg(DelegateeMessage("b"))
+      service.expectMsg(DelegateeMessage("a"))
+      service.reply(MessageProcessed("a"))
+      service.expectMsg(DelegateeMessage("b"))
 
       workerPoolManager ! Shutdown(Some(self))
 
       expectMsg("a")
       expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      delegatee.reply(MessageProcessed("b"))
+      service.reply(MessageProcessed("b"))
 
       expectMsg("b")
 
@@ -46,11 +46,11 @@ class IteratorQueueSpec extends SpecWithActorSystem {
     "abandon work when delegatee times out" in new QueueScope {
       val workerPoolManager = initQueue(iteratorQueue(List("a", "b").iterator, WorkSettings(serviceTimeout = 288.milliseconds)))
 
-      delegatee.expectMsg(DelegateeMessage("a"))
+      service.expectMsg(DelegateeMessage("a"))
 
-      delegatee.expectNoMsg(250.milliseconds)
+      service.expectNoMsg(250.milliseconds)
 
-      delegatee.expectMsg(DelegateeMessage("b"))
+      service.expectMsg(DelegateeMessage("b"))
       watch(workerPoolManager)
 
       workerPoolManager ! Shutdown()

@@ -22,13 +22,13 @@ class QueueSpec extends SpecWithActorSystem {
       val queue = defaultQueue()
       initQueue(queue, numberOfWorkers = 3)
 
-      delegatee.expectNoMsg(40.milliseconds)
+      service.expectNoMsg(40.milliseconds)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+      service.expectMsg("b")
 
     }
 
@@ -37,14 +37,14 @@ class QueueSpec extends SpecWithActorSystem {
       initQueue(queue, numberOfWorkers = 2)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+      service.expectMsg("b")
 
       queue ! Enqueue("c")
 
-      delegatee.expectNoMsg(100.milliseconds)
+      service.expectNoMsg(100.milliseconds)
     }
 
     "reuse workers" in new QueueScope {
@@ -52,15 +52,15 @@ class QueueSpec extends SpecWithActorSystem {
       initQueue(queue, numberOfWorkers = 2)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+      service.expectMsg("a")
+      service.reply(MessageProcessed("a"))
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageProcessed("b"))
+      service.expectMsg("b")
+      service.reply(MessageProcessed("b"))
 
       queue ! Enqueue("c")
-      delegatee.expectMsg("c")
+      service.expectMsg("c")
     }
 
     "shutdown with all outstanding work done" taggedAs (shutdown) in new QueueScope {
@@ -70,13 +70,13 @@ class QueueSpec extends SpecWithActorSystem {
 
       queue ! Enqueue("a")
 
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
       workerPoolManager ! Shutdown(Some(self))
 
       expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      delegatee.reply(MessageProcessed("a"))
+      service.reply(MessageProcessed("a"))
 
       expectMsg(ShutdownSuccessfully)
     }
@@ -88,7 +88,7 @@ class QueueSpec extends SpecWithActorSystem {
 
     queue ! Enqueue("a", sendAcks = true)
     expectMsg(WorkEnqueued)
-    delegatee.expectMsg("a")
+    service.expectMsg("a")
   }
 
   "send results to an actor" in new QueueScope {
@@ -99,8 +99,8 @@ class QueueSpec extends SpecWithActorSystem {
 
     queue ! Enqueue("a", sendResultsTo = Some(sendProbe.ref))
 
-    delegatee.expectMsg("a")
-    delegatee.reply(MessageProcessed("response"))
+    service.expectMsg("a")
+    service.reply(MessageProcessed("response"))
     sendProbe.expectMsg("response")
   }
 
@@ -109,9 +109,9 @@ class QueueSpec extends SpecWithActorSystem {
     watch(queue)
     val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
     queue ! Enqueue("a")
-    delegatee.expectMsg("a")
+    service.expectMsg("a")
     queue ! Enqueue("b")
-    delegatee.expectNoMsg()
+    service.expectNoMsg()
     //"b" shoud get buffered, since there is only one worker, who is
     //has not "finished" with "a" (we didn't have the probe send back the finished message to the Worker)
     queue ! Retire(50.milliseconds) //give this some time to kill itself
@@ -119,6 +119,25 @@ class QueueSpec extends SpecWithActorSystem {
     expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.Retiring))
     //after the the Retiring state is expired, the Queue goes away
     expectTerminated(queue, 75.milliseconds)
+
+  }
+
+  "reject all work still in queue when retiring timed out" in new QueueScope {
+    val queue = defaultQueue()
+
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
+
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    service.expectMsg("a")
+    queue ! Enqueue("b", sendResultsTo = Some(self))
+    service.expectNoMsg()
+    //message "a" is received by the service,  message "b" is still in the queue
+
+    queue ! Retire(100.milliseconds)
+
+    expectNoMsg(80.milliseconds) //no rejection within the timeout
+
+    expectMsgType[WorkRejected]
 
   }
 
@@ -172,18 +191,18 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
       queue ! Enqueue("a")
 
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+      service.expectMsg("a")
+      service.reply(MessageProcessed("a"))
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageFailed)
+      service.expectMsg("b")
+      service.reply(MessageFailed)
 
       queue ! Enqueue("c")
-      delegatee.expectMsg("c") //timeout this one
+      service.expectMsg("c") //timeout this one
 
       queue ! Enqueue("d")
-      delegatee.expectMsg("d")
+      service.expectMsg("d")
 
       eventually {
         receivedMetrics should contain allOf (Metric.WorkFailed, Metric.WorkTimedOut)

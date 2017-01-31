@@ -63,8 +63,9 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(state, true) orElse {
       case e @ Enqueue(_, _, _) ⇒ sender() ! EnqueueRejected(e, Queue.EnqueueRejected.Retiring)
-      case RetiringTimeout ⇒ finish(state, "Forcefully 122" +
-        "retire after timed out")
+      case RetiringTimeout ⇒
+        finish(discardAll(state, "retiring timed out"), "Forcefully 122" +
+          "retire after timed out")
     }
 
   private def finish(state: InternalState, withMessage: String): Unit = {
@@ -103,13 +104,16 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
           r.work +: state.workBuffer))
 
       case DiscardAll(reason) ⇒
-        log.warning(s"""All ${state.workBuffer.size} queued work are discarded, reason being "$reason" """)
-        state.workBuffer.foreach { work ⇒
-          work.replyTo.foreach(_ ! WorkRejected(reason))
-        }
-        next(state.copy(workBuffer = ScalaQueue.empty))
-
+        next(discardAll(state, reason))
     }
+  }
+
+  private def discardAll(state: InternalState, reason: String): InternalState = {
+    log.warning(s"""All ${state.workBuffer.size} queued work are discarded, reason being "$reason" """)
+    state.workBuffer.foreach { work ⇒
+      work.replyTo.foreach(_ ! WorkRejected(reason))
+    }
+    state.copy(workBuffer = ScalaQueue.empty)
   }
 
   /**
