@@ -11,7 +11,7 @@ import Regulator.DroppingRate
 import kanaloa.handler.HandlerProvider.{HandlersRemoved, HandlersAdded}
 import kanaloa.handler.{Handler, HandlerProviderAdaptor, HandlerProvider}
 import kanaloa.metrics.{StatsDClient, Metric, Reporter}
-import kanaloa.queue.Queue.{Retire, Enqueue, EnqueueRejected}
+import kanaloa.queue.Queue.{DiscardAll, Retire, Enqueue, EnqueueRejected}
 import kanaloa.queue.WorkerPoolManager.{CircuitBreakerFactory, WorkerPoolSamplerFactory, WorkerFactory, AutothrottlerFactory}
 import kanaloa.queue._
 import kanaloa.util.MessageScheduler
@@ -93,8 +93,10 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       queue ! Retire
       shutdown(reportBack, timeout)
     case GracePeriodDone ⇒
-      inGracePeriod = false //todo: #191 reject all queued work if there is no worker pool created
-    case Terminated(`queue`) ⇒ //todo: #191 this is only expected in pulling dispatcher.
+      if (workerPools.isEmpty && inGracePeriod)
+        queue ! DiscardAll(s"no handlers are available after a grace period of ${settings.initialGracePeriod}")
+      inGracePeriod = false
+    case Terminated(`queue`) ⇒ //todo: #192 this is only expected in pulling dispatcher.
       shutdown(None, settings.workerPool.defaultShutdownTimeout)
 
     case SubscribePerformanceMetrics(actor)   ⇒ queueSampler ! Sampler.Subscribe(actor)

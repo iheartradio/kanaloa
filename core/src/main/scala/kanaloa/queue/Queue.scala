@@ -14,7 +14,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{Queue ⇒ ScalaQueue}
 import scala.concurrent.duration._
 
-trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
+private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
   def workSettings: WorkSettings
   def metricsCollector: ActorRef
 
@@ -101,6 +101,14 @@ trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
         log.debug(s"work rejected by worker, reason given by worker is '${r.reason}'")
         dispatchWorkAndNext(state.copy(workBuffer =
           r.work +: state.workBuffer))
+
+      case DiscardAll(reason) ⇒
+        log.warning(s"""All ${state.workBuffer.size} queued work are discarded, reason being "$reason" """)
+        state.workBuffer.foreach { work ⇒
+          work.replyTo.foreach(_ ! WorkRejected(reason))
+        }
+        next(state.copy(workBuffer = ScalaQueue.empty))
+
     }
   }
 
@@ -226,7 +234,7 @@ object QueueOfIterator {
 
 }
 
-object Queue {
+private[kanaloa] object Queue {
 
   case class RequestWork(requester: ActorRef)
   private case object SubmitReport
@@ -244,6 +252,8 @@ object Queue {
 
   case object WorkEnqueued
   case object Unregistered
+
+  case class DiscardAll(reason: String)
 
   case class Unregister(worker: WorkerRef)
 

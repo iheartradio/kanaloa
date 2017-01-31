@@ -2,7 +2,7 @@ package kanaloa.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.ApiProtocol.{ShutdownSuccessfully}
+import kanaloa.ApiProtocol.{WorkRejected, ShutdownSuccessfully}
 import kanaloa.handler.GeneralActorRefHandler
 import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
@@ -119,6 +119,22 @@ class QueueSpec extends SpecWithActorSystem {
     expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.Retiring))
     //after the the Retiring state is expired, the Queue goes away
     expectTerminated(queue, 75.milliseconds)
+
+  }
+
+  "reject all work when commanded to" in new QueueScope {
+    val queue = defaultQueue()
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    queue ! Enqueue("b", sendResultsTo = Some(self))
+    queue ! Enqueue("c", sendResultsTo = Some(self))
+    queue ! Enqueue("d", sendResultsTo = Some(self))
+
+    queue ! Queue.DiscardAll("discard them")
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectNoMsg()
 
   }
 }

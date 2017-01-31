@@ -12,7 +12,7 @@ import kanaloa.metrics.{StatsDClient, Metric, StatsDReporter}
 import kanaloa.queue.Result
 import kanaloa.queue.QueueTestUtils.MessageProcessed
 import kanaloa.queue._
-import org.scalatest.OptionValues
+import org.scalatest.{Tag, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.duration._
@@ -189,6 +189,46 @@ class DispatcherSpec extends SpecWithActorSystem with OptionValues {
       dispatcher ! "Baa"
       serviceTwo.expectMsg("Baa")
       serviceTwo.expectMsg("Baa")
+
+    }
+
+    "accept messages within grace period even when no handlers are available" taggedAs (Tag("grace")) in new ScopeWithActor {
+      val handlerProvider = new MockHandlerProvider()
+
+      val dispatcher = system.actorOf(
+        Props(PushingDispatcher("test", fixedWorkerPoolSettings(2).copy(initialGracePeriod = 200.milliseconds), handlerProvider, None))
+      )
+      val service = TestProbe()
+      dispatcher ! "Moo"
+      dispatcher ! "Moo"
+
+      service.expectNoMsg(50.milliseconds)
+      service.expectNoMsg(50.milliseconds)
+
+      handlerProvider.createHandler(service) //add handler before grace period ends
+
+      service.expectMsg("Moo")
+      service.expectMsg("Moo")
+
+    }
+
+    "reject messages after grace period when no handlers are available" taggedAs (Tag("grace")) in new ScopeWithActor {
+      val handlerProvider = new MockHandlerProvider()
+
+      val dispatcher = system.actorOf(
+        Props(PushingDispatcher("test", fixedWorkerPoolSettings(2).copy(initialGracePeriod = 100.milliseconds), handlerProvider, None))
+      )
+
+      dispatcher ! "Moo"
+      dispatcher ! "Moo"
+
+      expectNoMsg(80.milliseconds)
+
+      expectMsgType[WorkRejected]
+      expectMsgType[WorkRejected]
+
+      dispatcher ! "Bar" //continue rejecting message after grace period
+      expectMsgType[WorkRejected]
 
     }
 
