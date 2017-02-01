@@ -60,7 +60,7 @@ lazy val stressBackend = project.in(file("./stress/backend"))
   .settings(moduleName := "kanaloa-stress-backend")
   .settings(noPublishing:_*)
   .settings(
-    libraryDependencies ++= Dependencies.akkaThrottler
+    libraryDependencies ++= Dependencies.akkaThrottler ++ Dependencies.akkaHttp
   )
 
 lazy val stressFrontend = project.in(file("./stress/frontend"))

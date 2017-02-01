@@ -70,10 +70,10 @@ object MockBackend {
     def receive = if (throttle) throttled else direct
 
     val throttled: Receive = {
-      case Request("overflow") ⇒
+      case Unresponsive ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
         context become overflow
-      case Request("error") ⇒
+      case ErrorOut ⇒
         log.warning("Error command received. Switching to error mode.")
         context become error
       case Request(msg) ⇒
@@ -110,21 +110,21 @@ object MockBackend {
     }
 
     val overflow: Receive = {
-      case Request("throttled") ⇒
+      case BackOnline ⇒
         log.info("Back command received. Switching back to normal mode.")
         context become throttled
       case _ => //just pretend to be dead
     }
 
     val error: Receive = {
-      case Request("throttled") ⇒
+      case BackOnline ⇒
         log.info("Back command received. Switching back to normal mode.")
         context become throttled
       case _ => sender ! Error("in error mode")
     }
 
     val direct: Receive = {
-      case Request("overflow") ⇒
+      case Unresponsive ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
         context become overflow
       case Request(m) => sender ! Respond(m)
@@ -141,6 +141,11 @@ object MockBackend {
   }
 
   case class Request(msg: String)
+  sealed trait ControlCommand
+  case object Unresponsive extends ControlCommand
+  case object ErrorOut extends ControlCommand
+  case object BackOnline extends ControlCommand
+
   case class Error(msg: String)
   case class Respond(msg: String)
   case class Petition(msg: String, replyTo: ActorRef, latency: FiniteDuration)

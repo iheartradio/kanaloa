@@ -11,7 +11,6 @@ import kanaloa.ApiProtocol.{ WorkRejected, WorkTimedOut, WorkFailed }
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
 import kanaloa.handler.HandlerProvider
 import kanaloa.metrics.StatsDClient
-import kanaloa.stress.backend.BackendApp._
 import kanaloa.stress.backend.MockBackend
 import kanaloa.util.JavaDurationConverters._
 import scala.util.{ Failure, Success }
@@ -21,7 +20,6 @@ import kanaloa.{ ClusterAwareHandlerProvider, PushingDispatcher }
 import scala.concurrent.duration._
 
 class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
-
   lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
   lazy val metricsConfig = statsDHostO.map { _ ⇒
     s"""
@@ -133,17 +131,20 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
   }
 }
 
-object HttpService extends App {
-  val inCluster = args.headOption.map(_.toBoolean).getOrElse(true)
-  println("Starting http service " + (if (inCluster) " in cluster" else ""))
+object HttpService {
 
-  val service = new HttpService(inCluster, None)
-  println(s"Server online at http://localhost:8081/\nPress 'c' and RETURN to stop...")
+  def main(args: Array[String]): Unit = {
+    val inCluster = args.headOption.map(_.toBoolean).getOrElse(true)
+    println("Starting http service " + (if (inCluster) " in cluster" else ""))
 
-  while (readLine() != "c") {}
-  println(s"Shutting down http service.")
+    val service = new HttpService(inCluster, None)
+    println(s"Server online at http://localhost:8081/\nPress 'c' and RETURN to stop...")
 
-  service.close()
+    while (readLine() != "c") {}
+    println(s"Shutting down http service.")
+
+    service.close()
+  }
 
 }
 
