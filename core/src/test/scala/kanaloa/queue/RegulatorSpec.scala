@@ -53,9 +53,20 @@ class RegulatorSpec extends SpecWithActorSystem {
       regulator ! sample() //starts the regulator
       regulator ! sample()
 
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
-      metricsCollector.expectMsgType[Metric.DropRate]
-      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
+      val metrics = List(
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric]
+      )
+
+      metrics.collect {
+        case m: Metric.WorkQueueExpectedWaitTime ⇒ 1
+        case m: Metric.DropRate                  ⇒ 2
+        case m: Metric.BurstMode                 ⇒ 3
+        case _                                   ⇒ 0
+      }.sorted should be(List(1, 2, 3))
+
+      (metrics.collect { case m: Metric.BurstMode ⇒ m }).head.inBurst shouldBe false
     }
 
     "send metrics when in burst mode" in {
@@ -66,25 +77,40 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       regulator ! sample() //starts the regulator
       regulator ! sample(workDone = 1, duration = 10.seconds) //trigger burst mode
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
-      metricsCollector.expectMsgType[Metric.DropRate]
-      metricsCollector.expectMsgType[Metric.BurstMode]
+      val metrics = List(
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric]
+      )
+
+      metrics.collect {
+        case m: Metric.WorkQueueExpectedWaitTime ⇒ 1
+        case m: Metric.DropRate                  ⇒ 2
+        case m: Metric.BurstMode                 ⇒ 3
+        case _                                   ⇒ 0
+      }.sorted should be(List(1, 2, 3))
 
       metricsCollector.expectNoMsg(60.milliseconds) //wait for a bit to make sure burstLeft is consumed but still have some left
 
       regulator ! sample(workDone = 1, duration = 10.seconds)
 
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
-      metricsCollector.expectMsgType[Metric.DropRate]
-      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe true
+      val metrics2 = List(
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric]
+      )
+      metrics2.collect { case m: Metric.BurstMode ⇒ m }.head.inBurst shouldBe true
 
       metricsCollector.expectNoMsg(60.milliseconds) //wait to make sure burstLeft is all sued
 
       regulator ! sample(workDone = 1, duration = 10.seconds)
 
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime]
-      metricsCollector.expectMsgType[Metric.DropRate]
-      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
+      val metrics3 = List(
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric]
+      )
+      metrics3.collect { case m: Metric.BurstMode ⇒ m }.head.inBurst shouldBe false
     }
 
     "send metrics when seeing PartialUtilization" in {
@@ -97,9 +123,15 @@ class RegulatorSpec extends SpecWithActorSystem {
 
       regulator ! PartialUtilized
 
-      metricsCollector.expectMsgType[Metric.WorkQueueExpectedWaitTime].duration.toMillis shouldBe 0
-      metricsCollector.expectMsgType[Metric.DropRate].value shouldBe 0d
-      metricsCollector.expectMsgType[Metric.BurstMode].inBurst shouldBe false
+      val metrics = List(
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric],
+        metricsCollector.expectMsgType[Metric]
+      )
+
+      metrics.collect { case m: Metric.WorkQueueExpectedWaitTime ⇒ m }.head.duration.toMillis shouldBe 0
+      metrics.collect { case m: Metric.DropRate ⇒ m }.head.value shouldBe 0d
+      metrics.collect { case m: Metric.BurstMode ⇒ m }.head.inBurst shouldBe false
     }
 
     "send dropRate when outside burst duration" in {

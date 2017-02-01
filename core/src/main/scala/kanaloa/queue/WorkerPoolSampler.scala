@@ -35,8 +35,14 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
   def receive = partialUtilized(PartialUtilizedPoolStatus())
 
   private def fullyUtilized(s: PoolStatus): Receive = handleSubscriptions orElse {
+    case WorkerWorking ⇒
+      context become fullyUtilized(s.copy(workingWorkers = s.workingWorkers + 1))
+
+    case WorkerStoppedWorking ⇒
+      context become fullyUtilized(s.copy(workingWorkers = Math.max(0, s.workingWorkers - 1)))
 
     case FullyUtilized ⇒ //ignore
+
     case PartialUtilized ⇒
       val (rpt, _) = tryComplete(s)
       rpt foreach publish
@@ -80,8 +86,15 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
   }
 
   private def partialUtilized(status: PartialUtilizedPoolStatus): Receive = handleSubscriptions orElse {
+    case WorkerWorking ⇒
+      context become partialUtilized(status.copy(workingWorkers = status.workingWorkers + 1))
+
+    case WorkerStoppedWorking ⇒
+      context become partialUtilized(status.copy(workingWorkers = Math.max(0, status.workingWorkers - 1)))
+
     case PartialUtilized ⇒
       report(PoolUtilized(status.workingWorkers))
+      publish(PartialUtilization(status.workingWorkers))
     case FullyUtilized ⇒
       context become fullyUtilized(
         PoolStatus(poolSize = status.poolSize, workingWorkers = status.workingWorkers)
@@ -111,6 +124,10 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
 }
 
 private[kanaloa] object WorkerPoolSampler {
+
+  case object WorkerWorking
+
+  case object WorkerStoppedWorking
 
   private case class PartialUtilizedPoolStatus(
     workingWorkers: Int = 0,

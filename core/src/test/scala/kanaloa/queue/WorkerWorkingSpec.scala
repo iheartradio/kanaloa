@@ -7,6 +7,7 @@ import kanaloa.handler.{GeneralActorRefHandler, Handler}
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister}
 import kanaloa.queue.Worker.UnregisteringIdle
+import kanaloa.queue.WorkerPoolSampler.WorkerStoppedWorking
 
 import scala.concurrent.duration._
 
@@ -34,6 +35,7 @@ class WorkerWorkingSpec extends WorkerSpec {
     "report successful work to metricsCollector'" in withWorkingWorker() { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
       routeeProbe.reply(Result("Response"))
       expectMsg("Response")
+      metricCollectorProbe.expectMsg(WorkerStoppedWorking)
       metricCollectorProbe.expectMsgType[Metric.WorkCompleted]
     }
 
@@ -47,6 +49,7 @@ class WorkerWorkingSpec extends WorkerSpec {
     "report failed work to metricsCollector'" in withWorkingWorker() { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
       routeeProbe.reply(Fail("sad panda :("))
       expectMsgType[WorkFailed]
+      metricCollectorProbe.expectMsg(WorkerStoppedWorking)
       metricCollectorProbe.expectMsg(Metric.WorkFailed)
     }
 
@@ -58,6 +61,7 @@ class WorkerWorkingSpec extends WorkerSpec {
 
     "report timeout work to metricsCollector'" in withWorkingWorker(WorkSettings(serviceTimeout = 5.milliseconds)) { (worker, _, routeeProbe, _, metricCollectorProbe) ⇒
       expectMsgType[WorkTimedOut]
+      metricCollectorProbe.expectMsg(WorkerStoppedWorking)
       metricCollectorProbe.expectMsg(Metric.WorkTimedOut)
     }
 

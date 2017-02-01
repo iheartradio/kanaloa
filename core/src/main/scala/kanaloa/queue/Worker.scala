@@ -9,6 +9,7 @@ import kanaloa.handler._
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.queue.Worker._
+import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, WorkerWorking}
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 
@@ -139,7 +140,7 @@ private[queue] class Worker[T](
   }
 
   private def abandon(outstanding: Outstanding, error: handler.Error)(onComplete: ⇒ Unit): Unit = {
-    outstanding.cancel()
+
     val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
       s"due to $e"
     }.getOrElse("")
@@ -167,6 +168,7 @@ private[queue] class Worker[T](
     val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout)
     val out = Outstanding(work, newWorkId, timeout, handling, retried)
     context become working(out)
+    metricsCollector ! WorkerWorking
 
   }
 
@@ -215,6 +217,7 @@ private[queue] class Worker[T](
     }
 
     def cancel(): Unit = {
+      metricsCollector ! WorkerStoppedWorking
       timeoutHandle.cancel()
       handling.cancellable.foreach(_.cancel())
     }
