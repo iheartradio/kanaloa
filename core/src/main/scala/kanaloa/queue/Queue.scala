@@ -109,7 +109,7 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
   }
 
   private def discardAll(state: InternalState, reason: String): InternalState = {
-    if(state.workBuffer.isEmpty)
+    if (state.workBuffer.isEmpty)
       state
     else {
       log.warning(s"""All ${state.workBuffer.size} queued work are discarded, reason being "$reason" """)

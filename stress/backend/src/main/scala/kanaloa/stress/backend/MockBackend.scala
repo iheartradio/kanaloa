@@ -20,8 +20,8 @@ object MockBackend {
     val optimalConcurrency = cfg.getInt("optimal-concurrency")
     maxThroughput.foreach { op =>
       assert(op / 10d / optimalConcurrency >= 1, s"throughput $op too low to manager should be at least ${10 * optimalConcurrency}")
-
     }
+
     Props(new BackendRouter(
       throttle,
       optimalConcurrency,

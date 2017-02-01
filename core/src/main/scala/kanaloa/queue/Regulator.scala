@@ -79,12 +79,13 @@ class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: Actor
   private def continueWith(status: Status): Unit = {
     context become regulating(status)
     metricsCollector ! Metric.WorkQueueExpectedWaitTime(status.delay)
-    metricsCollector ! Metric.DropRate(status.droppingRate.value)
     metricsCollector ! Metric.BurstMode(Duration.Zero < status.burstDurationLeft && status.burstDurationLeft < settings.durationOfBurstAllowed)
     val droppingRateToSend =
       if (status.burstDurationLeft > Duration.Zero)
         DroppingRate(0)
       else status.droppingRate
+    metricsCollector ! Metric.DropRate(droppingRateToSend.value)
+
     regulatee ! droppingRateToSend
   }
 }
