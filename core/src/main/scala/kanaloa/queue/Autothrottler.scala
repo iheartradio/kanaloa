@@ -69,8 +69,7 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
       context become fullyUtilized(s.poolSize)
       self forward s
     case OptimizeOrExplore ⇒
-      if (start.isBefore(Time.now.minus(downsizeAfterUnderUtilization.asJava)))
-        workerPool ! ScaleTo((highestUtilization * downsizeRatio).toInt, Some("downsizing"))
+
     case qs: QueryStatus ⇒
       qs.reply(AutothrottleStatus(partialUtilization = Some(highestUtilization), partialUtilizationStart = Some(start)))
 

@@ -206,17 +206,6 @@ class AutothrottleSpec extends SpecWithActorSystem with OptionValues with Eventu
       scaleCmd.numOfWorkers should be > 37
     }
 
-    "downsize if hasn't maxed out for more than relevant period of hours" in new AutothrottleScope {
-      val subject = autothrottlerRef(defaultSettings.copy(downsizeAfterUnderUtilization = 10.milliseconds))
-
-      subject ! PartialUtilization(5)
-      tWorkerPool.expectNoMsg(20.milliseconds)
-      subject ! OptimizeOrExplore
-
-      val scaleCmd = tWorkerPool.expectMsgType[ScaleTo]
-      scaleCmd shouldBe ScaleTo(4, Some("downsizing"))
-    }
-
     "stop itself if the WorkerPoolManager stops" in new ScopeWithActor() {
       val queue = TestProbe()
       val workerPool = system.actorOf(factories.workerPoolManagerProps(
@@ -259,8 +248,6 @@ class AutothrottleScope(implicit system: ActorSystem, factories: Factories)
     chanceOfScalingDownWhenFull = 0.3,
     resizeInterval = 1.hour, //manual action only
     explorationRatio = 0.5,
-    downsizeRatio = 0.8,
-    downsizeAfterUnderUtilization = 72.hours,
     optimizationMinRange = 6
   )
 

@@ -62,16 +62,14 @@ package kanaloa.queue {
    * see reference.conf
    */
   case class AutothrottleSettings(
-    chanceOfScalingDownWhenFull:   Double         = 0.3,
-    resizeInterval:                FiniteDuration = 5.seconds,
-    downsizeAfterUnderUtilization: FiniteDuration = 72.hours,
-    optimizationMinRange:          Int            = 6,
-    optimizationRangeRatio:        Double         = 0.3,
-    maxExploreStepSize:            Int            = 4,
-    downsizeRatio:                 Double         = 0.8,
-    explorationRatio:              Double         = 0.4,
-    weightOfLatestMetric:          Double         = 0.5,
-    weightOfLatency:               Double         = 0.2
+    chanceOfScalingDownWhenFull: Double         = 0.3,
+    resizeInterval:              FiniteDuration = 5.seconds,
+    optimizationMinRange:        Int            = 6,
+    optimizationRangeRatio:      Double         = 0.3,
+    maxExploreStepSize:          Int            = 4,
+    explorationRatio:            Double         = 0.4,
+    weightOfLatestMetric:        Double         = 0.5,
+    weightOfLatency:             Double         = 0.2
   )
 
 }
