@@ -99,7 +99,10 @@ class Service(implicit system: ActorSystem) {
   }
 
   def start(throughput: Option[Int]): Unit = {
-    cluster.join(cluster.selfAddress)
+    val seeds: collection.immutable.Seq[Address] = List(AddressFromURIString(
+      system.settings.config.getString("cluster-seed")
+    ))
+    cluster.joinSeedNodes(seeds)
     actor = Some(system.actorOf(MockBackend.props(maxThroughput = throughput), "backend"))
   }
 

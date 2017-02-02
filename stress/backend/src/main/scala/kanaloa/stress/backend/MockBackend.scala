@@ -56,6 +56,8 @@ object MockBackend {
       minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
     }
 
+    log.info(s"base latency is $baseLatency")
+
     val responders: Array[ActorRef] = {
 
       log.info(s"Per responder rate is set as $perResponderRate")
@@ -85,20 +87,21 @@ object MockBackend {
         }
 
         // the overload punishment is caped at 0.5 (50% of the throughput)
-        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) Math.min(
-          0.5,
-          overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
-        )
-        else 0
+        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) {
+
+          val punishment = overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
+
+          Math.min(0.5, punishment)
+        } else 0
 
         val index: Int = if (responders.length > 1)
-          Math.round(rand.nextDouble() * (1 - overloadPunishment) * (responders.length - 1)).toInt
+          Math.round(rand.nextDouble() * (1d - overloadPunishment) * (responders.length - 1)).toInt
         else 0
 
         val latencyPunishment = overloadPunishment * 3
 
         if (rand.nextDouble() > 0.995)
-          log.debug(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
+          log.info(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
 
         responders(index) ! Petition(msg, sender, (baseLatency * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
 

@@ -148,7 +148,6 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
         metricsCollector ! Metric.WorkShedded
         state.copy(workBuffer = workBuffer)
       }
-
     }) match {
       case Some(newState) ⇒ dispatchWork(newState, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
