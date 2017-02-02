@@ -222,7 +222,7 @@ class RegulatorSpec extends SpecWithActorSystem {
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 400.milliseconds)
       ).droppingRate
 
-      result.value shouldBe 0.039375 +- 0.00001
+      result.value shouldBe 0.03937 +- 0.0001
     }
 
     "p ceiling at 1" in {

@@ -35,7 +35,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
   def receive = partialUtilized(PartialUtilizedPoolStatus())
 
   private def fullyUtilized(s: PoolStatus): Receive = handleSubscriptions orElse {
-    case WorkerWorking ⇒
+    case WorkerStartWorking ⇒
       context become fullyUtilized(s.copy(workingWorkers = s.workingWorkers + 1))
 
     case WorkerStoppedWorking ⇒
@@ -46,6 +46,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
     case PartialUtilized ⇒
       val (rpt, _) = tryComplete(s)
       rpt foreach publish
+      publish(PartialUtilization(s.workingWorkers))
       report(PoolUtilized(s.workingWorkers))
       context become partialUtilized(
         PartialUtilizedPoolStatus(
@@ -86,15 +87,14 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
   }
 
   private def partialUtilized(status: PartialUtilizedPoolStatus): Receive = handleSubscriptions orElse {
-    case WorkerWorking ⇒
+    case WorkerStartWorking ⇒
       context become partialUtilized(status.copy(workingWorkers = status.workingWorkers + 1))
 
     case WorkerStoppedWorking ⇒
       context become partialUtilized(status.copy(workingWorkers = Math.max(0, status.workingWorkers - 1)))
 
-    case PartialUtilized ⇒
-      report(PoolUtilized(status.workingWorkers))
-      publish(PartialUtilization(status.workingWorkers))
+    case PartialUtilized ⇒ //not expected
+
     case FullyUtilized ⇒
       context become fullyUtilized(
         PoolStatus(poolSize = status.poolSize, workingWorkers = status.workingWorkers)
@@ -106,6 +106,9 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
           context become partialUtilized(status.copy(poolSize = s))
       }
     case AddSample ⇒ //no sample is produced in the partial utilized state
+      report(PoolUtilized(status.workingWorkers))
+      publish(PartialUtilization(status.workingWorkers))
+
   }
 
   /**
@@ -125,7 +128,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
 
 private[kanaloa] object WorkerPoolSampler {
 
-  case object WorkerWorking
+  case object WorkerStartWorking
 
   case object WorkerStoppedWorking
 

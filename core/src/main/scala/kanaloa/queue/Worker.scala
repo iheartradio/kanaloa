@@ -9,7 +9,7 @@ import kanaloa.handler._
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.queue.Worker._
-import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, WorkerWorking}
+import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, WorkerStartWorking}
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
 
@@ -168,7 +168,7 @@ private[queue] class Worker[T](
     val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout)
     val out = Outstanding(work, newWorkId, timeout, handling, retried)
     context become working(out)
-    metricsCollector ! WorkerWorking
+    metricsCollector ! WorkerStartWorking
 
   }
 

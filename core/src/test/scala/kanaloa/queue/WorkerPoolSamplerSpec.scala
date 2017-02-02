@@ -10,7 +10,7 @@ import kanaloa.metrics.Metric._
 import kanaloa.metrics.Reporter
 import kanaloa.queue.QueueSampler.{PartialUtilized, FullyUtilized}
 import kanaloa.queue.Sampler._
-import kanaloa.queue.WorkerPoolSampler.WorkerPoolSample
+import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, PartialUtilization, WorkerStartWorking, WorkerPoolSample}
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mock.MockitoSugar
@@ -81,7 +81,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
-      subscriberProbe.expectNoMsg(waitDuration)
+      subscriberProbe.expectMsgType[PartialUtilization]
 
     }
 
@@ -126,7 +126,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       val (ps, subscriberProbe) = initPerformanceSampler()
       ps ! PartialUtilized
       subscriberProbe.expectMsgType[WorkerPoolSample] //last sample when fully utilized
-
+      subscriberProbe.expectMsgType[PartialUtilization]
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
 
@@ -167,12 +167,43 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
 
       ps ! PartialUtilized
       subscriberProbe.expectMsgType[WorkerPoolSample]
-
+      subscriberProbe.expectMsgType[PartialUtilization]
       ps ! PoolSize(15)
       ps ! FullyUtilized
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
       subscriberProbe.expectMsgType[WorkerPoolSample].poolSize shouldBe 15
+
+    }
+
+    "report PartialUtilization to subscribers " in {
+      val (ps, subscriberProbe) = initPerformanceSampler()
+
+      ps ! PartialUtilized
+      subscriberProbe.expectMsgType[WorkerPoolSample]
+      subscriberProbe.expectMsgType[PartialUtilization]
+      ps ! WorkerStartWorking
+      ps ! WorkerStartWorking
+      ps ! AddSample
+
+      subscriberProbe.expectMsg(PartialUtilization(2))
+
+    }
+
+    "keep counting utilization during full utilization" in {
+      val (ps, subscriberProbe) = initPerformanceSampler()
+      ps ! WorkerStartWorking
+      ps ! WorkerStartWorking
+      ps ! WorkerStoppedWorking
+
+      ps ! PartialUtilized
+      subscriberProbe.expectMsgType[WorkerPoolSample]
+      subscriberProbe.expectMsgType[PartialUtilization]
+      ps ! WorkerStartWorking
+      ps ! WorkerStartWorking
+      ps ! AddSample
+
+      subscriberProbe.expectMsg(PartialUtilization(3))
 
     }
 

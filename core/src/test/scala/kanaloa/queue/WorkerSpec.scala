@@ -6,7 +6,7 @@ import kanaloa.ApiProtocol.QueryStatus
 import kanaloa.handler.{Handler, GeneralActorRefHandler}
 import kanaloa.queue.Queue.RequestWork
 import kanaloa.SpecWithActorSystem
-import kanaloa.queue.WorkerPoolSampler.WorkerWorking
+import kanaloa.queue.WorkerPoolSampler.WorkerStartWorking
 import org.scalatest.{Matchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
@@ -56,7 +56,7 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
       val work = Work[Any]("work", Some(self), settings)
       queueProbe.send(worker, work) //send it work, to put it into the Working state
       routeeProbe.expectMsg(work.messageToDelegatee) //work should always get sent to a Routee from an Idle Worker
-      metricCollectorProbe.expectMsg(WorkerWorking)
+      metricCollectorProbe.expectMsg(WorkerStartWorking)
       test(worker, queueProbe, routeeProbe, work, metricCollectorProbe)
     }
   }
