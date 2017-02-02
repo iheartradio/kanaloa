@@ -7,7 +7,7 @@ import akka.testkit.TestProbe
 import kanaloa.SpecWithActorSystem
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.{Metric, Reporter}
-import kanaloa.queue.QueueSampler.{FullyUtilized, PartialUtilized, QueueSample}
+import kanaloa.queue.QueueSampler.{Overflown, PartialUtilized, QueueSample}
 import kanaloa.queue.Sampler.{AddSample, Subscribe, SamplerSettings}
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually
@@ -27,15 +27,15 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
       sampleInterval = sampleInterval,
       minSampleDurationRatio = minSampleDurationRatio
     )))
-    ps ! fullyUtilizedStatus //set it in the busy mode
+    ps ! overflownStatus //set it in the busy mode
     val subscriberProbe = TestProbe()
     ps ! Subscribe(subscriberProbe.ref)
     (ps, subscriberProbe)
   }
   val partialUtilizedStatus: Queue.Status = Queue.Status(1, QueueLength(0), false)
-  val fullyUtilizedStatus: Queue.Status = Queue.Status(0, QueueLength(2), true)
+  val overflownStatus: Queue.Status = Queue.Status(0, QueueLength(2), true)
 
-  def dispatchReport(dispatched: Int = 1, status: Queue.Status = fullyUtilizedStatus) = Queue.DispatchReport(status, dispatched)
+  def dispatchReport(dispatched: Int = 1, status: Queue.Status = overflownStatus) = Queue.DispatchReport(status, dispatched)
 
   "QueueSampler" should {
     "send Samples periodically" in {
@@ -95,7 +95,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
     }
 
-    "resume to collect metrics once pool becomes busy again, also send fullyUtilized report but doesn't count old work" in {
+    "resume to collect metrics once pool becomes busy again, also send overflown report but doesn't count old work" in {
       val (ps, subscriberProbe) = initQueueSampler()
       ps ! partialUtilizedStatus
       subscriberProbe.expectMsgType[QueueSample] //last sample when fully utilized
@@ -104,12 +104,12 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
       ps ! dispatchReport(status = partialUtilizedStatus)
       subscriberProbe.expectMsg(PartialUtilized)
 
-      ps ! fullyUtilizedStatus
+      ps ! overflownStatus
 
       ps ! dispatchReport()
 
       ps ! AddSample
-      subscriberProbe.expectMsg(FullyUtilized)
+      subscriberProbe.expectMsg(Overflown)
       subscriberProbe.expectMsgType[QueueSample].dequeued shouldBe 1
 
     }
@@ -151,14 +151,14 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
       val reporter = mock[Reporter]
       val mc = system.actorOf(QueueSampler.props(Some(reporter)))
 
-      mc ! fullyUtilizedStatus
+      mc ! overflownStatus
       mc ! Metric.WorkReceived
 
       mc ! AddSample
 
       eventually {
         verify(reporter).report(Metric.WorkReceived)
-        verify(reporter).report(Metric.WorkQueueLength(fullyUtilizedStatus.queueLength.value))
+        verify(reporter).report(Metric.WorkQueueLength(overflownStatus.queueLength.value))
         verifyNoMoreInteractions(reporter)
       }
 

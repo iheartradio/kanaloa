@@ -158,10 +158,10 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
     }
   }
 
-  def fullyUtilized(state: InternalState): Boolean
+  def overflown(state: InternalState): Boolean
   def onQueuedWorkExhausted(): Unit = ()
   private def statusOf(state: InternalState): Queue.Status =
-    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), fullyUtilized(state))
+    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), overflown(state))
 
   protected case class InternalState(
     workBuffer:      ScalaQueue[Work[T]]  = ScalaQueue.empty,
@@ -175,7 +175,7 @@ case class DefaultQueue[T](
   workSettings:     WorkSettings,
   metricsCollector: ActorRef
 ) extends Queue[T] {
-  def fullyUtilized(state: InternalState): Boolean = state.queuedWorkers.length == 0 && state.workBuffer.length > 0
+  def overflown(state: InternalState): Boolean = state.queuedWorkers.length == 0 && state.workBuffer.length > 0
 }
 
 class QueueOfIterator[T](
@@ -202,7 +202,7 @@ class QueueOfIterator[T](
    * @param state
    * @return
    */
-  def fullyUtilized(state: InternalState): Boolean = state.queuedWorkers.length <= 2
+  def overflown(state: InternalState): Boolean = state.queuedWorkers.length <= 2
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }
@@ -296,9 +296,9 @@ private[kanaloa] object Queue {
    *
    * @param idleWorkers workers that are waiting for work
    * @param queueLength work in the queue waiting to be picked up by workers
-   * @param fullyUtilized are all workers in the worker pool utilized
+   * @param overflown are all workers in the worker pool utilized
    */
-  case class Status(idleWorkers: Int, queueLength: QueueLength, fullyUtilized: Boolean)
+  case class Status(idleWorkers: Int, queueLength: QueueLength, overflown: Boolean)
   case class DispatchReport(status: Status, dispatched: Int)
 
   def ofIterable[T](

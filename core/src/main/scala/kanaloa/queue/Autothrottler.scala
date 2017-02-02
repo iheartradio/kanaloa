@@ -53,20 +53,20 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
 
   final def receive: Receive = watchingQueueAndWorkerPool orElse {
     case s: WorkerPoolSample if s.poolSize > 0 ⇒
-      context become fullyUtilized(s.poolSize)
+      context become overflown(s.poolSize)
       self forward s
     case PartialUtilization(u) ⇒
-      context become underUtilized(u)
+      context become partialUtilized(u)
     case OptimizeOrExplore           ⇒ //no history no action
     case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
-  private def underUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndWorkerPool orElse {
+  private def partialUtilized(highestUtilization: Int, start: Time = Time.now): Receive = watchingQueueAndWorkerPool orElse {
     case PartialUtilization(utilization) ⇒
       if (highestUtilization < utilization)
-        context become underUtilized(utilization, start)
+        context become partialUtilized(utilization, start)
     case s: WorkerPoolSample if s.poolSize > 0 ⇒
-      context become fullyUtilized(s.poolSize)
+      context become overflown(s.poolSize)
       self forward s
     case OptimizeOrExplore ⇒
 
@@ -76,13 +76,13 @@ trait Autothrottler extends Actor with ActorLogging with MessageScheduler {
     case _: WorkerPoolSampler.Report ⇒ //ignore other performance report
   }
 
-  private def fullyUtilized(currentSize: PoolSize): Receive = watchingQueueAndWorkerPool orElse {
+  private def overflown(currentSize: PoolSize): Receive = watchingQueueAndWorkerPool orElse {
     case s: WorkerPoolSample if s.poolSize > 0 ⇒
       perfLog = updateLogs(perfLog, s, weightOfLatestMetric)
-      context become fullyUtilized(s.poolSize)
+      context become overflown(s.poolSize)
 
     case PartialUtilization(u) ⇒
-      context become underUtilized(u)
+      context become partialUtilized(u)
 
     case OptimizeOrExplore ⇒
       val action = {

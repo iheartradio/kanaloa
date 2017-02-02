@@ -6,7 +6,7 @@ import akka.actor.{ActorRef, Props}
 import kanaloa.Types.Speed
 import kanaloa.metrics.Metric._
 import kanaloa.metrics.{Metric, Reporter, WorkerPoolMetricsCollector}
-import kanaloa.queue.QueueSampler.{PartialUtilized, FullyUtilized}
+import kanaloa.queue.QueueSampler.{PartialUtilized, Overflown}
 import kanaloa.queue.WorkerPoolSampler._
 import kanaloa.util.Java8TimeExtensions._
 import Sampler._
@@ -15,7 +15,7 @@ import scala.concurrent.duration._
 /**
  *  Mixed-in with [[WorkerPoolMetricsCollector]] to which all [[Metric]] are sent to.
  *  Behind the scene it also collects performance [[kanaloa.queue.WorkerPoolSampler.WorkerPoolSample]] from [[WorkCompleted]] and [[WorkFailed]]
- *  when the system is in fullyUtilized state, namely when number
+ *  when the system is in overflown state, namely when number
  *  of idle workers is less than [[kanaloa.queue.Sampler.SamplerSettings]]
  */
 private[kanaloa] trait WorkerPoolSampler extends Sampler {
@@ -34,14 +34,14 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
 
   def receive = partialUtilized(PartialUtilizedPoolStatus())
 
-  private def fullyUtilized(s: PoolStatus): Receive = handleSubscriptions orElse {
+  private def overflown(s: PoolStatus): Receive = handleSubscriptions orElse {
     case WorkerStartWorking ⇒
-      context become fullyUtilized(s.copy(workingWorkers = s.workingWorkers + 1))
+      context become overflown(s.copy(workingWorkers = s.workingWorkers + 1))
 
     case WorkerStoppedWorking ⇒
-      context become fullyUtilized(s.copy(workingWorkers = Math.max(0, s.workingWorkers - 1)))
+      context become overflown(s.copy(workingWorkers = Math.max(0, s.workingWorkers - 1)))
 
-    case FullyUtilized ⇒ //ignore
+    case Overflown ⇒ //ignore
 
     case PartialUtilized ⇒
       val (rpt, _) = tryComplete(s)
@@ -59,21 +59,21 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
         case WorkCompleted(processTime) ⇒
           val newWorkDone = s.workDone + 1
           val newAvgProcessTime = s.avgProcessTime.fold(processTime)(avg ⇒ ((avg * s.workDone.toDouble + processTime) / newWorkDone.toDouble))
-          context become fullyUtilized(
+          context become overflown(
             s.copy(
               workDone = newWorkDone,
               avgProcessTime = Some(newAvgProcessTime)
             )
           )
         case WorkFailed ⇒
-          context become fullyUtilized(s.copy(workDone = s.workDone + 1))
+          context become overflown(s.copy(workDone = s.workDone + 1))
 
         case PoolSize(size) ⇒
           val sizeChanged = s.poolSize != size
           if (sizeChanged) {
             val (r, _) = tryComplete(s)
             r foreach publish
-            context become fullyUtilized(
+            context become overflown(
               PoolStatus(poolSize = size)
             )
           }
@@ -82,7 +82,7 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
     case AddSample ⇒
       val (rep, status) = tryComplete(s)
       rep foreach publish
-      context become fullyUtilized(status)
+      context become overflown(status)
       report(PoolUtilized(s.poolSize)) //take the chance to report utilization to reporter
   }
 
@@ -95,8 +95,8 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
 
     case PartialUtilized ⇒ //not expected
 
-    case FullyUtilized ⇒
-      context become fullyUtilized(
+    case Overflown ⇒
+      context become overflown(
         PoolStatus(poolSize = status.poolSize, workingWorkers = status.workingWorkers)
       )
 

@@ -8,7 +8,7 @@ import kanaloa.SpecWithActorSystem
 import kanaloa.Types.QueueLength
 import kanaloa.metrics.Metric._
 import kanaloa.metrics.Reporter
-import kanaloa.queue.QueueSampler.{PartialUtilized, FullyUtilized}
+import kanaloa.queue.QueueSampler.{PartialUtilized, Overflown}
 import kanaloa.queue.Sampler._
 import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, PartialUtilization, WorkerStartWorking, WorkerPoolSample}
 import org.mockito.Mockito._
@@ -30,7 +30,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       sampleInterval = sampleInterval,
       minSampleDurationRatio = minSampleDurationRatio
     ), None))
-    ps ! FullyUtilized //set it in the busy mode
+    ps ! Overflown //set it in the busy mode
     ps ! PoolSize(startingPoolSize)
     val subscriberProbe = TestProbe()
     ps ! Subscribe(subscriberProbe.ref)
@@ -130,7 +130,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       ps ! WorkCompleted(1.millisecond)
       ps ! WorkCompleted(1.millisecond)
 
-      ps ! FullyUtilized
+      ps ! Overflown
 
       ps ! WorkCompleted(1.millisecond)
 
@@ -169,7 +169,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       subscriberProbe.expectMsgType[WorkerPoolSample]
       subscriberProbe.expectMsgType[PartialUtilization]
       ps ! PoolSize(15)
-      ps ! FullyUtilized
+      ps ! Overflown
       ps ! WorkCompleted(1.millisecond)
       ps ! AddSample
       subscriberProbe.expectMsgType[WorkerPoolSample].poolSize shouldBe 15
@@ -248,7 +248,7 @@ class WorkerPoolSamplerSpec extends SpecWithActorSystem with MockitoSugar with E
       val mc = factories.workerPoolSampler(reporter = Some(reporter))
 
       mc ! PoolSize(4)
-      mc ! FullyUtilized
+      mc ! Overflown
 
       mc ! AddSample
 

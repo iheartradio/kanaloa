@@ -28,17 +28,17 @@ private[kanaloa] trait QueueSampler extends Sampler {
   private def reportQueueLength(queueLength: QueueLength): Unit =
     report(WorkQueueLength(queueLength.value))
 
-  private def fullyUtilized(s: QueueStatus): Receive = {
+  private def overflown(s: QueueStatus): Receive = {
     def continue(status: Queue.Status, dispatched: Option[Int]): Unit = {
-      val Queue.Status(idle, workLeft, isFullyUtilized) = status
+      val Queue.Status(idle, workLeft, isOverflown) = status
       reportQueueLength(workLeft)
-      if (!isFullyUtilized) {
+      if (!isOverflown) {
         val (rpt, _) = tryComplete(s)
         rpt foreach publish
         context become partialUtilized
         publish(PartialUtilized)
       } else
-        context become fullyUtilized(s.copy(queueLength = workLeft, workDone = s.workDone + dispatched.getOrElse(0)))
+        context become overflown(s.copy(queueLength = workLeft, workDone = s.workDone + dispatched.getOrElse(0)))
     }
 
     handleSubscriptions orElse {
@@ -51,7 +51,7 @@ private[kanaloa] trait QueueSampler extends Sampler {
       case AddSample ⇒
         val (rep, status) = tryComplete(s)
         rep foreach publish
-        context become fullyUtilized(status)
+        context become overflown(status)
 
       case metric: QueueMetric ⇒
         report(metric)
@@ -60,10 +60,10 @@ private[kanaloa] trait QueueSampler extends Sampler {
 
   private val partialUtilized: Receive = {
     def continue(status: Queue.Status, dispatched: Option[Int]): Unit = {
-      val Queue.Status(idle, queueLength, isFullyUtilized) = status
-      if (isFullyUtilized) {
-        publish(FullyUtilized)
-        context become fullyUtilized(
+      val Queue.Status(idle, queueLength, isOverflown) = status
+      if (isOverflown) {
+        publish(Overflown)
+        context become overflown(
           QueueStatus(queueLength = queueLength, workDone = dispatched.getOrElse(0))
         )
       }
@@ -151,6 +151,6 @@ private[kanaloa] object QueueSampler {
   }
 
   case object PartialUtilized extends Report
-  case object FullyUtilized extends Report
+  case object Overflown extends Report
 
 }
