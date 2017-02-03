@@ -13,15 +13,19 @@ import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import kanaloa.stress.backend.MockBackend._
 
-import scala.concurrent.Future
+import scala.concurrent.{ Promise, Future }
 import scala.concurrent.duration.FiniteDuration
 import scala.io.StdIn._
 import scala.util.{ Try, Failure, Success }
 import scala.collection.JavaConverters._
 import concurrent.duration._
 
-class CommandServer(port: Int, service: Service)(implicit system: ActorSystem) {
+class CommandServer(port: Int) {
 
+  @volatile
+  var service: Option[Service] = Some(new Service)
+
+  implicit val system: ActorSystem = ActorSystem("command-server")
   val cfg = ConfigFactory.load()
 
   implicit val materializer = ActorMaterializer()
@@ -30,22 +34,37 @@ class CommandServer(port: Int, service: Service)(implicit system: ActorSystem) {
 
   case class Failed(msg: String)
 
-  def command(cmd: String, arg: Option[String]): Future[Unit] = cmd match {
+  def command(cmd: String, arg: Option[String]): Future[Respond] = cmd match {
     case "start" =>
       Future {
         val throughput = arg.flatMap(a => Try(a.toInt).toOption)
-        service.start(throughput)
+        if (service.isEmpty) {
+          service = Some(new Service(throughput))
+          Respond("started")
+        } else
+          Respond("service already started")
       }
-    case "stop" => Future(service.stop())
-    case "error" => service.control(ErrorOut)
-    case "unresponsive" => service.control(Unresponsive)
-    case "back-online" => service.control(BackOnline)
+    case "stop" =>
+      service.fold(Future.successful(Respond("Already stopped")))(_.stop(arg.map(_.toInt)).map { _ =>
+        service = None
+        Respond("stopped")
+      })
+
+    case "scale" => runCmd(Scale(arg.get.toDouble))
+    case "error" => runCmd(ErrorOut)
+    case "unresponsive" => runCmd(Unresponsive)
+    case "check" => runCmd(CheckStatus)
+    case "back-online" => runCmd(BackOnline)
+  }
+
+  def runCmd(cmd: ControlCommand): Future[Respond] = {
+    service.fold(Future.successful(Respond("service stopped")))(s => s.control(cmd))
   }
 
   def cmdResult[T](cmd: String, args: Option[String]) = {
     val f = command(cmd, args)
     onComplete(f) {
-      case Success(_) ⇒ complete(s"Successfully $cmd! ")
+      case Success(Respond(msg)) ⇒ complete(s"Successfully $cmd! result: $msg ")
       case Failure(e) ⇒ complete(408, e)
     }
   }
@@ -61,7 +80,7 @@ class CommandServer(port: Int, service: Service)(implicit system: ActorSystem) {
       } ~
       get {
         path("request" / (".+"r)) { r ⇒
-          val f = service.request(r)
+          val f = service.fold[Future[Either[String, Respond]]](Future.successful(Left("server stopped")))(_.request(r))
           onComplete(f) {
             case Success(Right(Respond(m))) ⇒ complete(s"Success! $m")
             case Success(Left(e)) => complete(500, s"Failure! $e")
@@ -73,41 +92,53 @@ class CommandServer(port: Int, service: Service)(implicit system: ActorSystem) {
   println(s"Server started at $port")
   val bindingFuture = Http().bindAndHandle(routes, "localhost", port)
 
-  def close(): Unit = {
-    bindingFuture.flatMap(_.unbind()).onComplete { _ ⇒ system.terminate() }
+  def close(): Future[Unit] = {
+    for {
+      _ <- bindingFuture.flatMap(_.unbind()).map { _ ⇒ system.terminate() }
+      _ <- service.fold(Future.successful(()))(_.stop())
+    } yield ()
   }
 }
 
-class Service(implicit system: ActorSystem) {
-  var actor: Option[ActorRef] = None
+class Service(throughput: Option[Int] = None) {
+
+  implicit val system = ActorSystem("kanaloa-stress", ConfigFactory.load("backend.conf"))
   val cluster = Cluster(system)
+
+  val seeds: collection.immutable.Seq[Address] = List(AddressFromURIString(
+    system.settings.config.getString("cluster-seed")
+  ))
+
+  cluster.joinSeedNodes(seeds)
+
+  val actor = system.actorOf(MockBackend.props(maxThroughput = throughput), "backend")
+
   import system.dispatcher
 
-  def control(cmd: ControlCommand): Future[Unit] = {
-    actor.fold(Future.failed[Unit](new Exception("Service is stopped"))) { a =>
-      Future.successful(a ! cmd)
-    }
+  def control(cmd: ControlCommand): Future[Respond] = {
+    import akka.pattern.ask
+    implicit val to: Timeout = 3.seconds
+    (actor ? cmd).mapTo[Respond]
   }
 
   def request(req: String): Future[Either[String, Respond]] = {
     import akka.pattern.ask
     implicit val to: Timeout = 2.seconds
-    actor.fold[Future[Either[String, Respond]]](Future.successful(Left("Offline"))) { a =>
-      val resp = (a ? Request(req)).mapTo[Respond]
-      resp.map(Right(_))
+    val resp = (actor ? Request(req)).mapTo[Respond]
+    resp.map(Right(_))
+  }
+
+  def stop(delay: Option[Int] = None): Future[Unit] = {
+    val promise = Promise[Unit]()
+
+    cluster.registerOnMemberRemoved {
+      delay.foreach(Thread.sleep(_))
+      actor ! PoisonPill
+      system.terminate()
+      promise.trySuccess(())
     }
-  }
-
-  def start(throughput: Option[Int]): Unit = {
-    val seeds: collection.immutable.Seq[Address] = List(AddressFromURIString(
-      system.settings.config.getString("cluster-seed")
-    ))
-    cluster.joinSeedNodes(seeds)
-    actor = Some(system.actorOf(MockBackend.props(maxThroughput = throughput), "backend"))
-  }
-
-  def stop(): Unit = {
     cluster.leave(cluster.selfAddress)
-    actor.foreach(_ ! PoisonPill)
+
+    promise.future
   }
 }

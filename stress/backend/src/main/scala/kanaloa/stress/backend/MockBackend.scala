@@ -18,9 +18,6 @@ object MockBackend {
   ) = {
 
     val optimalConcurrency = cfg.getInt("optimal-concurrency")
-    maxThroughput.foreach { op =>
-      assert(op / 10d / optimalConcurrency >= 1, s"throughput $op too low to manager should be at least ${10 * optimalConcurrency}")
-    }
 
     Props(new BackendRouter(
       throttle,
@@ -34,13 +31,13 @@ object MockBackend {
 
   /**
    *
-   * @param optimalConcurrency
-   * @param optimalThroughput maximum number of requests can handle per second
+   * @param initialConcurrency
+   * @param initialThroughput maximum number of requests can handle per second
    */
   class BackendRouter(
       throttle: Boolean,
-      optimalConcurrency: Int,
-      optimalThroughput: Int,
+      initialConcurrency: Int,
+      initialThroughput: Int,
       bufferSize: Int = 10000,
       minLatency: Option[FiniteDuration] = None,
       overloadPunishmentFactor: Option[Double] = None
@@ -49,47 +46,84 @@ object MockBackend {
     var requestsHandling = 0
 
     val rand = new Random(System.currentTimeMillis())
-    val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
 
-    val baseLatency = {
-      val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
-      minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
-    }
+    var optimalConcurrency = initialConcurrency
 
-    log.info(s"base latency is $baseLatency")
+    var optimalThroughput = initialThroughput
 
-    val responders: Array[ActorRef] = {
+    var (baseLatency, responders) = startResponders()
+
+    def startResponders(): (FiniteDuration, Array[ActorRef]) = {
+      val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
+
+      val latency = {
+        val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
+        minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
+      }
+
+      log.info(s"setting up $optimalConcurrency responders with base latency as $latency and $perResponderRate each. ")
 
       log.info(s"Per responder rate is set as $perResponderRate")
-      Array.tabulate(optimalConcurrency) { _ ⇒
+      (latency, Array.tabulate(optimalConcurrency) { _ ⇒
         val throttler = context.actorOf(Props(classOf[TimerBasedThrottler], perResponderRate))
         val responder = context.actorOf(Props(classOf[ResponderBehindThrottler]))
         throttler ! SetTarget(Some(responder))
         throttler
-      }
+      })
+
     }
 
     def receive = if (throttle) throttled else direct
 
-    val throttled: Receive = {
+    def statusRespond =
+      Respond(s"Optimal Concurrency: $optimalConcurrency, Max Throughput: ${optimalThroughput}msg/second, latency: ${baseLatency.toMillis}ms")
+
+    val handleCommands: Receive = {
+      case Scale(ratio) =>
+        optimalConcurrency = (optimalConcurrency * ratio).toInt
+        optimalThroughput = (optimalThroughput * ratio).toInt
+        responders.foreach(_ ! PoisonPill)
+
+        val (newBaseLatency, newResponders) = startResponders()
+
+        baseLatency = newBaseLatency
+        responders = newResponders
+
+        sender ! statusRespond
+
+      case CheckStatus =>
+        sender ! statusRespond
+
       case Unresponsive ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
-        context become overflow
+        context become unresponsive
+        sender ! Respond(s"Becoming Unresponsive")
+
       case ErrorOut ⇒
         log.warning("Error command received. Switching to error mode.")
         context become error
+        sender ! Respond(s"Becoming Error all the time")
+
+      case BackOnline ⇒
+        log.info("Back command received. Switching back to normal mode.")
+        context become throttled
+        sender ! Respond("back to normal")
+
+    }
+
+    val throttled: Receive = handleCommands orElse {
       case Request(msg) ⇒
         requestsHandling += 1
 
         if (requestsHandling > bufferSize) {
           log.error("!!!! Buffer overflow at, declare dead" + bufferSize)
-          context become overflow
+          context become unresponsive
         }
 
         // the overload punishment is caped at 0.5 (50% of the throughput)
-        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) {
+        val overloadPunishment: Double = if (requestsHandling > initialConcurrency) {
 
-          val punishment = overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
+          val punishment = overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - initialConcurrency.toDouble) / requestsHandling.toDouble)
 
           Math.min(0.5, punishment)
         } else 0
@@ -112,24 +146,15 @@ object MockBackend {
       case other ⇒ log.error("unknown msg received " + other)
     }
 
-    val overflow: Receive = {
-      case BackOnline ⇒
-        log.info("Back command received. Switching back to normal mode.")
-        context become throttled
+    val unresponsive: Receive = handleCommands orElse {
       case _ => //just pretend to be dead
     }
 
-    val error: Receive = {
-      case BackOnline ⇒
-        log.info("Back command received. Switching back to normal mode.")
-        context become throttled
+    val error: Receive = handleCommands orElse {
       case _ => sender ! Error("in error mode")
     }
 
-    val direct: Receive = {
-      case Unresponsive ⇒
-        log.warning("Overflow command received. Switching to unresponsive mode.")
-        context become overflow
+    val direct: Receive = handleCommands orElse {
       case Request(m) => sender ! Respond(m)
     }
   }
@@ -146,7 +171,10 @@ object MockBackend {
   case class Request(msg: String)
   sealed trait ControlCommand
   case object Unresponsive extends ControlCommand
+  case class Scale(ratio: Double) extends ControlCommand
+  case object NewThroughput extends ControlCommand
   case object ErrorOut extends ControlCommand
+  case object CheckStatus extends ControlCommand
   case object BackOnline extends ControlCommand
 
   case class Error(msg: String)

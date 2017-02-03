@@ -13,7 +13,7 @@ object Infrastructure {
     val hostUrl = s"http://$host:$port/"
   }
 
-  case class Command(name: String, args: Option[String])
+  case class Command(name: String, args: Option[String] = None)
 
   trait GatlingRunnable {
     def run: PopulationBuilder
@@ -66,7 +66,7 @@ object Infrastructure {
   implicit def toPB(gatlingRunnable: GatlingRunnable): PopulationBuilder = gatlingRunnable.run
 
   val services = List(
-    ServiceInstance(9100),
-    ServiceInstance(9101)
+    ServiceInstance(8888),
+    ServiceInstance(8889)
   )
 }

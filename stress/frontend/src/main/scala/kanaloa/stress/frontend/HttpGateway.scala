@@ -19,7 +19,7 @@ import com.typesafe.config.ConfigFactory
 import kanaloa.{ ClusterAwareHandlerProvider, PushingDispatcher }
 import scala.concurrent.duration._
 
-class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
+class HttpGateway(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
   lazy val statsDHostO = sys.env.get("KANALOA_STRESS_STATSD_HOST") //hook with statsD if its available
   lazy val metricsConfig = statsDHostO.map { _ ⇒
     s"""
@@ -131,13 +131,13 @@ class HttpService(inCluster: Boolean, maxThroughputRPS: Option[Int] = None) {
   }
 }
 
-object HttpService {
+object HttpGateway {
 
   def main(args: Array[String]): Unit = {
     val inCluster = args.headOption.map(_.toBoolean).getOrElse(true)
     println("Starting http service " + (if (inCluster) " in cluster" else ""))
 
-    val service = new HttpService(inCluster, Some(300))
+    val service = new HttpGateway(inCluster, Some(300)) //actual capacity is 200
     println(s"Server online at http://localhost:8081/\nPress 'c' and RETURN to stop...")
 
     while (readLine() != "c") {}
