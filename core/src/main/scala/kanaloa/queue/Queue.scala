@@ -35,7 +35,7 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
 
   final def processing(state: InternalState): Receive =
     handleWork(state, false) orElse {
-      case e @ Enqueue(workMessage: T, sendAcks, sendResultsTo) ⇒
+      case e @ Enqueue(workMessage: T @unchecked, sendAcks, sendResultsTo) ⇒
         val newWork = Work(workMessage, sendResultsTo, workSettings)
         val newBuffer: ScalaQueue[Work[T]] = state.workBuffer.enqueue(newWork)
         val newStatus: InternalState = dispatchWork(state.copy(workBuffer = newBuffer))

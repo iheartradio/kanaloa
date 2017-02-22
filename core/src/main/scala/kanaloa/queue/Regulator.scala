@@ -37,11 +37,11 @@ import scala.concurrent.duration._
  *      else
  *         burstAllowed = burstAllowed - timePassed (roughly Tupdate)
  *
- * @param metricsCollector [[QueueSampler]] actor that provides Performance samples,
+ * @param metricsCollector [[kanaloa.queue.QueueSampler]] actor that provides Performance samples,
  *                         this also controls the TupdateRate with frequency of samples
  * @param regulatee        [[kanaloa.PushingDispatcher]] actor that receive the dropping probability update
  */
-class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: ActorRef) extends Actor with ActorLogging {
+private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef, regulatee: ActorRef) extends Actor with ActorLogging {
 
   override def preStart(): Unit = {
     super.preStart()

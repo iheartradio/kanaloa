@@ -116,7 +116,7 @@ private[queue] class Worker[T](
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
   def handleRouteeResponse(outstanding: Outstanding)(onComplete: ⇒ Unit): Receive = {
 
-    case wr: WorkResult[handler.Resp, handler.Error] if wr.workId === outstanding.workId ⇒ {
+    case wr: WorkResult[handler.Resp, handler.Error] @unchecked if wr.workId === outstanding.workId ⇒ {
       wr.result.instruction.foreach(context.parent ! _) //forward instruction back to parent the WorkerPoolManager
 
       wr.result.reply match {

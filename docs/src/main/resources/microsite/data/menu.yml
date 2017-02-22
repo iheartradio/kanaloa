@@ -1,0 +1,16 @@
+options:
+  - title: Getting Started
+    url: docs/get-started.html
+
+  - title: Theories
+    url: docs/theories.html
+
+  - title: Architecture
+    url: docs/achitecture.html
+
+  - title: API Usage
+    url: docs/usage.html
+
+  - title: Test results
+    url: docs/test-results.html
+

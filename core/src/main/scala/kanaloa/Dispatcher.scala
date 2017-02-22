@@ -102,7 +102,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
     case SubscribePerformanceMetrics(actor)   ⇒ queueSampler ! Sampler.Subscribe(actor)
     case UnSubscribePerformanceMetrics(actor) ⇒ queueSampler ! Sampler.Unsubscribe(actor)
 
-    case HandlersAdded(handlers: List[Handler[T]]) ⇒
+    case HandlersAdded(handlers: List[Handler[T]] @unchecked) ⇒
       val (dups, rest) = handlers.partition(h ⇒ workerPools.exists(_._1 === h.name))
       workerPools = workerPools ++ rest.map(createWorkerPool)
       inGracePeriod = false //out of grace period as soon as we see the first handler
@@ -110,7 +110,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
         log.error(s"New Handler received but their names are duplicates ${dups.map(_.name).mkString(",")}")
       log.info(s"New handlers: ${handlers.map(_.name).mkString(", ")} added.")
 
-    case HandlersRemoved(handlers: List[Handler[T]]) ⇒
+    case HandlersRemoved(handlers: List[Handler[T]] @unchecked) ⇒
       val removedNames = handlers.map(_.name)
       workerPools.collect {
         case (handlerName, workerPool) if removedNames.contains(handlerName) ⇒
@@ -140,7 +140,7 @@ trait Dispatcher[T] extends Actor with ActorLogging with MessageScheduler {
       context stop self
   }
 
-  def extraReceive: Receive = PartialFunction.empty
+  protected def extraReceive: Receive = PartialFunction.empty
 
 }
 
@@ -232,13 +232,13 @@ case class PushingDispatcher[T: ClassTag](
   private val clz = classTag[T].runtimeClass
   private val isAny = classTag[T] == classTag[Any]
   /**
-   * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying [[Queue]] and the
-   * sender will be set as the receiver of any results of the downstream [[kanaloa.handler.Handler]].  This receive will disable any acks, and in the event of an [[EnqueueRejected]],
+   * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying `kanaloa.queue.Queue` and the
+   * sender will be set as the receiver of any results of the downstream [[kanaloa.handler.Handler]].  This receive will disable any acks, and in the event of an `kanaloa.queue.Queue.EnqueueRejected`,
    * notify the original sender of the rejection.
    *
    * @return
    */
-  override def extraReceive: Receive = {
+  override protected def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
     case m: T if isAny || clz.isInstance(m) ⇒

@@ -16,3 +16,6 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-multi-jvm" % "0.3.11")
 
 addSbtPlugin("io.gatling" % "gatling-sbt" % "2.2.0")
 
+addSbtPlugin("com.fortysevendeg"  % "sbt-microsites" % "0.4.0")
+
+addSbtPlugin("com.eed3si9n"        % "sbt-unidoc"            % "0.3.3")
