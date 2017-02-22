@@ -1,6 +1,6 @@
 ---
 layout: page
-title:  Api Usages
+title:  API Usages
 section: usages
 position: 5
 ---

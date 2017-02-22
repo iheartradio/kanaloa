@@ -25,7 +25,7 @@ class KanaloaLocalUnderUtilizedSimulation extends Simulation {
     )
 }
 
-class KanaloaLocalOverflownSimulation extends Simulation {
+class KanaloaLocalOverflowSimulation extends Simulation {
 
   setUp(
     Users(
@@ -46,20 +46,32 @@ class KanaloaLocalOverflownSimulation extends Simulation {
 /**
  * Baseline LB without kanaloa
  */
-class BaselineRoundRobinSimulation extends Simulation {
+class BaselineRoundRobinOverflowSimulation extends Simulation {
   setUp(
     Users(
-      numOfUsers = 200,
+      numOfUsers = 800,
       path = "round_robin",
-      throttle = Some(400),
-      rampUp = 1.seconds
+      throttle = Some(800),
+      rampUp = 10.seconds
     )
   ).protocols(http.disableCaching)
-    .maxDuration(1.minute)
+    .maxDuration(45.seconds)
+}
+
+class KanaloaLoadBalanceOverflowSimulation extends Simulation {
+  setUp(
+    Users(
+      numOfUsers = 800,
+      path = "cluster_kanaloa",
+      throttle = Some(800),
+      rampUp = 10.seconds
+    )
+  ).protocols(http.disableCaching)
+    .maxDuration(45.seconds)
     .assertions(
-      global.requestsPerSec.gte(100),
-      global.responseTime.percentile3.lte(5000),
-      global.successfulRequests.percent.gte(90)
+      global.requestsPerSec.gte(400),
+      global.responseTime.percentile3.lte(3000),
+      global.successfulRequests.percent.gte(50)
     )
 }
 
@@ -194,22 +206,3 @@ class KanaloaLoadBalanceOneNodeJoiningSimulation extends Simulation {
       global.successfulRequests.percent.gte(65)
     )
 }
-
-/**
- * Baseline without kanaloa
- */
-class BaselineLocalSimulation extends Simulation {
-  setUp(
-    Users(
-      numOfUsers = 18,
-      path = "straight",
-      throttle = Some(300)
-    )
-  ).protocols(http.disableCaching)
-    .maxDuration(1.minute)
-    .assertions(
-      global.requestsPerSec.gte(50),
-      global.successfulRequests.percent.gte(90)
-    )
-}
-

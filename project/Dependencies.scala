@@ -20,7 +20,7 @@ object Dependencies {
   )
 
   val akkaHttp = Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.11"
+    "com.typesafe.akka" %% "akka-http" % "10.0.3"
   )
 
   val akkaThrottler = Seq(
