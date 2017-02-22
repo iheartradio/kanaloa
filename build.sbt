@@ -85,7 +85,7 @@ lazy val stressGatling = project.in(file("./stress/gatling"))
 
 
 addCommandAlias("root", ";project root")
-addCommandAlias("stress", ";stressGatling/gatling:test-only kanaloa.stress.KanaloaLocalSimulation")
+addCommandAlias("stress", ";stressGatling/gatling:test-only kanaloa.stress.Kanaloa*")
 addCommandAlias("validate", ";root;clean;compile;test;integration:test")
 addCommandAlias("root", ";project root")
 
