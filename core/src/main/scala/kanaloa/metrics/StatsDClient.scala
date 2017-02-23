@@ -209,8 +209,8 @@ object StatsDClient {
         val data = stat.getBytes("utf-8")
 
         // If we're going to go past the threshold of the buffer then flush.
-        // the +1 is for the potential '\n' in multi_metrics below
-        if (sendBuffer.remaining() < (data.length + 1)) {
+        // the +10 is a safety threshold
+        if (sendBuffer.remaining() < (data.length + 10)) {
           flush
         }
 
