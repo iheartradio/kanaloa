@@ -34,27 +34,43 @@ class CommandServer(port: Int) {
 
   case class Failed(msg: String)
 
-  def command(cmd: String, arg: Option[String]): Future[Respond] = cmd match {
-    case "start" =>
-      Future {
-        val throughput = arg.flatMap(a => Try(a.toInt).toOption)
-        if (service.isEmpty) {
-          service = Some(new Service(throughput))
-          Respond("started")
-        } else
-          Respond("service already started")
-      }
-    case "stop" =>
-      service.fold(Future.successful(Respond("Already stopped")))(_.stop(arg.map(_.toInt)).map { _ =>
-        service = None
-        Respond("stopped")
-      })
+  def startService(throughput: Option[Int]): Future[Respond] = Future {
+    if (service.isEmpty) {
+      service = Some(new Service(throughput))
+      Respond("started")
+    } else
+      Respond("service already started")
+  }
 
-    case "scale" => runCmd(Scale(arg.get.toDouble))
-    case "error" => runCmd(ErrorOut)
-    case "unresponsive" => runCmd(Unresponsive)
-    case "check" => runCmd(CheckStatus)
-    case "back-online" => runCmd(BackOnline)
+  def stopService(delay: Option[Int]): Future[Respond] =
+    service.fold(Future.successful(Respond("Already stopped")))(_.stop(delay).map { _ =>
+      service = None
+      Respond("stopped")
+    })
+
+  def command(cmd: String, arg: Option[String]): Future[Respond] = {
+    lazy val intArg: Option[Int] =
+      arg.flatMap(a => Try(a.toInt).toOption)
+
+    cmd match {
+      case "start" =>
+        startService(intArg)
+
+      case "stop" =>
+        stopService(intArg)
+
+      case "restart" =>
+        for {
+          _ <- stopService(None)
+          r <- startService(None)
+        } yield r
+
+      case "scale" => runCmd(Scale(arg.get.toDouble))
+      case "error" => runCmd(ErrorOut)
+      case "unresponsive" => runCmd(Unresponsive)
+      case "check" => runCmd(CheckStatus)
+      case "back-online" => runCmd(BackOnline)
+    }
   }
 
   def runCmd(cmd: ControlCommand): Future[Respond] = {

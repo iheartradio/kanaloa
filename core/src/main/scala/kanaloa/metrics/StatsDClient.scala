@@ -194,7 +194,7 @@ object StatsDClient {
 
     override def postStop() = {
       //save any remaining data to StatsD
-      flush
+      flush()
 
       //Close the channel
       if (channel.isOpen()) {
@@ -211,7 +211,7 @@ object StatsDClient {
         // If we're going to go past the threshold of the buffer then flush.
         // the +10 is a safety threshold
         if (sendBuffer.remaining() < (data.length + 10)) {
-          flush
+          flush()
         }
 
         // multiple metrics are separated by '\n'

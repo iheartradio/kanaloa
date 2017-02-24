@@ -24,7 +24,7 @@ object Infrastructure {
     lazy val url = s"${service.hostUrl}command/${cmd.name}" + cmd.args.fold("")(a => s"/$a")
 
     val run: PopulationBuilder =
-      scenario(cmd.name).exec(
+      scenario(cmd.name + at).exec(
         pause(at)
       ).exec(
           http(cmd.name)
@@ -40,13 +40,14 @@ object Infrastructure {
       rampUp: FiniteDuration = 1.seconds,
       throttle: Option[Int] = Some(200),
       host: String = "localhost",
-      port: Int = 8081
+      port: Int = 8081,
+      duration: FiniteDuration = 1.minute
   ) extends GatlingRunnable {
 
     val url = s"http://$host:$port/$path/test-1"
 
     val run: PopulationBuilder = {
-      val base = scenario(name).forever {
+      val base = scenario(name).during(duration) {
         exec(
           http(name)
             .get(url)
