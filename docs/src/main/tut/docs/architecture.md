@@ -2,5 +2,5 @@
 layout: page
 title:  Architecture
 section: architecture
-position: 3
+position: 4
 ---

@@ -2,7 +2,7 @@
 layout: page
 title:  Theories
 section: theories
-position: 2
+position: 3
 ---
 
 
