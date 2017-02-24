@@ -11,9 +11,7 @@ The main feature of Kanaloa is to, as a reverse proxy, exert backpressure for a 
 Take the following example, the incoming traffic grows to 200 requests/second, while the capacity remains at 100 requests/second. Kanaloa will reject the excessive 100 requests/second and let the service handle the other 100 requests/second with optimal speed.
 ![backpressure](../img/backpressure.png)
 
-Kanaloa ensures that the service under pressure works at optimal parallelity, while the optimal performance is unknown beforehand and changes over time. For details see [theories](theories.html)
-
-
+Kanaloa ensures that the service under pressure works at optimal parallelity, while the optimal performance is unknown beforehand and changes over time. Kanaloa also enables control over latency caused by the queuing. For details see [theories](theories.html)
 
 
 ## Proportional Load Balancing

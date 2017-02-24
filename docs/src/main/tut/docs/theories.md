@@ -61,7 +61,7 @@ By constantly exploring and optimizing, the resizer will eventually walk to the 
 Now that the number of concurrent requests handled by the service is throttled, the excessive requests go to a queue created inside kanaloa. Kanaloa monitors this queue and apply a traffic regulation algorithm called PIE  (Proportional Integral controller Enhanced)
 suggested in [this paper by Rong Pan and his collaborators](https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf).
 
-Based on Little's law, PIE regulator controls the time for which the requests wait in the kanaloa queue by dropping requests with a probability according to the current queue length and historical dequeue speed. Here is the pseudocode of the algorithm:
+Unlike the common control scheme that simply limits the queue size, PIE regulator controls the time for which the requests wait in the kanaloa queue by dropping requests with a probability according to the current queue length and historical dequeue speed. Thus, PIE allows users to control with precision the latency caused by the queue. Here is the pseudocode of the algorithm:
 
 Every update interval `Tupdate`
 
