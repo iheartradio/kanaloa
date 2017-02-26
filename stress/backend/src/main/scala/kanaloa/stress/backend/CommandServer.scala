@@ -70,6 +70,8 @@ class CommandServer(port: Int) {
       case "unresponsive" => runCmd(Unresponsive)
       case "check" => runCmd(CheckStatus)
       case "back-online" => runCmd(BackOnline)
+      case "extra-latency" =>
+        intArg.fold(Future.successful(Respond("latency value is required")))(v => runCmd(ExtraLatency(v.milliseconds)))
     }
   }
 

@@ -53,6 +53,8 @@ object MockBackend {
 
     var (baseLatency, responders) = startResponders()
 
+    var extraLatency = Duration.Zero
+
     def startResponders(): (FiniteDuration, Array[ActorRef]) = {
       val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
 
@@ -76,7 +78,7 @@ object MockBackend {
     def receive = if (throttle) throttled else direct
 
     def statusRespond =
-      Respond(s"Optimal Concurrency: $optimalConcurrency, Max Throughput: ${optimalThroughput}msg/second, latency: ${baseLatency.toMillis}ms")
+      Respond(s"Optimal Concurrency: $optimalConcurrency, Max Throughput: ${optimalThroughput}msg/second, latency: ${(baseLatency + extraLatency).toMillis}ms")
 
     val handleCommands: Receive = {
       case Scale(ratio) =>
@@ -89,6 +91,10 @@ object MockBackend {
         baseLatency = newBaseLatency
         responders = newResponders
 
+        sender ! statusRespond
+
+      case ExtraLatency(value) =>
+        extraLatency = value
         sender ! statusRespond
 
       case CheckStatus =>
@@ -137,7 +143,7 @@ object MockBackend {
         if (rand.nextDouble() > 0.995)
           log.info(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
 
-        responders(index) ! Petition(msg, sender, (baseLatency * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
+        responders(index) ! Petition(msg, sender, ((baseLatency + extraLatency) * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
 
       case Appease(msg, replyTo) ⇒
         requestsHandling -= 1
@@ -172,6 +178,7 @@ object MockBackend {
   sealed trait ControlCommand
   case object Unresponsive extends ControlCommand
   case class Scale(ratio: Double) extends ControlCommand
+  case class ExtraLatency(value: FiniteDuration) extends ControlCommand
   case object NewThroughput extends ControlCommand
   case object ErrorOut extends ControlCommand
   case object CheckStatus extends ControlCommand
