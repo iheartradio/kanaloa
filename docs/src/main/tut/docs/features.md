@@ -7,7 +7,7 @@ position: 2
 
 ## Backpressure
 
-The main feature of Kanaloa is to, as a reverse proxy, exert backpressure for a service during traffic overflow.
+The main feature of Kanaloa is to, as a reverse proxy, exert backpressure for a service during oversaturated traffic.
 Take the following example, the incoming traffic grows to 200 requests/second, while the capacity remains at 100 requests/second. Kanaloa will reject the excessive 100 requests/second and let the service handle the other 100 requests/second with optimal speed.
 ![backpressure](../img/backpressure.png)
 
