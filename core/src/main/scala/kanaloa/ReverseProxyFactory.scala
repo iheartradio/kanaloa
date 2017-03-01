@@ -7,11 +7,13 @@ import akka.util.Timeout
 import com.typesafe.config.{ConfigFactory, Config}
 import kanaloa.ApiProtocol.{ShutdownForcefully, ShutdownSuccessfully, ShutdownGracefully}
 import kanaloa.ReverseProxy.ShutdownException
-import kanaloa.handler.{HandlerProviderAdaptor, HandlerProvider, Handler, SimpleFunctionHandler}
+import kanaloa.handler._
 import kanaloa.metrics.StatsDClient
+import kanaloa.util.Naming
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.reflect.ClassTag
 
 trait ReverseProxy[TReq, TResp] extends (TReq ⇒ Future[Either[WorkException, TResp]]) {
   def name: String
@@ -26,16 +28,28 @@ class ReverseProxyFactory private (config: Config) {
   private val index = new AtomicInteger(0)
   private implicit val system: ActorSystem = ActorSystem("kanaloa-reverse-proxy-system", config)
   private implicit val statsDClient: Option[StatsDClient] = StatsDClient(config)
+  import system.dispatcher //the system dispatcher is an appropriate execution context for most of the stuff
 
-  def apply[TReq, TResp](f: TReq ⇒ Future[TResp], name: String): ReverseProxy[TReq, TResp] = {
-    import system.dispatcher //the system dispatcher is an appropriate execution context for the SimpleFunctionHandler
-    val handler = HandlerProviderAdaptor.fromSimpleFunction(system.dispatcher)(f)
-    val dispatcherRef = system.actorOf(PushingDispatcher.safeProps(name, handler, config), "kanaloa-reverse-proxy-" + name)
+  def apply[TReq, TResp](handlerProvider: HandlerProvider[TReq], name: String): ReverseProxy[TReq, TResp] = {
+    val dispatcherRef = system.actorOf(PushingDispatcher.safeProps(name, handlerProvider, config), "kanaloa-reverse-proxy-" + name)
     new ReverseProxyImpl[TReq, TResp](name, dispatcherRef)
   }
 
-  def apply[TReq, TResp](f: TReq ⇒ Future[TResp]): ReverseProxy[TReq, TResp] = {
-    apply(f, s"Anonymous-Proxy-${index.incrementAndGet()}")
+  private def anonymousName() = s"Anonymous-Proxy-${index.incrementAndGet()}"
+
+  def apply[TReq, TResp, TService](service: TService, name: String)(implicit provider: HandlerProviderAdaptor[TService, TReq]): ReverseProxy[TReq, TResp] =
+    apply(provider(service), name)
+
+  def apply[TReq, TResp, TService](service: TService)(implicit provider: HandlerProviderAdaptor[TService, TReq]): ReverseProxy[TReq, TResp] =
+    apply(provider(service), anonymousName())
+
+  def apply[TReq, TResp: ClassTag](actorRef: ActorRef, name: String): ReverseProxy[TReq, TResp] = {
+    val handler: Handler[Any] = GeneralActorRefHandler(actorRef.path.toStringWithoutAddress, actorRef, system)(ResultChecker.expectType[TResp])
+    apply(handler, name)
+  }
+
+  def apply[TReq, TResp: ClassTag](actorRef: ActorRef): ReverseProxy[TReq, TResp] = {
+    apply(actorRef, s"kanaloa-proxy-for-${Naming.sanitizeActorName(actorRef.path.name)}-${index.incrementAndGet()}")
   }
 
   def close(): Unit = system.terminate()

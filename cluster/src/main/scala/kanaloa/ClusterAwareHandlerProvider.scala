@@ -17,7 +17,7 @@ import kanaloa.handler.{Handler, GeneralActorRefHandler, AgentHandlerProvider, H
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import ClusterAwareHandlerProvider._
-
+import util.Naming._
 /**
  * A [[kanaloa.handler.HandlerProvider]] that represent actor deployed on remote cluster members.
  *
@@ -41,7 +41,7 @@ class ClusterAwareHandlerProvider[TResp, TError](
     onMemberAdded,
     onMemberRemoved,
     includeWeaklyUp
-  ), s"cluster-monitor-for-actor-ref-${actorRefPath.replace("/", "_")}-on-$role-${UUID.randomUUID()}")
+  ), sanitizeActorName(s"cluster-monitor-for-actor-ref-$actorRefPath-on-$role-${UUID.randomUUID()}"))
 
   def onMemberAdded(member: Member): Unit = {
     if (findHandlerBy(member).isEmpty) {

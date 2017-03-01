@@ -6,7 +6,7 @@ import akka.actor.Actor.Receive
 import akka.actor._
 import kanaloa._
 import kanaloa.handler.GeneralActorRefHandler.ResultChecker
-import kanaloa.util.AtomicCyclicInt
+import kanaloa.util.{Naming, AtomicCyclicInt}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Promise, Future}
@@ -38,7 +38,7 @@ class GeneralActorRefHandler[TResp, TError](
     val cancelled = new AtomicBoolean(false)
     val handlerActor = factory.actorOf(
       handlerActorProps(promise, actor, cancelled),
-      s"${name}-handler-of-${actor.path.name}_${index.incrementAndGet()}"
+      Naming.sanitizeActorName(s"${name}-handler-of-${actor.path}_${index.incrementAndGet()}")
     )
 
     (actor ! req)(handlerActor)

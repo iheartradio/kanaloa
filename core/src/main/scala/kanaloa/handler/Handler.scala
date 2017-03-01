@@ -13,6 +13,8 @@ trait Handler[-TReq] {
   def name: String
 
   def handle(req: TReq): Handling[Resp, Error]
+
+  val sanitizedName: String = name.replaceAll("[^A-Za-z0-9()\\[\\]]", "_")
 }
 
 /**

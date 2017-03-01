@@ -8,9 +8,10 @@ technologies:
 
 # Kanaloa
 
-**kanaloa** is a library that enhance your service to be more resilient by providing
-1. Traffic control with adaptive concurrency throttling on service
-2. Pull-based load balancing
-3. Circuit breaker
-3. Realtime monitoring
+Kanaloa is library to make more resilient a service as a reverse proxy by providing:
 
+1. the ability to exert backpressure during oversaturated traffic (incoming traffic exceeds capacity).
+2. circuit breaker
+3. At-least-once delivery
+4. real-time monitor
+5. proportional load balancing (if you see appropriate)

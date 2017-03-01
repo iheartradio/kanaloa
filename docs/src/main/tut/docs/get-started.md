@@ -53,4 +53,4 @@ kanaloa {
   }
 }
 ```
-For more configuration settings and their documentation please see the [reference configuration](core/src/main/resources/reference.conf)
+For more configuration settings and their documentation please see the [reference configuration](https://github.com/iheartradio/kanaloa/blob/master/core/src/main/resources/reference.conf)

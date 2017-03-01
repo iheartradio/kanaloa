@@ -10,7 +10,7 @@ import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.queue.Worker.{CancelDelay, DelayBeforeNextWork}
 import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.AnyEq._
-import kanaloa.util.MessageScheduler
+import kanaloa.util.{Naming, MessageScheduler}
 
 import scala.concurrent.duration._
 
@@ -26,7 +26,7 @@ class WorkerPoolManager[T](
 ) extends Actor with ActorLogging with MessageScheduler {
 
   val reporter: Option[Reporter] = {
-    val handlerPrefix = handler.name.replaceAll("[^A-Za-z0-9()\\[\\]]", "_")
+    val handlerPrefix = Naming.sanitizeActorName(handler.name)
     baseReporter.map(_.withNewPrefix(_ + "." + handlerPrefix))
   }
 

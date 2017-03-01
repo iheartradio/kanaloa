@@ -26,4 +26,7 @@ object HandlerProviderAdaptor {
 
   implicit def fromSimpleFunction[TReq, TResp](implicit ex: ExecutionContext): HandlerProviderAdaptor[TReq ⇒ Future[TResp], TReq] =
     (f: TReq ⇒ Future[TResp]) ⇒ HandlerProvider.single(new SimpleFunctionHandler(f, s"AnonymousFunction-$index.incrementAndGet()"))
+
+  implicit def fromSimpleActorRef(implicit ex: ExecutionContext, actorRefFactory: ActorRefFactory): HandlerProviderAdaptor[ActorRef, Any] = (actorRef: ActorRef) ⇒
+    HandlerProvider.single(GeneralActorRefHandler(actorRef.path.toStringWithoutAddress, actorRef, actorRefFactory)(ResultChecker.complacent))
 }
