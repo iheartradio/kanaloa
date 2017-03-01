@@ -6,12 +6,12 @@ sealed trait Metric
 
 object Metric {
 
-  trait Event extends Metric
+  sealed trait Event extends Metric
   sealed trait Status extends Metric
 
-  trait QueueMetric extends Metric
+  sealed trait QueueMetric extends Metric
 
-  trait WorkerPoolMetric extends Metric
+  sealed trait WorkerPoolMetric extends Metric
 
   case object WorkReceived extends Event with QueueMetric
 

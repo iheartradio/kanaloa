@@ -143,6 +143,6 @@ lazy val docs = project
 
 addCommandAlias("root", ";project root")
 addCommandAlias("stress", ";stressGatling/gatling:test-only kanaloa.stress.Kanaloa*")
-addCommandAlias("validate", ";root;clean;compile;test;integration:test")
+addCommandAlias("validate", ";root;clean;compile;test;integration:test;docs/makeMicrosite")
 addCommandAlias("root", ";project root")
 

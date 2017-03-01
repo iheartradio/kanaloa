@@ -219,8 +219,37 @@ case class PushingDispatcher[T: ClassTag](
   settings:        Settings,
   handlerProvider: HandlerProvider[T],
   reporter:        Option[Reporter]
-)
+) extends PushingDispatcherBase[T] {
+  private val clz = classTag[T].runtimeClass
+  private val isAny = classTag[T] == classTag[Any]
+  protected def checkRequest(m: Any): Boolean =
+    isAny || clz.isInstance(m)
+}
+
+/**
+ * Internal usage only, PushingDispatcher without runtime request check
+ * @param name
+ * @param settings
+ * @param handlerProvider
+ * @param reporter
+ * @tparam T
+ */
+private[kanaloa] case class SafePushingDispatcher[T](
+  name:            String,
+  settings:        Settings,
+  handlerProvider: HandlerProvider[T],
+  reporter:        Option[Reporter]
+) extends PushingDispatcherBase[T] {
+  protected def checkRequest(m: Any): Boolean = true
+}
+
+sealed abstract class PushingDispatcherBase[T]
   extends Dispatcher[T] {
+  def name: String
+  def settings: Settings
+  def handlerProvider: HandlerProvider[T]
+  def reporter: Option[Reporter]
+
   val random = new Random(23)
   var droppingRate: DroppingRate = DroppingRate(0)
   protected lazy val queueProps = Queue.default(queueSampler, settings.workSettings)
@@ -229,8 +258,7 @@ case class PushingDispatcher[T: ClassTag](
     context.actorOf(Regulator.props(rs, queueSampler, self), "regulator")
   }
 
-  private val clz = classTag[T].runtimeClass
-  private val isAny = classTag[T] == classTag[Any]
+  protected def checkRequest(m: Any): Boolean
   /**
    * This extraReceive implementation helps this PushingDispatcher act as a transparent proxy.  It will send the message to the underlying `kanaloa.queue.Queue` and the
    * sender will be set as the receiver of any results of the downstream [[kanaloa.handler.Handler]].  This receive will disable any acks, and in the event of an `kanaloa.queue.Queue.EnqueueRejected`,
@@ -241,7 +269,7 @@ case class PushingDispatcher[T: ClassTag](
   override protected def extraReceive: Receive = {
     case EnqueueRejected(enqueued, reason) ⇒ enqueued.sendResultsTo.foreach(_ ! WorkRejected(reason.toString))
     case r: DroppingRate                   ⇒ droppingRate = r
-    case m: T if isAny || clz.isInstance(m) ⇒
+    case m: T @unchecked if checkRequest(m) ⇒
       dropOrEnqueue(m, sender)
       queueSampler ! Metric.WorkReceived
     case unrecognized ⇒ sender ! WorkFailed("unrecognized request")
@@ -273,6 +301,15 @@ object PushingDispatcher {
   )(implicit statsDClient: Option[StatsDClient], adaptor: HandlerProviderAdaptor[A, T]) = {
     val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient = statsDClient)
     Props(PushingDispatcher(name, settings, adaptor(handlerProvider), reporter)).withDeploy(Deploy.local)
+  }
+
+  private[kanaloa] def safeProps[T, A](
+    name:            String,
+    handlerProvider: HandlerProvider[T],
+    rootConfig:      Config             = ConfigFactory.load()
+  )(implicit statsDClient: Option[StatsDClient]) = {
+    val (settings, reporter) = Dispatcher.readConfig(name, rootConfig, statsDClient = statsDClient)
+    Props(SafePushingDispatcher(name, settings, handlerProvider, reporter)).withDeploy(Deploy.local)
   }
 }
 

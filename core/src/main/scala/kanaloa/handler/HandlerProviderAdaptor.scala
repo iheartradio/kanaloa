@@ -18,6 +18,10 @@ object HandlerProviderAdaptor {
     def apply(a: A): HandlerProvider[T] = f(a)
   }
 
+  implicit def fromSingleHandler[TReq](implicit ex: ExecutionContext) = new HandlerProviderAdaptor[Handler[TReq], TReq] {
+    def apply(h: Handler[TReq]): HandlerProvider[TReq] = HandlerProvider.single(h)
+  }
+
   implicit def id[T, H](implicit ev: H <:< HandlerProvider[T]): HandlerProviderAdaptor[H, T] = ev
 
   implicit def fromSimpleFunction[TReq, TResp](implicit ex: ExecutionContext): HandlerProviderAdaptor[TReq ⇒ Future[TResp], TReq] =

@@ -3,7 +3,7 @@ package kanaloa.handler
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
- * For simple async function without the error handling capabiliy
+ * For simple async function without the error handling capability
  */
 class SimpleFunctionHandler[TReq, TResp](f: TReq ⇒ Future[TResp], val name: String)(implicit ex: ExecutionContext) extends Handler[TReq] {
   type Resp = TResp

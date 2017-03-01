@@ -4,10 +4,11 @@ import akka.actor.ActorRef
 
 import scala.concurrent.duration._
 
+sealed trait WorkException
+
 object ApiProtocol {
   sealed trait Request extends Product with Serializable
   sealed trait Response extends Product with Serializable
-  sealed trait WorkException extends Response
 
   /**
    *
@@ -31,12 +32,12 @@ object ApiProtocol {
   case object ShutdownForcefully extends Response
 
   @SerialVersionUID(1L)
-  case class WorkRejected(reason: String) extends WorkException
+  case class WorkRejected(reason: String) extends WorkException with Response
 
   @SerialVersionUID(1L)
-  case class WorkFailed(reason: String) extends WorkException
+  case class WorkFailed(reason: String) extends WorkException with Response
 
   @SerialVersionUID(1L)
-  case class WorkTimedOut(reason: String) extends WorkException
+  case class WorkTimedOut(reason: String) extends WorkException with Response
 
 }
