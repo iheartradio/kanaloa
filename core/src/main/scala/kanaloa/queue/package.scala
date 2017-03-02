@@ -43,7 +43,8 @@ package kanaloa.queue {
    */
   case class CircuitBreakerSettings(
     openDurationBase:      FiniteDuration = 3.seconds,
-    timeoutCountThreshold: Int            = 3
+    timeoutCountThreshold: Int            = 3,
+    maxOpenFactor:         Int            = 3
   )
 
   /**

@@ -1,16 +1,26 @@
 options:
-  - title: Getting Started
-    url: docs/get-started.html
+  - title: Backpressure
+    url: docs/guide/backpressure.html
+    menu_type: guide
+    menu_section: guide
 
-  - title: Theories
-    url: docs/theories.html
+  - title: Circuit Breaker
+    url: docs/guide/circuit-breaker.html
+    menu_type: guide
+    menu_section: guide
 
-  - title: Architecture
-    url: docs/achitecture.html
+  - title: Realtime Monitor
+    url: docs/guide/monitor.html
+    menu_type: guide
+    menu_section: guide
 
-  - title: API Usage
-    url: docs/usage.html
+  - title: At-least-once Delivery
+    url: docs/guide/at-least-once.html
+    menu_type: guide
+    menu_section: guide
 
-  - title: Test results
-    url: docs/test-results.html
+  - title: Kanaloa and Load Balancing
+    url: docs/guide/load-balancing.html
+    menu_type: guide
+    menu_section: guide
 

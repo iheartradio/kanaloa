@@ -35,7 +35,7 @@ lazy val docsSettings = Seq(
   micrositeBaseUrl := "kanaloa",
   micrositeDocumentationUrl := "/" + micrositeBaseUrl.value + "/" + docsMappingsAPIDir.value,
   micrositeGithubOwner := "iheartradio",
-  micrositeGithubRepo := "kanlaoa",
+  micrositeGithubRepo := "kanaloa",
   autoAPIMappings := true,
   addMappingsToSiteDir(mappings in (ScalaUnidoc, packageDoc), docsMappingsAPIDir),
   ghpagesNoJekyll := false,

@@ -28,7 +28,7 @@ class CircuitBreaker(
       if (newCount <= settings.timeoutCountThreshold) {
         context become handlerTimingOut(newCount)
       } else {
-        val openFor = settings.openDurationBase * Math.min(newCount - settings.timeoutCountThreshold, 3).toLong
+        val openFor = settings.openDurationBase * Math.min(newCount - settings.timeoutCountThreshold, settings.maxOpenFactor).toLong
         workerPoolManagerRef ! kanaloa.handler.Hold(openFor)
         reporter.foreach(_.report(Metric.CircuitBreakerOpened))
       }
