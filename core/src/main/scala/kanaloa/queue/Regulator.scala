@@ -69,6 +69,7 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
         status.copy(
           droppingRate = DroppingRate(0),
           recordedAt = Time.now,
+          burstDurationLeft = settings.durationOfBurstAllowed,
           delay = Duration.Zero
         )
       ) //reset to baseline when seeing a PartialUtilization
