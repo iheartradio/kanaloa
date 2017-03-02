@@ -18,7 +18,6 @@ class KanaloaLocalUnderUtilizedSimulation extends Simulation {
       throttle = Some(80)
     )
   ).protocols(http.disableCaching)
-    .maxDuration(1.minute)
     .assertions(
       global.requestsPerSec.gte(50),
       global.successfulRequests.percent.gte(90)
@@ -32,13 +31,13 @@ class KanaloaLocalOverflowSimulation extends Simulation {
       numOfUsers = 500,
       path = "kanaloa",
       throttle = Some(300), //the capacity is 200 Rps
-      rampUp = 1.minute
+      rampUp = 30.seconds,
+      duration = 3.minutes
     )
   ).protocols(http.disableCaching)
-    .maxDuration(5.minute)
     .assertions(
       global.requestsPerSec.gte(150),
-      global.responseTime.percentile3.lte(4000),
+      global.responseTime.percentile3.lte(2500),
       global.successfulRequests.percent.gte(60)
     )
 }

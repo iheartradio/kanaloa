@@ -68,7 +68,6 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
       continueWith(
         status.copy(
           droppingRate = DroppingRate(0),
-          burstDurationLeft = settings.durationOfBurstAllowed,
           recordedAt = Time.now,
           delay = Duration.Zero
         )
