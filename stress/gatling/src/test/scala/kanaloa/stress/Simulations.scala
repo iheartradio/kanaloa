@@ -24,50 +24,7 @@ class KanaloaLocalUnderUtilizedSimulation extends Simulation {
     )
 }
 
-class KanaloaLocalOverflowSimulation extends Simulation {
 
-  setUp(
-    Users(
-      numOfUsers = 500,
-      path = "kanaloa",
-      throttle = Some(300), //the capacity is 200 Rps
-      rampUp = 30.seconds,
-      duration = 3.minutes
-    )
-  ).protocols(http.disableCaching)
-    .assertions(
-      global.requestsPerSec.gte(150),
-      global.responseTime.percentile3.lte(2500),
-      global.successfulRequests.percent.gte(60)
-    )
-}
-class BaselineLocalOverflowSimulation extends Simulation {
-
-  setUp(
-    Users(
-      numOfUsers = 500,
-      path = "straight",
-      throttle = Some(300), //the capacity is 200 Rps
-      rampUp = 2.minutes,
-      duration = 6.minutes
-    )
-  ).protocols(http.disableCaching)
-}
-
-/**
- * Baseline LB without kanaloa
- */
-class BaselineRoundRobinOverflowSimulation extends Simulation {
-  setUp(
-    Users(
-      numOfUsers = 800,
-      path = "round_robin",
-      throttle = Some(800),
-      rampUp = 10.seconds,
-      duration = 45.seconds
-    )
-  ).protocols(http.disableCaching)
-}
 
 class KanaloaLoadBalanceOverflowSimulation extends Simulation {
   setUp(
