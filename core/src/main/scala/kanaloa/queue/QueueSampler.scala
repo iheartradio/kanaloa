@@ -42,9 +42,7 @@ private[kanaloa] trait QueueSampler extends Sampler {
         s.bufferEmptySince.fold {
           stillOverflown(Some(Time.now))
         } { emptySince ⇒
-          if (emptySince.until(Time.now) > sampleInterval * 2) {
-            val (rpt, _) = tryComplete(s)
-            rpt foreach publish
+          if (emptySince.until(Time.now) > sampleInterval) {
             context become partialUtilized
             publish(PartialUtilized)
           } else
@@ -60,13 +58,15 @@ private[kanaloa] trait QueueSampler extends Sampler {
       case qs: Queue.Status ⇒
         continue(qs, None)
 
-      case AddSample ⇒
+      case AddSample if s.bufferEmptySince.isEmpty ⇒
         val (rep, status) = tryComplete(s)
         rep foreach publish
         context become overflown(status)
 
       case metric: QueueMetric ⇒
         report(metric)
+
+      case AddSample ⇒ //do not try to sample because s.bufferEmpty is defined
     }
   }
 
