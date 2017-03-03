@@ -28,17 +28,29 @@ private[kanaloa] trait QueueSampler extends Sampler {
   private def reportQueueLength(queueLength: QueueLength): Unit =
     report(WorkQueueLength(queueLength.value))
 
-  private def overflown(s: QueueStatus): Receive = {
+  private def overflown(s: OverflownStatus): Receive = {
     def continue(status: Queue.Status, dispatched: Option[Int]): Unit = {
-      val Queue.Status(idle, workLeft, isOverflown) = status
+      val Queue.Status(idle, workLeft, workBuffered) = status
       reportQueueLength(workLeft)
-      if (!isOverflown) {
-        val (rpt, _) = tryComplete(s)
-        rpt foreach publish
-        context become partialUtilized
-        publish(PartialUtilized)
-      } else
-        context become overflown(s.copy(queueLength = workLeft, workDone = s.workDone + dispatched.getOrElse(0)))
+
+      def stillOverflown(bufferEmptySince: Option[Time]): Unit =
+        context become overflown(s.copy(queueLength = workLeft, workDone = s.workDone + dispatched.getOrElse(0), bufferEmptySince = bufferEmptySince))
+
+      if (workBuffered) {
+        stillOverflown(None)
+      } else {
+        s.bufferEmptySince.fold {
+          stillOverflown(Some(Time.now))
+        } { emptySince ⇒
+          if (emptySince.until(Time.now) > sampleInterval * 2) {
+            val (rpt, _) = tryComplete(s)
+            rpt foreach publish
+            context become partialUtilized
+            publish(PartialUtilized)
+          } else
+            stillOverflown(s.bufferEmptySince)
+        }
+      }
     }
 
     handleSubscriptions orElse {
@@ -64,7 +76,7 @@ private[kanaloa] trait QueueSampler extends Sampler {
       if (isOverflown) {
         publish(Overflown)
         context become overflown(
-          QueueStatus(queueLength = queueLength, workDone = dispatched.getOrElse(0))
+          OverflownStatus(queueLength = queueLength, workDone = dispatched.getOrElse(0))
         )
       }
       reportQueueLength(queueLength)
@@ -91,7 +103,7 @@ private[kanaloa] trait QueueSampler extends Sampler {
    * @param status
    * @return a reset status if completes, the original status if not.
    */
-  private def tryComplete(status: QueueStatus): (Option[Report], QueueStatus) = {
+  private def tryComplete(status: OverflownStatus): (Option[Report], OverflownStatus) = {
     val sample = status.toSample(minSampleDuration)
 
     val newStatus = if (sample.fold(false)(_.dequeued > 0))
@@ -105,20 +117,26 @@ private[kanaloa] trait QueueSampler extends Sampler {
 private[kanaloa] object QueueSampler {
 
   class QueueSamplerImpl(
-    val reporter: Option[Reporter],
-    val settings: SamplerSettings
+    val reporter:              Option[Reporter],
+    val settings:              SamplerSettings,
+    override val autoSampling: Boolean
   ) extends QueueSampler
 
   def props(
-    reporter: Option[Reporter],
-    settings: SamplerSettings  = SamplerSettings()
-  ): Props = Props(new QueueSamplerImpl(reporter, settings))
+    reporter:     Option[Reporter],
+    settings:     SamplerSettings  = SamplerSettings(),
+    autoSampling: Boolean          = true
+  ): Props = Props(new QueueSamplerImpl(reporter, settings, autoSampling))
 
-  private case class QueueStatus(
-    queueLength:    QueueLength,
-    workDone:       Int              = 0,
-    start:          Time             = Time.now,
-    avgProcessTime: Option[Duration] = None
+  /**
+   * Status of the current traffic oversaturation
+   */
+  private case class OverflownStatus(
+    queueLength:      QueueLength,
+    workDone:         Int              = 0,
+    start:            Time             = Time.now,
+    avgProcessTime:   Option[Duration] = None,
+    bufferEmptySince: Option[Time]     = None
   ) {
 
     def toSample(minSampleDuration: Duration): Option[QueueSample] = {

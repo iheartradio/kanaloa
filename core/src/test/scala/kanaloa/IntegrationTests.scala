@@ -256,172 +256,6 @@ class PullingDispatcherSanityCheckIntegration extends IntegrationSpec {
 
 }
 
-class AutothrottleWithPushingIntegration extends IntegrationSpec {
-
-  "pushing dispatcher move to the optimal pool size" in new TestScope {
-
-    val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
-    val optimalSize = 10
-
-    def test: Int = {
-      val backend = TestActorRef[ConcurrencyLimitedBackend](concurrencyLimitedBackendProps(optimalSize, processTime))
-      val pd = TestActorRef[Dispatcher[Any]](PushingDispatcher.props(
-        "test-pushing",
-        handlerWith(backend),
-        ConfigFactory.parseString(
-          s"""
-          kanaloa.dispatchers.test-pushing {
-            update-interval = 100ms
-            worker-pool {
-              starting-pool-size = 3
-              min-pool-size = 1
-            }
-            back-pressure {
-              enabled = off
-            }
-            autothrottle {
-              chance-of-scaling-down-when-full = 0.3
-              resize-interval = 200ms
-              weight-of-latency = 0.1
-              exploration-ratio = 0.5
-              max-explore-step-size = 1
-            }
-            $metricsConfig
-          }
-        """
-        )
-      ))
-      ignoreMsg {
-        case Success ⇒ true
-      }
-
-      val optimalSpeed = optimalSize.toDouble / processTime.toMillis
-
-      val sent = sendLoadsOfMessage(pd, duration = 6.seconds, msgPerMilli = optimalSpeed * 0.9, verbose)
-
-      val actualPoolSize = getPoolSize(pd.underlyingActor)
-
-      shutdown(pd)
-
-      backend.underlyingActor.count === sent
-
-      actualPoolSize
-    }
-
-    val failRatio = performMultipleTests(test, optimalSize, 6)
-
-    failRatio should be <= 0.34
-  }
-}
-
-class AutothrottleWithPullingIntegration extends IntegrationSpec {
-
-  "pulling dispatcher move to the optimal pool size" in new TestScope {
-
-    val processTime = 4.milliseconds //cannot be faster than this to keep up with the computation power.
-    val optimalSize = 10
-    val optimalSpeed = optimalSize.toDouble / processTime.toMillis
-    val duration = 20.seconds
-    val msgPerMilli = optimalSpeed * 0.9
-    val numberOfMessages = (duration.toMillis * msgPerMilli).toInt
-
-    def dispatcherProps(backend: ActorRef) = PullingDispatcher.props(
-      "test-pulling",
-      iteratorOf(numberOfMessages),
-      handlerWith(backend),
-      None,
-      ConfigFactory.parseString(
-        s"""
-          kanaloa.dispatchers.test-pulling {
-            update-interval = 100ms
-            worker-pool {
-              starting-pool-size = 3
-              min-pool-size = 1
-            }
-
-            autothrottle {
-              chance-of-scaling-down-when-full = 0.1
-              resize-interval = 100ms
-              downsize-after-under-utilization = 72h
-            }
-            $metricsConfig
-          }
-        """
-      )
-    )
-
-    val backendProps = concurrencyLimitedBackendProps(optimalSize, processTime, Some(numberOfMessages))
-
-    def test: Int = {
-      val backend = TestActorRef[ConcurrencyLimitedBackend](backendProps)
-      val pd = TestActorRef[Dispatcher[Any]](dispatcherProps(backend))
-
-      ignoreMsg { case Success ⇒ true }
-
-      watch(backend)
-      pd.underlyingActor.workerPools.head._2 ! QueryStatus()
-      var lastPoolSize = 0
-      import system.dispatcher
-
-      fishForMessage(duration * 4) {
-        case Terminated(`backend`) ⇒ true //it shutdowns itself after all messages are processed.
-        case RunningStatus(pool) ⇒
-          lastPoolSize = pool.size
-          system.scheduler.scheduleOnce(duration / 200, pd.underlyingActor.workerPools.head._2, QueryStatus(Some(self)))
-          false
-        case ShuttingDown ⇒ false
-        case m            ⇒ throw new Exception("unexpected, " + m)
-
-      }
-
-      lastPoolSize
-    }
-
-    val failRatio = performMultipleTests(test, optimalSize, 6)
-
-    failRatio should be <= 0.34
-  }
-}
-
-class AutothrottleDownSizeWithSparseTrafficIntegration extends IntegrationSpec {
-  "downsize when the traffic is sparse" in new TestScope {
-    val backend = TestActorRef[SimpleBackend]
-    val pd = TestActorRef[Dispatcher[Any]](PushingDispatcher.props(
-      "test-pushing",
-      handlerWith(backend),
-      ConfigFactory.parseString(
-        """
-          kanaloa.dispatchers.test-pushing {
-            update-interval = 100ms
-            worker-pool {
-              starting-pool-size = 10
-              min-pool-size = 2
-            }
-            autothrottle {
-              resize-interval = 10ms
-              downsize-after-under-utilization = 100ms
-            }
-          }
-        """
-      )
-    ))
-
-    pd ! "a msg"
-
-    expectMsg(Success)
-
-    expectNoMsg(200.milliseconds) //wait for the downsize to happen
-
-    val actualPoolSize = getPoolSize(pd.underlyingActor)
-
-    shutdown(pd)
-
-    actualPoolSize === 2
-
-  }
-
-}
-
 object IntegrationTests {
   val shutdownTimeout = 60.seconds
 
@@ -436,35 +270,6 @@ object IntegrationTests {
         Thread.sleep(delay.toMillis)
         context.parent ! r
         context stop self
-    }
-  }
-
-  class ConcurrencyLimitedBackend(optimalSize: Int, baseWait: FiniteDuration, totalMessagesCap: Option[Int] = None) extends Actor with ActorLogging {
-    var concurrent = 0
-    var count = 0
-    val startAt = LocalDateTime.now
-
-    def receive = {
-      case Reply(to, _, scheduled) ⇒
-        concurrent -= 1
-        count += 1
-        if (count % 1000 == 0) {
-          log.info(s"Concurrency: $concurrent")
-          log.info(s"Total processed: $count at speed ${count.toFloat / startAt.until(LocalDateTime.now).toMillis} messages/ms")
-          log.info(s"Process Time this message: ${scheduled.until(LocalDateTime.now).toMillis} ms")
-        }
-
-        to ! Success
-        totalMessagesCap.filter(count >= _).foreach { _ ⇒
-          context stop self
-        }
-
-      case msg ⇒
-        concurrent += 1
-        val overCap = Math.max(concurrent - optimalSize, 0)
-        val wait = baseWait * (1.0 + Math.pow(overCap.toDouble, 1.7))
-
-        context.actorOf(Props(classOf[Delay])) ! Reply(sender, wait)
     }
   }
 
@@ -494,9 +299,6 @@ object IntegrationTests {
       messageCount.getAndIncrement().toInt
     }
   }
-
-  def concurrencyLimitedBackendProps(optimalSize: Int, baseWait: FiniteDuration = 1.milliseconds, totalMessagesCap: Option[Int] = None) =
-    Props(new ConcurrencyLimitedBackend(optimalSize, baseWait, totalMessagesCap))
 
   class TestScope(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 
@@ -528,26 +330,6 @@ object IntegrationTests {
       rd ! ShutdownGracefully(Some(self), timeout = shutdownTimeout)
 
       expectMsg(shutdownTimeout, ShutdownSuccessfully)
-    }
-
-    def performMultipleTests(test: ⇒ Int, optimalSize: Int, numberOfTests: Int = 4) = {
-
-      val targetSize = optimalSize + 1 //target pool size is a bit larger to fully utilize the optimal concurrency
-      val sizeResults = (1 to numberOfTests).map(_ ⇒ test)
-
-      //normalized distance from the optimal size
-      def distanceFromOptimalSize(actualSize: Int): Double = {
-        println("actual size:" + actualSize + "  optimal size: " + targetSize)
-        Math.abs(actualSize - targetSize).toDouble / targetSize
-      }
-
-      val normalizedDistances = sizeResults.map(distanceFromOptimalSize)
-
-      val failedTests = normalizedDistances.count(_ > 0.3)
-
-      val failRatio = failedTests.toDouble / numberOfTests
-
-      failRatio
     }
   }
 

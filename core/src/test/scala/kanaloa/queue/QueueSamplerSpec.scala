@@ -18,15 +18,16 @@ import scala.concurrent.duration._
 class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventually {
   val waitDuration = 30.milliseconds
   val startingPoolSize: Int = 10
-
+  val defaultSampleInterval = 20.milliseconds
   def initQueueSampler(
     minSampleDurationRatio: Double         = 0,
-    sampleInterval:         FiniteDuration = 30.seconds //relies on manual AddSample signal in tests
+    sampleInterval:         FiniteDuration = defaultSampleInterval,
+    autoSampling:           Boolean        = false //relies on manual AddSample signal in tests
   )(implicit system: ActorSystem): (ActorRef, TestProbe) = {
     val ps = system.actorOf(QueueSampler.props(None, SamplerSettings(
       sampleInterval = sampleInterval,
       minSampleDurationRatio = minSampleDurationRatio
-    )))
+    ), autoSampling))
     ps ! overflownStatus //set it in the busy mode
     val subscriberProbe = TestProbe()
     ps ! Subscribe(subscriberProbe.ref)
@@ -39,7 +40,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
   "QueueSampler" should {
     "send Samples periodically" in {
-      val (ps, subscriberProbe) = initQueueSampler(sampleInterval = 100.milliseconds)
+      val (ps, subscriberProbe) = initQueueSampler(sampleInterval = 100.milliseconds, autoSampling = true)
       ps ! dispatchReport()
       ps ! dispatchReport()
 
@@ -55,16 +56,27 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
     }
 
-    "ignore metrics when pool isn't fully occupied" in {
+    "not report PartialUtilized for sporadic workBuffered report" in {
       val (ps, subscriberProbe) = initQueueSampler()
       ps ! partialUtilizedStatus
 
+      subscriberProbe.expectNoMsg(waitDuration)
+
+    }
+
+    "ignore metrics when pool isn't fully occupied" in {
+      val (ps, subscriberProbe) = initQueueSampler()
+      ps ! partialUtilizedStatus
+      expectNoMsg(defaultSampleInterval * 3)
+      ps ! partialUtilizedStatus
+
       subscriberProbe.expectMsgType[QueueSample] //last sample when fully utilized
+      subscriberProbe.expectMsg(PartialUtilized)
 
       ps ! dispatchReport(status = partialUtilizedStatus)
+      expectNoMsg(defaultSampleInterval * 3)
       ps ! dispatchReport(status = partialUtilizedStatus)
       ps ! AddSample
-      subscriberProbe.expectMsg(PartialUtilized)
       subscriberProbe.expectNoMsg(waitDuration)
 
     }
@@ -97,11 +109,17 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
     "resume to collect metrics once pool becomes busy again, also send overflown report but doesn't count old work" in {
       val (ps, subscriberProbe) = initQueueSampler()
+
       ps ! partialUtilizedStatus
+      expectNoMsg(defaultSampleInterval * 3)
+      ps ! partialUtilizedStatus
+
       subscriberProbe.expectMsgType[QueueSample] //last sample when fully utilized
 
       ps ! dispatchReport(status = partialUtilizedStatus)
+      expectNoMsg(defaultSampleInterval * 3)
       ps ! dispatchReport(status = partialUtilizedStatus)
+
       subscriberProbe.expectMsg(PartialUtilized)
 
       ps ! overflownStatus
@@ -125,7 +143,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
     }
 
     "continue counting when sample duration not long enough" in {
-      val (ps, subscriberProbe) = initQueueSampler(0.99, waitDuration)
+      val (ps, subscriberProbe) = initQueueSampler(0.99, waitDuration, true)
       ps ! dispatchReport()
       ps ! AddSample
       subscriberProbe.expectNoMsg(waitDuration / 3)

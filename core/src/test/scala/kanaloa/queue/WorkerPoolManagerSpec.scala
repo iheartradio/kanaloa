@@ -133,7 +133,7 @@ class WorkerPoolManageSpec extends SpecWithActorSystem with Eventually with Mock
       (wpm, queueProbe, metricsCollector, testBackend, workerFactory) ⇒
         //current workers are 5, minimum workers are 3, so killing 4 should result in 2 new recreate attempts
         workerFactory.probeMap.keys.take(4).foreach(workerFactory.killAndRemoveWorker)
-        eventually {
+        eventually(timeout(1.seconds), interval(200.milliseconds)) {
           wpm.underlyingActor.workerPool should have size 3
           workerFactory.probeMap should have size 3 //should only be 3 workers
         }

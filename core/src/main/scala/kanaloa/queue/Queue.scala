@@ -157,10 +157,10 @@ private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageSche
     }
   }
 
-  def overflown(state: InternalState): Boolean
+  def workBuffered(state: InternalState): Boolean
   def onQueuedWorkExhausted(): Unit = ()
   private def statusOf(state: InternalState): Queue.Status =
-    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), overflown(state))
+    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), workBuffered(state))
 
   protected case class InternalState(
     workBuffer:      ScalaQueue[Work[T]]  = ScalaQueue.empty,
@@ -174,7 +174,8 @@ case class DefaultQueue[T](
   workSettings:     WorkSettings,
   metricsCollector: ActorRef
 ) extends Queue[T] {
-  def overflown(state: InternalState): Boolean = state.queuedWorkers.length == 0 && state.workBuffer.length > 0
+  def workBuffered(state: InternalState): Boolean =
+    state.queuedWorkers.length == 0 && state.workBuffer.length > 0
 }
 
 class QueueOfIterator[T](
@@ -188,7 +189,7 @@ class QueueOfIterator[T](
   val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self, metricsCollector))
 
   /**
-   * Determines if a state indicates the workers pool are fully utilized.
+   * Determines if a state indicates the workers pool are all busy.
    * This is different from the default pushing [[DefaultQueue]]
    * for a QueueOfIterator, it only gets work when there is at least one queued worker,
    * which means there is a significant chance a second worker comes in before
@@ -201,7 +202,7 @@ class QueueOfIterator[T](
    * @param state
    * @return
    */
-  def overflown(state: InternalState): Boolean = state.queuedWorkers.length <= 2
+  def workBuffered(state: InternalState): Boolean = state.queuedWorkers.length <= 2
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }
@@ -295,9 +296,9 @@ private[kanaloa] object Queue {
    *
    * @param idleWorkers workers that are waiting for work
    * @param queueLength work in the queue waiting to be picked up by workers
-   * @param overflown are all workers in the worker pool utilized
+   * @param workBuffered indicate if there is there work buffered in the queue, a sign that all workers are busy and that the system could be experiencing a traffic oversaturation.
    */
-  case class Status(idleWorkers: Int, queueLength: QueueLength, overflown: Boolean)
+  case class Status(idleWorkers: Int, queueLength: QueueLength, workBuffered: Boolean)
   case class DispatchReport(status: Status, dispatched: Int)
 
   def ofIterable[T](

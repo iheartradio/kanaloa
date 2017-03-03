@@ -6,12 +6,16 @@ import kanaloa.queue.Sampler._
 import scala.concurrent.duration._
 
 private[kanaloa] trait Sampler extends Actor {
-
+  /**
+   * can be turned off for testing purpose only
+   * @return
+   */
+  def autoSampling: Boolean = true
   val settings: SamplerSettings
   import settings._
   private var subscribers: Set[ActorRef] = Set.empty
 
-  private val scheduledSampling = {
+  private val scheduledSampling = if (autoSampling) Some({
     import context.dispatcher
     context.system.scheduler.schedule(
       sampleInterval,
@@ -19,10 +23,11 @@ private[kanaloa] trait Sampler extends Actor {
       self,
       AddSample
     )
-  }
+  })
+  else None
 
   override def postStop(): Unit = {
-    scheduledSampling.cancel()
+    scheduledSampling.foreach(_.cancel())
     super.postStop()
   }
 
