@@ -33,13 +33,14 @@ class RegulatorSpec extends SpecWithActorSystem {
     Status(delay, DroppingRate(droppingRate), Speed(averageSpeed), burstStatus)
 
   def settings(
-    referenceDelay:         FiniteDuration = 3.seconds,
-    delayFactorBase:        Double         = 0.5,
-    delayTrendFactorBase:   Double         = 0.3,
-    durationOfBurstAllowed: FiniteDuration = Duration.Zero,
-    weightOfLatestMetric:   Double         = 0.5
+    referenceDelay:           FiniteDuration = 3.seconds,
+    delayFactorBase:          Double         = 0.5,
+    delayTrendFactorBase:     Double         = 0.3,
+    durationOfBurstAllowed:   FiniteDuration = Duration.Zero,
+    weightOfLatestMetric:     Double         = 0.5,
+    minDurationBetweenBursts: FiniteDuration = Duration.Zero
   ) =
-    Settings(referenceDelay, delayFactorBase, delayTrendFactorBase, durationOfBurstAllowed, weightOfLatestMetric)
+    Settings(referenceDelay, delayFactorBase, delayTrendFactorBase, durationOfBurstAllowed, weightOfLatestMetric, minDurationBetweenBursts)
 
   "Regulator" should {
     import Regulator.update
@@ -278,7 +279,7 @@ class RegulatorSpec extends SpecWithActorSystem {
       result shouldBe InBurst(lastBurstStarted)
     }
 
-    "expire burst when duraiton is longer than allowed" in {
+    "expire burst when it's already bursting longer than allowed" in {
       val lastBurstStarted = 30.second.ago
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
@@ -287,6 +288,17 @@ class RegulatorSpec extends SpecWithActorSystem {
       ).burstStatus
 
       result shouldBe BurstExpired(lastBurstStarted)
+    }
+
+    "prevent from going into burst the last burst is within the min duration between bursts" in {
+      val lastBurstStarted = 20.second.ago
+      val result = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst(Some(lastBurstStarted))),
+        settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds, minDurationBetweenBursts = 30.seconds)
+      ).burstStatus
+
+      result shouldBe OutOfBurst(Some(lastBurstStarted))
     }
 
   }

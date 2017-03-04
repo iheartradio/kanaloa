@@ -135,7 +135,8 @@ object Regulator {
       case o @ OutOfBurst(_)     ⇒ o
     }
 
-    def continueBurst(status: BurstStatus, durationAllowed: FiniteDuration): BurstStatus = status match {
+    def continueBurst(status: BurstStatus, durationAllowed: FiniteDuration, minDurationBetweenBursts: FiniteDuration): BurstStatus = status match {
+      case o @ OutOfBurst(last) if last.fold(false)(_.until(Time.now) < minDurationBetweenBursts) ⇒ o
       case OutOfBurst(_) ⇒ InBurst(Time.now)
       case InBurst(started) if started.until(Time.now) > durationAllowed ⇒ BurstExpired(started)
       case s @ (InBurst(_) | BurstExpired(_)) ⇒ s
@@ -144,11 +145,12 @@ object Regulator {
   }
 
   case class Settings(
-    referenceDelay:         FiniteDuration,
-    delayFactorBase:        Double,
-    delayTrendFactorBase:   Double,
-    durationOfBurstAllowed: FiniteDuration = Duration.Zero,
-    weightOfLatestMetric:   Double         = 0.5
+    referenceDelay:           FiniteDuration,
+    delayFactorBase:          Double,
+    delayTrendFactorBase:     Double,
+    durationOfBurstAllowed:   FiniteDuration = Duration.Zero,
+    weightOfLatestMetric:     Double         = 0.5,
+    minDurationBetweenBursts: FiniteDuration = Duration.Zero
   )
 
   private def estimateDelay(
@@ -190,7 +192,7 @@ object Regulator {
     val newBurstStatus: BurstStatus = if (queueCaughtUp) {
       transitOut(lastStatus.burstStatus)
     } else {
-      continueBurst(lastStatus.burstStatus, durationOfBurstAllowed)
+      continueBurst(lastStatus.burstStatus, durationOfBurstAllowed, minDurationBetweenBursts)
     }
 
     lastStatus.copy(
