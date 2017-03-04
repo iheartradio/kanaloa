@@ -65,7 +65,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
     }
 
-    "ignore metrics when pool isn't fully occupied" in {
+    "send metrics when pool isn't fully occupied" in {
       val (ps, subscriberProbe) = initQueueSampler()
 
       ps ! dispatchReport(status = partialUtilizedStatus)
@@ -74,7 +74,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
       subscriberProbe.expectMsg(PartialUtilized)
 
       ps ! AddSample
-      subscriberProbe.expectNoMsg(waitDuration)
+      subscriberProbe.expectMsgType[QueueSample]
 
     }
 
@@ -119,7 +119,7 @@ class QueueSamplerSpec extends SpecWithActorSystem with MockitoSugar with Eventu
 
       ps ! AddSample
       subscriberProbe.expectMsg(Overflown)
-      subscriberProbe.expectMsgType[QueueSample].dequeued shouldBe 1
+      subscriberProbe.expectMsgType[QueueSample].dequeued shouldBe 3
 
     }
 

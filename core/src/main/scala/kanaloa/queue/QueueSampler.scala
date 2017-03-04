@@ -25,38 +25,26 @@ private[kanaloa] trait QueueSampler extends Sampler {
 
   def reporter: Option[Reporter]
 
-  def receive = partialUtilized
+  def receive = monitoring(QueueState(QueueLength(0), PartialUtilizing))
 
   private def reportQueueLength(queueLength: QueueLength): Unit =
     report(WorkQueueLength(queueLength.value))
 
-  private def overflown(s: OverflownStatus): Receive = {
+  private def monitoring(s: QueueState): Receive = {
     def continue(status: Queue.Status, dispatched: Option[Int]): Unit = {
-      val Queue.Status(idle, workLeft, workBuffered) = status
+      val Queue.Status(_, workLeft, workBuffered) = status
       reportQueueLength(workLeft)
-
-      def stillOverflown(bufferEmptySince: Option[Time]): Unit =
-        context become overflown(
-          s.copy(
-            queueLength = workLeft,
-            workDone = s.workDone + dispatched.getOrElse(0),
-            bufferEmptySince = bufferEmptySince
-          )
-        )
-
-      if (workBuffered) {
-        stillOverflown(None)
-      } else {
-        s.bufferEmptySince.fold {
-          stillOverflown(Some(Time.now))
-        } { emptySince ⇒
-          if (emptySince.until(Time.now) > sampleInterval) {
-            context become partialUtilized
-            publish(PartialUtilized)
-          } else
-            stillOverflown(s.bufferEmptySince)
-        }
+      val (event, newOverflowState) = {
+        if (workBuffered)
+          OverflowState.sawWorkBuffered(s.overflowState)
+        else OverflowState.seeingEmptyWorkBuffer(s.overflowState, sampleInterval)
       }
+      event.foreach(publish)
+      context become monitoring(s.copy(
+        queueLength = workLeft,
+        workDone = s.workDone + dispatched.getOrElse(0),
+        overflowState = newOverflowState
+      ))
     }
 
     handleSubscriptions orElse {
@@ -66,10 +54,14 @@ private[kanaloa] trait QueueSampler extends Sampler {
       case qs: Queue.Status ⇒
         continue(qs, None)
 
-      case AddSample if s.bufferEmptySince.isEmpty ⇒
-        val (rep, status) = tryComplete(s)
-        rep foreach publish
-        context become overflown(status)
+      case AddSample ⇒
+        val sample = s.toSample(minSampleDuration)
+        val newState = if (sample.fold(false)(_.dequeued > 0))
+          s.copy(workDone = 0, start = Time.now, avgProcessTime = None) //if sample is valid and there is work done restart the counter
+        else s
+
+        sample foreach publish
+        context become monitoring(newState)
 
       case metric: QueueMetric ⇒
         report(metric)
@@ -78,48 +70,8 @@ private[kanaloa] trait QueueSampler extends Sampler {
     }
   }
 
-  private val partialUtilized: Receive = {
-    def continue(status: Queue.Status, dispatched: Option[Int]): Unit = {
-      val Queue.Status(idle, queueLength, isOverflown) = status
-      if (isOverflown) {
-        publish(Overflown)
-        context become overflown(
-          OverflownStatus(queueLength = queueLength, workDone = dispatched.getOrElse(0))
-        )
-      }
-      reportQueueLength(queueLength)
-    }
+  private def report(m: QueueMetric): Unit = reporter.foreach(_.report(m))
 
-    handleSubscriptions orElse {
-      case r: Queue.DispatchReport ⇒
-        continue(r.status, Some(r.dispatched))
-
-      case status: Queue.Status ⇒
-        continue(status, None)
-
-      case metric: QueueMetric ⇒
-        report(metric)
-
-      case AddSample ⇒ //no sample is produced in the partial utilized state
-    }
-  }
-
-  def report(m: QueueMetric): Unit = reporter.foreach(_.report(m))
-
-  /**
-   *
-   * @param status
-   * @return a reset status if completes, the original status if not.
-   */
-  private def tryComplete(status: OverflownStatus): (Option[Report], OverflownStatus) = {
-    val sample = status.toSample(minSampleDuration)
-
-    val newStatus = if (sample.fold(false)(_.dequeued > 0))
-      status.copy(workDone = 0, start = Time.now, avgProcessTime = None) //if sample is valid and there is work done restart the counter
-    else status
-
-    (sample, newStatus)
-  }
 }
 
 private[kanaloa] object QueueSampler {
@@ -136,16 +88,37 @@ private[kanaloa] object QueueSampler {
     autoSampling: Boolean          = true
   ): Props = Props(new QueueSamplerImpl(reporter, settings, autoSampling))
 
+  sealed trait OverflowState extends Product with Serializable
+
+  case class BeginToSeeEmptyBuffer(since: Time) extends OverflowState
+  case object Overflowing extends OverflowState
+  case object PartialUtilizing extends OverflowState
+
+  object OverflowState {
+    def sawWorkBuffered(state: OverflowState): (Option[Event], OverflowState) = state match {
+      case Overflowing | BeginToSeeEmptyBuffer(_) ⇒ (None, Overflowing)
+      case PartialUtilizing                       ⇒ (Some(Overflown), Overflowing)
+    }
+
+    def seeingEmptyWorkBuffer(state: OverflowState, threshold: FiniteDuration): (Option[Event], OverflowState) = state match {
+      case PartialUtilizing ⇒ (None, PartialUtilizing)
+      case Overflowing      ⇒ (None, BeginToSeeEmptyBuffer(Time.now))
+      case BeginToSeeEmptyBuffer(since) if since.until(Time.now) > threshold ⇒
+        (Some(PartialUtilized), PartialUtilizing)
+      case b @ BeginToSeeEmptyBuffer(_) ⇒ (None, b)
+    }
+  }
+
   /**
    * Status of the current traffic oversaturation
    */
-  private case class OverflownStatus(
-    queueLength:      QueueLength,
-    workDone:         Int              = 0,
-    start:            Time             = Time.now,
-    avgProcessTime:   Option[Duration] = None,
-    bufferEmptySince: Option[Time]     = None
-  ) {
+  final case class QueueState(
+    queueLength:    QueueLength,
+    overflowState:  OverflowState,
+    workDone:       Int              = 0,
+    start:          Time             = Time.now,
+    avgProcessTime: Option[Duration] = None
+  ) extends {
 
     def toSample(minSampleDuration: Duration): Option[QueueSample] = {
       if (duration >= minSampleDuration) Some(QueueSample(
@@ -164,7 +137,7 @@ private[kanaloa] object QueueSampler {
 
   sealed trait Report extends Sample
 
-  case class QueueSample(
+  final case class QueueSample(
     dequeued:    Int,
     start:       Time,
     end:         Time,
@@ -176,7 +149,8 @@ private[kanaloa] object QueueSampler {
     lazy val speed: Speed = Speed(dequeued.toDouble * 1000 / start.until(end).toMicros.toDouble)
   }
 
-  case object PartialUtilized extends Report
-  case object Overflown extends Report
+  trait Event extends Report
+  case object PartialUtilized extends Event
+  case object Overflown extends Event
 
 }

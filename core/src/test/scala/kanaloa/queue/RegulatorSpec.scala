@@ -114,27 +114,6 @@ class RegulatorSpec extends SpecWithActorSystem {
       metrics3.collect { case m: Metric.BurstMode ⇒ m }.head.inBurst shouldBe false
     }
 
-    "send metrics when seeing PartialUtilization" in {
-      val metricsCollector = TestProbe()
-      val regulator = system.actorOf(Regulator.props(settings(), metricsCollector.ref, TestProbe().ref))
-      metricsCollector.expectMsgType[Subscribe]
-      metricsCollector.expectMsgType[Metric.DropRate]
-
-      regulator ! sample() //starts the regulator
-
-      regulator ! PartialUtilized
-
-      val metrics = List(
-        metricsCollector.expectMsgType[Metric],
-        metricsCollector.expectMsgType[Metric],
-        metricsCollector.expectMsgType[Metric]
-      )
-
-      metrics.collect { case m: Metric.WorkQueueExpectedWaitTime ⇒ m }.head.duration.toMillis shouldBe 0
-      metrics.collect { case m: Metric.DropRate ⇒ m }.head.value shouldBe 0d
-      metrics.collect { case m: Metric.BurstMode ⇒ m }.head.inBurst shouldBe false
-    }
-
     "send dropRate when outside burst duration" in {
       val regulatee = TestProbe()
       val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 30.milliseconds), TestProbe().ref, regulatee.ref))
@@ -146,21 +125,6 @@ class RegulatorSpec extends SpecWithActorSystem {
       regulatee.expectNoMsg(40.milliseconds)
       regulator ! sample(workDone = 1, queueLength = 10000)
       regulatee.expectMsgType[DroppingRate].value should be > 0d //send dropping rate when burst allowed used up.
-    }
-
-    "reset drop rate after seeing a PartialUtilization" in {
-      val regulatee = TestProbe()
-      val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 10.milliseconds), TestProbe().ref, regulatee.ref))
-      regulator ! sample() //starts the regulator
-      regulator ! sample(workDone = 1, queueLength = 10000)
-      regulatee.expectMsgType[DroppingRate]
-      expectNoMsg(20.milliseconds) //expire the burst
-      regulator ! sample(workDone = 1, queueLength = 10000)
-      regulatee.expectMsgType[DroppingRate].value shouldBe 1d //does not send dropping rate larger than zero when within a burst
-
-      regulator ! PartialUtilized
-      regulatee.expectMsgType[DroppingRate].value shouldBe 0d //does not send dropping rate larger than zero when within a burst
-
     }
 
     "update speed with weight" in {

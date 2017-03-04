@@ -5,7 +5,7 @@ import java.time.{LocalDateTime ⇒ Time}
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import kanaloa.Types.{QueueLength, Speed}
 import kanaloa.metrics.Metric
-import kanaloa.queue.QueueSampler.{PartialUtilized, QueueSample, Report}
+import kanaloa.queue.QueueSampler.{QueueSample, Report}
 import kanaloa.queue.Regulator._
 import kanaloa.util.Java8TimeExtensions._
 
@@ -64,14 +64,6 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
   private def regulating(status: Status): Receive = {
     case s: QueueSample ⇒
       continueWith(update(s, status, settings))
-    case PartialUtilized ⇒
-      continueWith(
-        status.copy(
-          droppingRate = DroppingRate(0),
-          burstStatus = transitOut(status.burstStatus),
-          delay = Duration.Zero
-        )
-      ) //reset to baseline when seeing a PartialUtilization
     case _: Report ⇒ //ignore other performance report
   }
 
@@ -166,10 +158,11 @@ object Regulator {
 
   private[kanaloa] def update(sample: QueueSample, lastStatus: Status, settings: Settings): Status = {
     import settings._
-    val avgSpeed =
+    val avgSpeed = if (sample.queueLength.value > 0) //ignore the speed when queue is empty
       Speed(
         sample.speed.value * weightOfLatestMetric + ((1d - weightOfLatestMetric) * lastStatus.averageSpeed.value)
       )
+    else lastStatus.averageSpeed
 
     val delay = estimateDelay(sample, avgSpeed)
 
