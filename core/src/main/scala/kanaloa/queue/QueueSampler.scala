@@ -14,7 +14,9 @@ import scala.concurrent.duration._
 
 /**
  *  It can be subscribed using [[kanaloa.queue.Sampler.Subscribe]] message.
- *  It publishes [[kanaloa.queue.QueueSampler.QueueSample]]s and [[kanaloa.queue.QueueSampler.PartialUtilized]] number to subscribers.
+ *  It publishes [[kanaloa.queue.QueueSampler.QueueSample]]s and
+ *  [[kanaloa.queue.QueueSampler.PartialUtilized]] and
+ *  [[kanaloa.queue.QueueSampler.Overflown]] number to subscribers.
  *
  */
 private[kanaloa] trait QueueSampler extends Sampler {

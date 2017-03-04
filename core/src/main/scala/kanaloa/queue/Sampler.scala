@@ -49,7 +49,7 @@ private[kanaloa] trait Sampler extends Actor {
 
 object Sampler {
 
-  trait Sample
+  trait Sample extends Serializable with Product
 
   case object AddSample
 
