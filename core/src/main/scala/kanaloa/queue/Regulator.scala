@@ -10,7 +10,7 @@ import kanaloa.queue.Regulator._
 import kanaloa.util.Java8TimeExtensions._
 
 import scala.concurrent.duration._
-
+import Regulator.BurstStatus._
 /**
  * A traffic regulator based on the PIE algo (Proportional Integral controller Enhanced)
  * suggested in this paper https://www.ietf.org/mail-archive/web/iccrg/current/pdfB57AZSheOH.pdf by Rong Pan and his collaborators.
@@ -55,8 +55,8 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
       context become regulating(Status(
         delay = estimateDelay(s, s.speed),
         droppingRate = DroppingRate(0),
-        burstDurationLeft = settings.durationOfBurstAllowed,
-        averageSpeed = s.speed
+        averageSpeed = s.speed,
+        burstStatus = OutOfBurst(None)
       ))
     case _: Report ⇒ //ignore other performance report
   }
@@ -68,8 +68,7 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
       continueWith(
         status.copy(
           droppingRate = DroppingRate(0),
-          recordedAt = Time.now,
-          burstDurationLeft = settings.durationOfBurstAllowed,
+          burstStatus = transitOut(status.burstStatus),
           delay = Duration.Zero
         )
       ) //reset to baseline when seeing a PartialUtilization
@@ -79,9 +78,10 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
   private def continueWith(status: Status): Unit = {
     context become regulating(status)
     metricsCollector ! Metric.WorkQueueExpectedWaitTime(status.delay)
-    metricsCollector ! Metric.BurstMode(Duration.Zero < status.burstDurationLeft && status.burstDurationLeft < settings.durationOfBurstAllowed)
+    val inBurst = inBurstNow(status.burstStatus)
+    metricsCollector ! Metric.BurstMode(inBurst)
     val droppingRateToSend =
-      if (status.burstDurationLeft > Duration.Zero)
+      if (inBurst)
         DroppingRate(0)
       else status.droppingRate
     metricsCollector ! Metric.DropRate(droppingRateToSend.value)
@@ -105,12 +105,43 @@ object Regulator {
   }
 
   private[kanaloa] case class Status(
-    delay:             FiniteDuration,
-    droppingRate:      DroppingRate,
-    burstDurationLeft: Duration,
-    averageSpeed:      Speed,
-    recordedAt:        Time           = Time.now
+    delay:        FiniteDuration,
+    droppingRate: DroppingRate,
+    averageSpeed: Speed,
+    burstStatus:  BurstStatus
   )
+
+  sealed trait BurstStatus extends Product with Serializable
+
+  object BurstStatus {
+    case class InBurst(started: Time) extends BurstStatus
+    case class BurstExpired(started: Time) extends BurstStatus
+    case class OutOfBurst(latestBurstStarted: Option[Time]) extends BurstStatus
+
+    def latestBurstStarted(status: BurstStatus): Option[Time] = status match {
+      case InBurst(started)      ⇒ Some(started)
+      case BurstExpired(started) ⇒ Some(started)
+      case OutOfBurst(l)         ⇒ l
+    }
+
+    def inBurstNow(status: BurstStatus): Boolean = status match {
+      case InBurst(_) ⇒ true
+      case _          ⇒ false
+    }
+
+    def transitOut(status: BurstStatus): OutOfBurst = status match {
+      case InBurst(started)      ⇒ OutOfBurst(Some(started))
+      case BurstExpired(started) ⇒ OutOfBurst(Some(started))
+      case o @ OutOfBurst(_)     ⇒ o
+    }
+
+    def continueBurst(status: BurstStatus, durationAllowed: FiniteDuration): BurstStatus = status match {
+      case OutOfBurst(_) ⇒ InBurst(Time.now)
+      case InBurst(started) if started.until(Time.now) > durationAllowed ⇒ BurstExpired(started)
+      case s @ (InBurst(_) | BurstExpired(_)) ⇒ s
+    }
+
+  }
 
   case class Settings(
     referenceDelay:         FiniteDuration,
@@ -152,17 +183,21 @@ object Regulator {
 
     val newDropRate = DroppingRate(lastStatus.droppingRate.value + droppingRateUpdate)
 
-    val burstDurationLeft = if (newDropRate.value == 0
-      && lastStatus.delay < (referenceDelay / 2)
-      && delay < (referenceDelay / 2)) durationOfBurstAllowed
-    else lastStatus.burstDurationLeft - (lastStatus.recordedAt.until(Time.now))
+    val queueCaughtUp = newDropRate.value == 0 &&
+      lastStatus.delay < (referenceDelay / 2) &&
+      delay < (referenceDelay / 2)
+
+    val newBurstStatus: BurstStatus = if (queueCaughtUp) {
+      transitOut(lastStatus.burstStatus)
+    } else {
+      continueBurst(lastStatus.burstStatus, durationOfBurstAllowed)
+    }
 
     lastStatus.copy(
       delay = delay,
       droppingRate = newDropRate,
-      burstDurationLeft = burstDurationLeft,
-      recordedAt = Time.now,
-      averageSpeed = avgSpeed
+      averageSpeed = avgSpeed,
+      burstStatus = newBurstStatus
     )
   }
 

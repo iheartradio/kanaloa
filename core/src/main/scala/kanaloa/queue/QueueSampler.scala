@@ -34,7 +34,13 @@ private[kanaloa] trait QueueSampler extends Sampler {
       reportQueueLength(workLeft)
 
       def stillOverflown(bufferEmptySince: Option[Time]): Unit =
-        context become overflown(s.copy(queueLength = workLeft, workDone = s.workDone + dispatched.getOrElse(0), bufferEmptySince = bufferEmptySince))
+        context become overflown(
+          s.copy(
+            queueLength = workLeft,
+            workDone = s.workDone + dispatched.getOrElse(0),
+            bufferEmptySince = bufferEmptySince
+          )
+        )
 
       if (workBuffered) {
         stillOverflown(None)

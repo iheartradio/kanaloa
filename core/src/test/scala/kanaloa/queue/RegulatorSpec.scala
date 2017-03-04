@@ -10,8 +10,8 @@ import kanaloa.queue.QueueSampler._
 import kanaloa.queue.Sampler.Subscribe
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.DurationFunctions._
-
 import kanaloa.SpecWithActorSystem
+import kanaloa.queue.Regulator.BurstStatus.{BurstExpired, InBurst, OutOfBurst}
 
 import scala.concurrent.duration._
 
@@ -24,13 +24,13 @@ class RegulatorSpec extends SpecWithActorSystem {
     QueueSample(workDone, duration.ago, Time.now, queueLength = QueueLength(queueLength))
 
   def status(
-    delay:             FiniteDuration = 1.second,
-    droppingRate:      Double         = 0,
-    burstDurationLeft: Duration       = 30.seconds,
-    averageSpeed:      Double         = 0.1,
-    recordedAt:        Time           = Time.now
+    delay:        FiniteDuration = 1.second,
+    droppingRate: Double         = 0,
+    averageSpeed: Double         = 0.1,
+    burstStatus:  BurstStatus    = OutOfBurst(None)
+
   ): Status =
-    Status(delay, DroppingRate(droppingRate), burstDurationLeft, Speed(averageSpeed), recordedAt)
+    Status(delay, DroppingRate(droppingRate), Speed(averageSpeed), burstStatus)
 
   def settings(
     referenceDelay:         FiniteDuration = 3.seconds,
@@ -64,9 +64,9 @@ class RegulatorSpec extends SpecWithActorSystem {
         case m: Metric.DropRate                  ⇒ 2
         case m: Metric.BurstMode                 ⇒ 3
         case _                                   ⇒ 0
-      }.sorted should be(List(1, 2, 3))
+      }.sorted should be(List(1, 2, 3)) //awkward way to test the receiption of three types of Metrics
 
-      (metrics.collect { case m: Metric.BurstMode ⇒ m }).head.inBurst shouldBe false
+      (metrics.collect { case m: Metric.BurstMode ⇒ m }).head.inBurst shouldBe true
     }
 
     "send metrics when in burst mode" in {
@@ -149,22 +149,17 @@ class RegulatorSpec extends SpecWithActorSystem {
 
     "reset drop rate after seeing a PartialUtilization" in {
       val regulatee = TestProbe()
-      val regulator = system.actorOf(Regulator.props(settings(), TestProbe().ref, regulatee.ref))
+      val regulator = system.actorOf(Regulator.props(settings(durationOfBurstAllowed = 10.milliseconds), TestProbe().ref, regulatee.ref))
       regulator ! sample() //starts the regulator
-
+      regulator ! sample(workDone = 1, queueLength = 10000)
+      regulatee.expectMsgType[DroppingRate]
+      expectNoMsg(20.milliseconds) //expire the burst
       regulator ! sample(workDone = 1, queueLength = 10000)
       regulatee.expectMsgType[DroppingRate].value shouldBe 1d //does not send dropping rate larger than zero when within a burst
 
       regulator ! PartialUtilized
       regulatee.expectMsgType[DroppingRate].value shouldBe 0d //does not send dropping rate larger than zero when within a burst
 
-    }
-
-    "update recordedAt" in {
-      val lastStatus = status(averageSpeed = 0.2, recordedAt = 2000.milliseconds.ago)
-      val result = update(sample(), lastStatus, settings())
-      val distance = lastStatus.recordedAt.until(result.recordedAt).toMillis.toDouble
-      distance shouldBe 2000.0 +- 30
     }
 
     "update speed with weight" in {
@@ -245,24 +240,53 @@ class RegulatorSpec extends SpecWithActorSystem {
       result.value shouldBe 0
     }
 
-    "reset burst allowed duration left when p is 0 and both current and previous delay is less than half of reference delay" in {
+    "get out of burst left when p is 0 and both current and previous delay is less than half of reference delay" in {
+      val started = 1.second.ago
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 20), //speed of 0.1 current delay 100
-        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstDurationLeft = 1.second),
+        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = InBurst(started)),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
-      ).burstDurationLeft
+      ).burstStatus
 
-      result shouldBe 30.seconds
+      result shouldBe OutOfBurst(Some(started))
+      BurstStatus.inBurstNow(result) shouldBe false
     }
 
-    "deduct burst allowed duration left when p > 0" in {
+    "reset burst started time if it's a new burst" in {
+      val started = 100.second.ago
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
-        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstDurationLeft = 28.second, recordedAt = 2.seconds.ago),
+        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst(Some(started))),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
-      ).burstDurationLeft
+      ).burstStatus
 
-      result.toMillis.toDouble should be(26000.0 +- 2) //somehow exact matching integer fails range test.
+      result match {
+        case InBurst(start) ⇒
+          start.until(Time.now).toMillis should be < 50L
+        case _ ⇒ fail(s"expect InBurst, got $result")
+      }
+    }
+
+    "continue burst when p > 0" in {
+      val lastBurstStarted = 2.second.ago
+      val result = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = InBurst(lastBurstStarted)),
+        settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
+      ).burstStatus
+
+      result shouldBe InBurst(lastBurstStarted)
+    }
+
+    "expire burst when duraiton is longer than allowed" in {
+      val lastBurstStarted = 30.second.ago
+      val result = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = InBurst(lastBurstStarted)),
+        settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds)
+      ).burstStatus
+
+      result shouldBe BurstExpired(lastBurstStarted)
     }
 
   }
