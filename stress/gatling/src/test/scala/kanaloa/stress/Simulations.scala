@@ -41,6 +41,18 @@ class KanaloaLocalOverflowSimulation extends Simulation {
       global.successfulRequests.percent.gte(60)
     )
 }
+class BaselineLocalOverflowSimulation extends Simulation {
+
+  setUp(
+    Users(
+      numOfUsers = 500,
+      path = "straight",
+      throttle = Some(300), //the capacity is 200 Rps
+      rampUp = 2.minutes,
+      duration = 6.minutes
+    )
+  ).protocols(http.disableCaching)
+}
 
 /**
  * Baseline LB without kanaloa
