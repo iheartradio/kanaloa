@@ -25,7 +25,7 @@ object MockBackend {
       maxThroughput.getOrElse(cfg.getInt("optimal-throughput")),
       cfg.getInt("buffer-size"),
       minLatency,
-      Some(cfg.getDouble("overload-punish-factor"))
+      Some(cfg.getDouble("max-overload-punishment"))
     ))
   }
 
@@ -40,7 +40,7 @@ object MockBackend {
       initialThroughput: Int,
       bufferSize: Int = 10000,
       minLatency: Option[FiniteDuration] = None,
-      overloadPunishmentFactor: Option[Double] = None
+      maxOverloadPunishment: Option[Double] = None
   ) extends Actor with ActorLogging {
 
     var requestsHandling = 0
@@ -84,7 +84,10 @@ object MockBackend {
       case Scale(ratio) =>
         optimalConcurrency = (optimalConcurrency * ratio).toInt
         optimalThroughput = (optimalThroughput * ratio).toInt
-        responders.foreach(_ ! PoisonPill)
+        responders.foreach { r =>
+          import context.dispatcher
+          context.system.scheduler.scheduleOnce(5.seconds, r, PoisonPill) //give the responder some time to finish current requests.
+        }
 
         val (newBaseLatency, newResponders) = startResponders()
 
@@ -126,12 +129,10 @@ object MockBackend {
           context become unresponsive
         }
 
-        // the overload punishment is caped at 0.5 (50% of the throughput)
-        val overloadPunishment: Double = if (requestsHandling > initialConcurrency) {
+        // the overload punishment is within the range 0 to maxOverloadPunishment
+        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) {
 
-          val punishment = overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - initialConcurrency.toDouble) / requestsHandling.toDouble)
-
-          Math.min(0.5, punishment)
+          maxOverloadPunishment.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
         } else 0
 
         val index: Int = if (responders.length > 1)
