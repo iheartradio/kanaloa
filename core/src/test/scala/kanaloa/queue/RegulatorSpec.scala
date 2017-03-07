@@ -11,7 +11,7 @@ import kanaloa.queue.Sampler.Subscribe
 import kanaloa.util.Java8TimeExtensions._
 import kanaloa.DurationFunctions._
 import kanaloa.SpecWithActorSystem
-import kanaloa.queue.Regulator.BurstStatus.{BurstExpired, InBurst, OutOfBurst}
+import kanaloa.queue.Regulator.BurstStatus.{BurstExpired, GoingOut, InBurst, OutOfBurst}
 
 import scala.concurrent.duration._
 
@@ -27,20 +27,20 @@ class RegulatorSpec extends SpecWithActorSystem {
     delay:        FiniteDuration = 1.second,
     droppingRate: Double         = 0,
     averageSpeed: Double         = 0.1,
-    burstStatus:  BurstStatus    = OutOfBurst(None)
+    burstStatus:  BurstStatus    = OutOfBurst
 
   ): Status =
     Status(delay, DroppingRate(droppingRate), Speed(averageSpeed), burstStatus)
 
   def settings(
-    referenceDelay:           FiniteDuration = 3.seconds,
-    delayFactorBase:          Double         = 0.5,
-    delayTrendFactorBase:     Double         = 0.3,
-    durationOfBurstAllowed:   FiniteDuration = Duration.Zero,
-    weightOfLatestMetric:     Double         = 0.5,
-    minDurationBetweenBursts: FiniteDuration = Duration.Zero
+    referenceDelay:              FiniteDuration = 3.seconds,
+    delayFactorBase:             Double         = 0.5,
+    delayTrendFactorBase:        Double         = 0.3,
+    durationOfBurstAllowed:      FiniteDuration = Duration.Zero,
+    weightOfLatestMetric:        Double         = 0.5,
+    minDurationBeforeBurstReset: FiniteDuration = Duration.Zero
   ) =
-    Settings(referenceDelay, delayFactorBase, delayTrendFactorBase, durationOfBurstAllowed, weightOfLatestMetric, minDurationBetweenBursts)
+    Settings(referenceDelay, delayFactorBase, delayTrendFactorBase, durationOfBurstAllowed, weightOfLatestMetric, minDurationBeforeBurstReset)
 
   "Regulator" should {
     import Regulator.update
@@ -213,15 +213,13 @@ class RegulatorSpec extends SpecWithActorSystem {
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
       ).burstStatus
 
-      result shouldBe OutOfBurst(Some(started))
       BurstStatus.inBurstNow(result) shouldBe false
     }
 
     "reset burst started time if it's a new burst" in {
-      val started = 100.second.ago
       val result = update(
         sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
-        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst(Some(started))),
+        status(droppingRate = 0.01, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst),
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 30.seconds)
       ).burstStatus
 
@@ -251,18 +249,47 @@ class RegulatorSpec extends SpecWithActorSystem {
         settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds)
       ).burstStatus
 
-      result shouldBe BurstExpired(lastBurstStarted)
+      result shouldBe BurstExpired
     }
 
-    "prevent from going into burst the last burst is within the min duration between bursts" in {
-      val lastBurstStarted = 20.second.ago
+    "does not reset when not seeing enough caught up " in {
+      val lastBurstStarted = 5.second.ago
+      val s = settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds, minDurationBeforeBurstReset = 20.milliseconds)
+
+      val firstUpdate = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 10),
+        status(droppingRate = 0.01, averageSpeed = 3, delay = 50.milliseconds, burstStatus = InBurst(lastBurstStarted)),
+        s
+      )
+
+      firstUpdate.burstStatus shouldBe a[GoingOut]
+
+      val secondUpdate = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 10),
+        firstUpdate,
+        s
+      )
+      secondUpdate.burstStatus shouldBe a[GoingOut]
+
+      Thread.sleep(30)
+      val thirdUpdate = update(
+        sample(workDone = 100, duration = 1.second, queueLength = 10),
+        secondUpdate,
+        s
+      )
+
+      thirdUpdate.burstStatus shouldBe OutOfBurst
+
+    }
+
+    "going back burst it once it sees another burst needed. " in {
       val result = update(
-        sample(workDone = 100, duration = 1.second, queueLength = 1000), //speed of 0.1 current delay 5s
-        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst(Some(lastBurstStarted))),
-        settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds, minDurationBetweenBursts = 30.seconds)
+        sample(workDone = 100, duration = 1.second, queueLength = 1000),
+        status(droppingRate = 0.5, averageSpeed = 0.3, delay = 50.milliseconds, burstStatus = OutOfBurst),
+        settings(delayFactorBase = 0.5, delayTrendFactorBase = 0.2, referenceDelay = 300.milliseconds, durationOfBurstAllowed = 10.seconds, minDurationBeforeBurstReset = 30.seconds)
       ).burstStatus
 
-      result shouldBe OutOfBurst(Some(lastBurstStarted))
+      result shouldBe a[InBurst]
     }
 
   }
