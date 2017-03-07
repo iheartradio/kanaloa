@@ -52,12 +52,14 @@ private[kanaloa] class Regulator(settings: Settings, metricsCollector: ActorRef,
 
   def receive: Receive = {
     case s: QueueSample ⇒
-      context become regulating(Status(
-        delay = estimateDelay(s, s.speed),
-        droppingRate = DroppingRate(0),
-        averageSpeed = s.speed,
-        burstStatus = OutOfBurst(None)
-      ))
+      estimateDelay(s, s.speed).foreach { delay ⇒
+        context become regulating(Status(
+          delay = delay,
+          droppingRate = DroppingRate(0),
+          averageSpeed = s.speed,
+          burstStatus = OutOfBurst(None)
+        ))
+      }
     case _: Report ⇒ //ignore other performance report
   }
 
@@ -145,16 +147,15 @@ object Regulator {
     minDurationBetweenBursts: FiniteDuration = Duration.Zero
   )
 
-  private def estimateDelay(
-    queueLength: QueueLength,
-    speed:       Speed
-  ): Option[FiniteDuration] =
-    if (speed.value == 0) None else Some((queueLength.value.toDouble / speed.value).milliseconds)
-
-  private def estimateDelay(sample: QueueSample, avgSpeed: Speed): FiniteDuration =
-    estimateDelay(sample.queueLength, avgSpeed).getOrElse(
-      (sample.start.until(sample.end) * sample.queueLength.value.toDouble).asInstanceOf[FiniteDuration]
-    )
+  private def estimateDelay(sample: QueueSample, avgSpeed: Speed): Option[FiniteDuration] =
+    if (avgSpeed.value == 0 && sample.queueLength.value > 0)
+      Some((sample.start.until(sample.end) * sample.queueLength.value.toDouble).asInstanceOf[FiniteDuration])
+    else if (avgSpeed.value > 0 && sample.queueLength.value == 0)
+      Some(Duration.Zero)
+    else if (avgSpeed.value == 0 && sample.queueLength.value == 0)
+      None
+    else
+      Some((sample.queueLength.value.toDouble / avgSpeed.value).milliseconds)
 
   private[kanaloa] def update(sample: QueueSample, lastStatus: Status, settings: Settings): Status = {
     import settings._
@@ -164,36 +165,37 @@ object Regulator {
       )
     else lastStatus.averageSpeed
 
-    val delay = estimateDelay(sample, avgSpeed)
+    estimateDelay(sample, avgSpeed).fold(lastStatus) { delay ⇒
 
-    def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
+      def normalizedDelayDiffFrom(target: FiniteDuration) = (delay - target) / referenceDelay
 
-    val factorAdjustment = if (lastStatus.droppingRate.value >= 0.1) 1
-    else if (lastStatus.droppingRate.value < 0.1 && lastStatus.droppingRate.value >= 0.01)
-      0.5
-    else 0.125 //these hardcoded numbers are from the paper
+      val factorAdjustment = if (lastStatus.droppingRate.value >= 0.1) 1
+      else if (lastStatus.droppingRate.value < 0.1 && lastStatus.droppingRate.value >= 0.01)
+        0.5
+      else 0.125 //these hardcoded numbers are from the paper
 
-    val droppingRateUpdate = (factorAdjustment * delayFactorBase * normalizedDelayDiffFrom(referenceDelay)) +
-      (factorAdjustment * delayTrendFactorBase * normalizedDelayDiffFrom(lastStatus.delay))
+      val droppingRateUpdate = (factorAdjustment * delayFactorBase * normalizedDelayDiffFrom(referenceDelay)) +
+        (factorAdjustment * delayTrendFactorBase * normalizedDelayDiffFrom(lastStatus.delay))
 
-    val newDropRate = DroppingRate(lastStatus.droppingRate.value + droppingRateUpdate)
+      val newDropRate = DroppingRate(lastStatus.droppingRate.value + droppingRateUpdate)
 
-    val queueCaughtUp = newDropRate.value == 0 &&
-      lastStatus.delay < (referenceDelay / 2) &&
-      delay < (referenceDelay / 2)
+      val queueCaughtUp = newDropRate.value == 0 &&
+        lastStatus.delay < (referenceDelay / 2) &&
+        delay < (referenceDelay / 2)
 
-    val newBurstStatus: BurstStatus = if (queueCaughtUp) {
-      transitOut(lastStatus.burstStatus)
-    } else {
-      continueBurst(lastStatus.burstStatus, durationOfBurstAllowed, minDurationBetweenBursts)
+      val newBurstStatus: BurstStatus = if (queueCaughtUp) {
+        transitOut(lastStatus.burstStatus)
+      } else {
+        continueBurst(lastStatus.burstStatus, durationOfBurstAllowed, minDurationBetweenBursts)
+      }
+
+      lastStatus.copy(
+        delay = delay,
+        droppingRate = newDropRate,
+        averageSpeed = avgSpeed,
+        burstStatus = newBurstStatus
+      )
     }
-
-    lastStatus.copy(
-      delay = delay,
-      droppingRate = newDropRate,
-      averageSpeed = avgSpeed,
-      burstStatus = newBurstStatus
-    )
   }
 
 }
