@@ -56,7 +56,7 @@
           "renderer": "flot",
           "seriesOverrides": [
             {
-              "alias": "/accepted/",
+              "alias": "/received/",
               "color": "#DEDAF7"
             },
             {
