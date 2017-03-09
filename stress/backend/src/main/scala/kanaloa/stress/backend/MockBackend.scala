@@ -142,7 +142,7 @@ object MockBackend {
         val latencyPunishment = overloadPunishment * 3
 
         if (rand.nextDouble() > 0.995)
-          log.info(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
+          log.debug(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
 
         responders(index) ! Petition(msg, sender, ((baseLatency + extraLatency) * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
 
