@@ -1,10 +1,10 @@
 package kanaloa.research
 
-import io.gatling.core.Predef.global
+import io.gatling.core.Predef._
 import io.gatling.core.scenario.Simulation
 import io.gatling.http.Predef.http
 import kanaloa.stress.Infrastructure._
-
+import io.gatling.http.Predef._
 import scala.language.postfixOps
 
 import scala.concurrent.duration._

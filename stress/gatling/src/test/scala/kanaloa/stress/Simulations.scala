@@ -19,12 +19,28 @@ class KanaloaLocalUnderUtilizedSimulation extends Simulation {
     )
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(50),
-      global.successfulRequests.percent.gte(90)
+      global.requestsPerSec.gte(70),
+      global.failedRequests.count.lte(0)
     )
 }
 
+class KanaloaLocalOverflowSimulation extends Simulation {
 
+  setUp(
+    Users(
+      numOfUsers = 900,
+      path = "kanaloa",
+      throttle = Some(300),
+      duration = 2.minutes
+    )
+  ).protocols(http.disableCaching)
+    .assertions(
+      global.requestsPerSec.gte(250),
+      global.responseTime.percentile2.lte(1000),
+      global.responseTime.percentile3.lte(5000), //mainly due to the burst mode
+      global.successfulRequests.percent.gte(60)
+    )
+}
 
 class KanaloaLoadBalanceOverflowSimulation extends Simulation {
   setUp(
@@ -37,9 +53,9 @@ class KanaloaLoadBalanceOverflowSimulation extends Simulation {
     )
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(400),
+      global.requestsPerSec.gte(450),
       global.responseTime.percentile3.lte(3000),
-      global.successfulRequests.percent.gte(50)
+      global.successfulRequests.percent.gte(60)
     )
 }
 
@@ -88,9 +104,9 @@ class KanaloaLoadBalanceNoStressSimulation extends Simulation {
     )
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(100),
-      global.responseTime.percentile3.lte(5000),
-      global.successfulRequests.percent.gte(90)
+      global.requestsPerSec.gte(300),
+      global.responseTime.percentile3.lte(500),
+      global.successfulRequests.percent.gte(100)
     )
 }
 
@@ -106,9 +122,8 @@ class KanaloaLoadBalanceOneNodeLeavingSimulation extends Simulation {
     CommandSchedule(Command("start"), services(1), 55.seconds)
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(140),
-      global.responseTime.percentile3.lte(3000),
-      global.successfulRequests.percent.gte(90),
+      global.requestsPerSec.gte(160),
+      global.responseTime.percentile3.lte(300),
       global.failedRequests.count.lte(2)
     )
 }
@@ -116,7 +131,7 @@ class KanaloaLoadBalanceOneNodeLeavingSimulation extends Simulation {
 class KanaloaLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
   setUp(
     Users(
-      numOfUsers = 1000,
+      numOfUsers = 900,
       path = "cluster_kanaloa",
       throttle = Some(200),
       rampUp = 1.seconds
@@ -125,9 +140,8 @@ class KanaloaLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
     CommandSchedule(Command("back-online"), services(1), 55.seconds)
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(140),
-      global.responseTime.percentile3.lte(3000),
-      global.successfulRequests.percent.gte(90),
+      global.requestsPerSec.gte(160),
+      global.responseTime.percentile3.lte(300),
       global.failedRequests.count.lte(100)
     )
 }
@@ -139,23 +153,23 @@ class KanaloaLoadBalanceOneNodeSlowThroughputSimulation extends Simulation {
       path = "cluster_kanaloa",
       throttle = Some(230),
       rampUp = 1.seconds,
-      duration = 3.minutes
+      duration = 2.minutes
     ),
     CommandSchedule(Command("scale", Some("0.25")), services(1), 1.seconds),
-    CommandSchedule(Command("restart"), services(1), 200.seconds)
+    CommandSchedule(Command("restart"), services(1), 130.seconds)
   ).protocols(http.disableCaching)
     .assertions(
-      global.requestsPerSec.gte(80),
-      global.responseTime.percentile3.lte(1000),
-      global.successfulRequests.percent.gte(99),
-      global.failedRequests.count.lte(1)
+      global.requestsPerSec.gte(180),
+      global.responseTime.percentile2.lte(200),
+      global.responseTime.percentile3.lte(3000),
+      global.successfulRequests.percent.gte(100)
     )
 }
 
 class BaselineLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
   setUp(
     Users(
-      numOfUsers = 1000,
+      numOfUsers = 900,
       path = "round_robin",
       throttle = Some(200),
       rampUp = 1.seconds
@@ -174,16 +188,18 @@ class BaselineLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
 class KanaloaLoadBalanceOneNodeJoiningSimulation extends Simulation {
   setUp(
     Users(
-      numOfUsers = 1000,
+      numOfUsers = 900,
       path = "cluster_kanaloa",
       throttle = Some(400),
-      rampUp = 1.seconds
+      rampUp = 1.seconds,
+      duration = 90.seconds
     ),
     CommandSchedule(Command("stop", Some("3000")), services(1), 10.milliseconds),
-    CommandSchedule(Command("start"), services(1), 30.seconds)
+    CommandSchedule(Command("start"), services(1), 10.seconds)
   ).protocols(http.disableCaching)
     .assertions(
-      global.responseTime.percentile2.lte(2000),
-      global.successfulRequests.percent.gte(65)
+      global.requestsPerSec.gte(350),
+      global.responseTime.percentile2.lte(250),
+      global.successfulRequests.percent.gte(95)
     )
 }
