@@ -27,7 +27,7 @@ cache:
 
 script:
   - sbt ++$TRAVIS_SCALA_VERSION clean coverage test integration:test coverageReport
-  - sbt ++$TRAVIS_SCALA_VERSION docs/makeMicrosite
+  - sbt ++$TRAVIS_SCALA_VERSION docs/tut
   - sbt ++$TRAVIS_SCALA_VERSION stressFrontend/compile stressGatling/gatling:compile
   - sbt ++$TRAVIS_SCALA_VERSION "stressFrontend/run" &
   - sbt ++$TRAVIS_SCALA_VERSION "stressBackend/run 8888" &

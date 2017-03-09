@@ -130,8 +130,8 @@ private[queue] class Worker[T](
 
     }
 
-    case WorkResult(wId, x) ⇒ //should never happen..right?
-      log.error("Received a response for a request which has already been serviced")
+    case WorkResult(wId, x) ⇒
+      log.warning("Received a response for a request which has already been serviced/timedout")
 
     case HandlerTimeout ⇒
       log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.serviceTimeout} work ${outstanding.work.messageToDelegatee} abandoned")
