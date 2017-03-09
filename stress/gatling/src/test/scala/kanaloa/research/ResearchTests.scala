@@ -69,3 +69,20 @@ class BaselineRoundRobinOverflowSimulation extends Simulation {
     )
   ).protocols(http.disableCaching)
 }
+
+
+class KanaloaOverheadGaugeSimulation extends Simulation {
+  setUp(
+    Users(
+      numOfUsers = 20,
+      path = "kanaloa_unthrottled",
+      throttle = Some(500000),
+      rampUp = 1.seconds
+    )
+  ).protocols(http.disableCaching)
+    .assertions(
+      global.requestsPerSec.gte(800),
+      global.responseTime.percentile3.lte(10),
+      global.successfulRequests.percent.gte(100)
+    )
+}

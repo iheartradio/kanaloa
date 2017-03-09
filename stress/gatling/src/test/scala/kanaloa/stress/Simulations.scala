@@ -59,21 +59,7 @@ class KanaloaLoadBalanceOverflowSimulation extends Simulation {
     )
 }
 
-class KanaloaOverheadGaugeSimulation extends Simulation {
-  setUp(
-    Users(
-      numOfUsers = 20,
-      path = "kanaloa_unthrottled",
-      throttle = Some(500000),
-      rampUp = 1.seconds
-    )
-  ).protocols(http.disableCaching)
-    .assertions(
-      global.requestsPerSec.gte(800),
-      global.responseTime.percentile3.lte(4),
-      global.successfulRequests.percent.gte(100)
-    )
-}
+
 
 class BaselineOverheadGaugeSimulation extends Simulation {
   setUp(
@@ -141,7 +127,7 @@ class KanaloaLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
   ).protocols(http.disableCaching)
     .assertions(
       global.requestsPerSec.gte(160),
-      global.responseTime.percentile3.lte(300),
+      global.responseTime.percentile3.lte(350),
       global.failedRequests.count.lte(100)
     )
 }
@@ -160,7 +146,7 @@ class KanaloaLoadBalanceOneNodeSlowThroughputSimulation extends Simulation {
   ).protocols(http.disableCaching)
     .assertions(
       global.requestsPerSec.gte(180),
-      global.responseTime.percentile2.lte(200),
+      global.responseTime.percentile2.lte(300),
       global.responseTime.percentile3.lte(3000),
       global.successfulRequests.percent.gte(100)
     )
