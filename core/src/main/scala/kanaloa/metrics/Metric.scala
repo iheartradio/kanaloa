@@ -5,24 +5,33 @@ import scala.concurrent.duration._
 sealed trait Metric
 
 object Metric {
+
   sealed trait Event extends Metric
-
-  case object WorkReceived extends Event
-  case object WorkRejected extends Event
-
-  case object WorkTimedOut extends Event
-  case object WorkFailed extends Event
-
-  case object CircuitBreakerOpened extends Event
-
   sealed trait Status extends Metric
 
-  case class PoolSize(size: Int) extends Status
-  case class DropRate(value: Double) extends Status
-  case class BurstMode(inBurst: Boolean) extends Status
-  case class PoolUtilized(numWorkers: Int) extends Status
-  case class WorkQueueLength(length: Int) extends Status
-  case class WorkQueueExpectedWaitTime(duration: Duration) extends Status
+  sealed trait QueueMetric extends Metric
 
-  case class WorkCompleted(processTime: Duration) extends Event with Status
+  sealed trait WorkerPoolMetric extends Metric
+
+  case object WorkReceived extends Event with QueueMetric
+
+  case object WorkRejected extends Event with QueueMetric
+
+  case object WorkShedded extends Event with QueueMetric
+
+  case class DropRate(value: Double) extends Status with QueueMetric
+  case class BurstMode(inBurst: Boolean) extends Status with QueueMetric
+  case class WorkQueueLength(length: Int) extends Status with QueueMetric
+  case class WorkQueueExpectedWaitTime(duration: Duration) extends Status with QueueMetric
+
+  case object WorkTimedOut extends Event with WorkerPoolMetric
+
+  case object WorkFailed extends Event with WorkerPoolMetric
+  case class WorkCompleted(processTime: Duration) extends Event with WorkerPoolMetric
+  case object CircuitBreakerOpened extends Event with WorkerPoolMetric
+  case object CircuitBreakerClosed extends Event with WorkerPoolMetric
+
+  case class PoolSize(size: Int) extends Status with WorkerPoolMetric
+  case class PoolUtilized(numWorkers: Int) extends Status with WorkerPoolMetric
+
 }

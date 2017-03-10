@@ -4,13 +4,14 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val akka = "2.4.11"
+    val akka = "2.4.16"
   }
 
   val akka = Seq(
     "com.typesafe.akka" %% "akka-actor" % Versions.akka,
     "com.typesafe.akka" %% "akka-testkit" % Versions.akka % "test",
-    "com.typesafe.akka" %% "akka-slf4j" % Versions.akka
+    "com.typesafe.akka" %% "akka-slf4j" % Versions.akka,
+    "com.typesafe.akka" %% "akka-agent" % Versions.akka
   )
 
   val akkaCluster = Seq(
@@ -19,7 +20,7 @@ object Dependencies {
   )
 
   val akkaHttp = Seq(
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.11"
+    "com.typesafe.akka" %% "akka-http" % "10.0.3"
   )
 
   val akkaThrottler = Seq(
@@ -33,7 +34,7 @@ object Dependencies {
 
   val (test, integration) = {
     val specs = Seq(
-      "org.scalatest" %% "scalatest" % "2.2.6",
+      "org.scalatest" %% "scalatest" % "3.0.1",
       "org.mockito" % "mockito-core" % "1.10.19"
     )
 

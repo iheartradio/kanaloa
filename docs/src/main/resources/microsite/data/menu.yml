@@ -1,0 +1,26 @@
+options:
+  - title: Backpressure
+    url: docs/guide/backpressure.html
+    menu_type: guide
+    menu_section: guide
+
+  - title: Circuit Breaker
+    url: docs/guide/circuit-breaker.html
+    menu_type: guide
+    menu_section: guide
+
+  - title: Realtime Monitor
+    url: docs/guide/monitor.html
+    menu_type: guide
+    menu_section: guide
+
+  - title: At-least-once Delivery
+    url: docs/guide/at-least-once.html
+    menu_type: guide
+    menu_section: guide
+
+  - title: Kanaloa and Load Balancing
+    url: docs/guide/load-balancing.html
+    menu_type: guide
+    menu_section: guide
+

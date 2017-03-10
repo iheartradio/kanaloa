@@ -18,78 +18,125 @@ object MockBackend {
   ) = {
 
     val optimalConcurrency = cfg.getInt("optimal-concurrency")
-    maxThroughput.foreach { op =>
-      assert(op / 10d / optimalConcurrency >= 1, s"throughput $op too low to manager should be at least ${10 * optimalConcurrency}")
 
-    }
     Props(new BackendRouter(
       throttle,
       optimalConcurrency,
       maxThroughput.getOrElse(cfg.getInt("optimal-throughput")),
       cfg.getInt("buffer-size"),
       minLatency,
-      Some(cfg.getDouble("overload-punish-factor"))
+      Some(cfg.getDouble("max-overload-punishment"))
     ))
   }
 
   /**
    *
-   * @param optimalConcurrency
-   * @param optimalThroughput maximum number of requests can handle per second
+   * @param initialConcurrency
+   * @param initialThroughput maximum number of requests can handle per second
    */
   class BackendRouter(
       throttle: Boolean,
-      optimalConcurrency: Int,
-      optimalThroughput: Int,
+      initialConcurrency: Int,
+      initialThroughput: Int,
       bufferSize: Int = 10000,
       minLatency: Option[FiniteDuration] = None,
-      overloadPunishmentFactor: Option[Double] = None
+      maxOverloadPunishment: Option[Double] = None
   ) extends Actor with ActorLogging {
 
     var requestsHandling = 0
 
     val rand = new Random(System.currentTimeMillis())
-    val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
 
-    val baseLatency = {
-      val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
-      minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
-    }
+    var optimalConcurrency = initialConcurrency
 
-    val responders: Array[ActorRef] = {
+    var optimalThroughput = initialThroughput
+
+    var (baseLatency, responders) = startResponders()
+
+    var extraLatency = Duration.Zero
+
+    def startResponders(): (FiniteDuration, Array[ActorRef]) = {
+      val perResponderRate = Math.round(optimalThroughput.toDouble / 10d / optimalConcurrency).toInt msgsPer 100.milliseconds
+
+      val latency = {
+        val latencyFromThroughput = perResponderRate.duration / perResponderRate.numberOfCalls
+        minLatency.filter(_ > latencyFromThroughput).getOrElse(latencyFromThroughput)
+      }
+
+      log.info(s"setting up $optimalConcurrency responders with base latency as $latency and $perResponderRate each. ")
 
       log.info(s"Per responder rate is set as $perResponderRate")
-      Array.tabulate(optimalConcurrency) { _ ⇒
+      (latency, Array.tabulate(optimalConcurrency) { _ ⇒
         val throttler = context.actorOf(Props(classOf[TimerBasedThrottler], perResponderRate))
         val responder = context.actorOf(Props(classOf[ResponderBehindThrottler]))
         throttler ! SetTarget(Some(responder))
         throttler
-      }
+      })
+
     }
 
     def receive = if (throttle) throttled else direct
 
-    val throttled: Receive = {
-      case Request("overflow") ⇒
+    def statusRespond =
+      Respond(s"Optimal Concurrency: $optimalConcurrency, Max Throughput: ${optimalThroughput}msg/second, latency: ${(baseLatency + extraLatency).toMillis}ms")
+
+    val handleCommands: Receive = {
+      case Scale(ratio) =>
+        optimalConcurrency = (optimalConcurrency * ratio).toInt
+        optimalThroughput = (optimalThroughput * ratio).toInt
+        responders.foreach { r =>
+          import context.dispatcher
+          context.system.scheduler.scheduleOnce(5.seconds, r, PoisonPill) //give the responder some time to finish current requests.
+        }
+
+        val (newBaseLatency, newResponders) = startResponders()
+
+        baseLatency = newBaseLatency
+        responders = newResponders
+
+        sender ! statusRespond
+
+      case ExtraLatency(value) =>
+        extraLatency = value
+        sender ! statusRespond
+
+      case CheckStatus =>
+        sender ! statusRespond
+
+      case Unresponsive ⇒
         log.warning("Overflow command received. Switching to unresponsive mode.")
-        context become overflow
+        context become unresponsive
+        sender ! Respond(s"Becoming Unresponsive")
+
+      case ErrorOut ⇒
+        log.warning("Error command received. Switching to error mode.")
+        context become error
+        sender ! Respond(s"Becoming Error all the time")
+
+      case BackOnline ⇒
+        log.info("Back command received. Switching back to normal mode.")
+        context become throttled
+        sender ! Respond("back to normal")
+
+    }
+
+    val throttled: Receive = handleCommands orElse {
       case Request(msg) ⇒
         requestsHandling += 1
 
         if (requestsHandling > bufferSize) {
           log.error("!!!! Buffer overflow at, declare dead" + bufferSize)
-          context become overflow
+          context become unresponsive
         }
 
-        // the overload punishment is caped at 0.5 (50% of the throughput)
-        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) Math.min(
-          0.5,
-          overloadPunishmentFactor.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
-        )
-        else 0
+        // the overload punishment is within the range 0 to maxOverloadPunishment
+        val overloadPunishment: Double = if (requestsHandling > optimalConcurrency) {
+
+          maxOverloadPunishment.fold(0d)(_ * (requestsHandling.toDouble - optimalConcurrency.toDouble) / requestsHandling.toDouble)
+        } else 0
 
         val index: Int = if (responders.length > 1)
-          Math.round(rand.nextDouble() * (1 - overloadPunishment) * (responders.length - 1)).toInt
+          Math.round(rand.nextDouble() * (1d - overloadPunishment) * (responders.length - 1)).toInt
         else 0
 
         val latencyPunishment = overloadPunishment * 3
@@ -97,7 +144,7 @@ object MockBackend {
         if (rand.nextDouble() > 0.995)
           log.debug(s"Extra throughput punishment is $overloadPunishment with $requestsHandling concurrent requests")
 
-        responders(index) ! Petition(msg, sender, (baseLatency * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
+        responders(index) ! Petition(msg, sender, ((baseLatency + extraLatency) * (1d + latencyPunishment)).asInstanceOf[FiniteDuration])
 
       case Appease(msg, replyTo) ⇒
         requestsHandling -= 1
@@ -106,17 +153,15 @@ object MockBackend {
       case other ⇒ log.error("unknown msg received " + other)
     }
 
-    val overflow: Receive = {
-      case Request("throttled") ⇒
-        log.info("Back command received. Switching back to normal mode.")
-        context become throttled
+    val unresponsive: Receive = handleCommands orElse {
       case _ => //just pretend to be dead
     }
 
-    val direct: Receive = {
-      case Request("overflow") ⇒
-        log.warning("Overflow command received. Switching to unresponsive mode.")
-        context become overflow
+    val error: Receive = handleCommands orElse {
+      case _ => sender ! Error("in error mode")
+    }
+
+    val direct: Receive = handleCommands orElse {
       case Request(m) => sender ! Respond(m)
     }
   }
@@ -131,6 +176,16 @@ object MockBackend {
   }
 
   case class Request(msg: String)
+  sealed trait ControlCommand
+  case object Unresponsive extends ControlCommand
+  case class Scale(ratio: Double) extends ControlCommand
+  case class ExtraLatency(value: FiniteDuration) extends ControlCommand
+  case object NewThroughput extends ControlCommand
+  case object ErrorOut extends ControlCommand
+  case object CheckStatus extends ControlCommand
+  case object BackOnline extends ControlCommand
+
+  case class Error(msg: String)
   case class Respond(msg: String)
   case class Petition(msg: String, replyTo: ActorRef, latency: FiniteDuration)
   case class Appease(msg: String, replyTo: ActorRef)

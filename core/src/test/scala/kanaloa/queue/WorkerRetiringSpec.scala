@@ -8,7 +8,7 @@ import kanaloa.queue.Worker.Retire
 
 class WorkerUnregisteringIdleSpec extends WorkerSpec {
 
-  final def withUnregisteringIdleWorker(test: (TestActorRef[Worker], TestProbe, TestProbe) ⇒ Any) {
+  final def withUnregisteringIdleWorker(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe) ⇒ Any) {
     withIdleWorker() { (worker, queueProbe, routeeProbe, _) ⇒
       worker ! Retire //this puts the worker into the unregistering state
       test(worker, queueProbe, routeeProbe)
@@ -41,7 +41,7 @@ class WorkerUnregisteringIdleSpec extends WorkerSpec {
 
 class WorkerWaitingToTerminateSpec extends WorkerSpec {
 
-  final def withTerminatingWorker(settings: WorkSettings = WorkSettings())(test: (TestActorRef[Worker], TestProbe, TestProbe, Work) ⇒ Any) {
+  final def withTerminatingWorker(settings: WorkSettings = WorkSettings())(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe, Work[Any]) ⇒ Any) {
     withWorkingWorker(settings) { (worker, queueProbe, routeeProbe, work, _) ⇒
       worker ! NoWorkLeft //this changes the Worker's state into 'WaitingToTerminate
       test(worker, queueProbe, routeeProbe, work)

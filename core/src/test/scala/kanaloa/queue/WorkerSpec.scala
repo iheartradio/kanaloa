@@ -1,27 +1,18 @@
 package kanaloa.queue
 
-import akka.actor.ActorRef
+import akka.actor.{ActorSystem, ActorRef}
 import akka.testkit.{TestActorRef, TestProbe}
 import kanaloa.ApiProtocol.QueryStatus
+import kanaloa.handler.{Handler, GeneralActorRefHandler}
 import kanaloa.queue.Queue.RequestWork
-import kanaloa.{ResultChecker, SpecWithActorSystem}
-import org.scalatest.{ShouldMatchers, WordSpecLike, OptionValues}
+import kanaloa.SpecWithActorSystem
+import kanaloa.queue.WorkerPoolSampler.WorkerStartWorking
+import org.scalatest.{Matchers, WordSpecLike, OptionValues}
 import org.scalatest.concurrent.Eventually
 
 case class Result(value: Any)
 case class Fail(value: String)
-
-object SimpleResultChecker extends ResultChecker {
-
-  override def apply(v1: Any): Either[String, Any] = {
-    v1 match {
-      case Result(v) ⇒ Right(v): Either[String, Any]
-      case Fail(v)   ⇒ Left(v): Either[String, Any]
-    }
-  }
-
-  override def isDefinedAt(x: Any): Boolean = true
-}
+import kanaloa.TestUtils.HandlerProviders._
 
 abstract class WorkerSpec extends SpecWithActorSystem with Eventually with OptionValues {
 
@@ -29,13 +20,13 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
     val queueProbe = TestProbe("queue")
     val routeeProbe = TestProbe("routee")
     val metricsCollectorProbe = TestProbe("metricsCollector")
-    val worker = TestActorRef[Worker](
-      Worker.default(
+    val worker = TestActorRef[Worker[Any]](
+      Worker.default[Any](
         queueProbe.ref,
-        routeeProbe.ref,
+        simpleHandler(routeeProbe),
         metricsCollectorProbe.ref,
         circuitBreakerSettings
-      )(SimpleResultChecker)
+      )
     )
     (queueProbe, routeeProbe, worker, metricsCollectorProbe)
   }
@@ -45,7 +36,7 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
     expectMsg(status)
   }
 
-  final def withIdleWorker(circuitBreakerSettings: Option[CircuitBreakerSettings] = None)(test: (TestActorRef[Worker], TestProbe, TestProbe, TestProbe) ⇒ Any) {
+  final def withIdleWorker(circuitBreakerSettings: Option[CircuitBreakerSettings] = None)(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe, TestProbe) ⇒ Any) {
     val (queueProbe, routeeProbe, worker, metricsCollectorProbe) = createWorker(circuitBreakerSettings)
     watch(worker)
     try {
@@ -60,29 +51,30 @@ abstract class WorkerSpec extends SpecWithActorSystem with Eventually with Optio
   final def withWorkingWorker(
     settings:               WorkSettings                   = WorkSettings(),
     circuitBreakerSettings: Option[CircuitBreakerSettings] = None
-  )(test: (TestActorRef[Worker], TestProbe, TestProbe, Work, TestProbe) ⇒ Any) {
+  )(test: (TestActorRef[Worker[Any]], TestProbe, TestProbe, Work[Any], TestProbe) ⇒ Any) {
     withIdleWorker(circuitBreakerSettings) { (worker, queueProbe, routeeProbe, metricCollectorProbe) ⇒
-      val work = Work("work", Some(self), settings)
+      val work = Work[Any]("work", Some(self), settings)
       queueProbe.send(worker, work) //send it work, to put it into the Working state
       routeeProbe.expectMsg(work.messageToDelegatee) //work should always get sent to a Routee from an Idle Worker
+      metricCollectorProbe.expectMsg(WorkerStartWorking)
       test(worker, queueProbe, routeeProbe, work, metricCollectorProbe)
     }
   }
 }
 
-class WorkerFunctionSpec extends WordSpecLike with ShouldMatchers {
+class WorkerFunctionSpec extends WordSpecLike with Matchers {
   import Worker.descriptionOf
   "descriptionOf" should {
     "not truncate if it's below maxLength" in {
-      descriptionOf("this is a short message", 100) shouldBe "this is a short message"
+      descriptionOf("this is a short message", 100) shouldBe Some("this is a short message")
     }
 
     "truncate at the first whitespace after maxLength" in {
-      descriptionOf("this is a short message", 12) shouldBe "this is a short..."
+      descriptionOf("this is a short message", 12) shouldBe Some("this is a short...")
     }
 
     "truncate at maxLength if there is no whitespace within" in {
-      descriptionOf("thisisashortmessage", 4) shouldBe "this..."
+      descriptionOf("thisisashortmessage", 4) shouldBe Some("this...")
     }
   }
 }

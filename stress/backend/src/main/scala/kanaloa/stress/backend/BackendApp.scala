@@ -1,11 +1,20 @@
 package kanaloa.stress.backend
 
-import akka.actor.ActorSystem
-import com.typesafe.config.ConfigFactory
+import scala.concurrent.Await
+import scala.concurrent.duration._
 
-object BackendApp extends App {
-  val throughput = args.headOption.map(_.toInt)
-  val props = MockBackend.props(maxThroughput = throughput)
-  val system = ActorSystem("kanaloa-stress", ConfigFactory.load("backend.conf"))
-  system.actorOf(props, "backend")
+object Main {
+
+  def main(args: Array[String]): Unit = {
+    val port = args.headOption.map(_.toInt).getOrElse(8888)
+
+    val server = new CommandServer(port)
+
+    sys.addShutdownHook {
+      println("JVM shutting down, leaving cluster first")
+      Await.ready(server.close(), 3.seconds)
+      println("Left the cluster. Closed server")
+    }
+  }
 }
+

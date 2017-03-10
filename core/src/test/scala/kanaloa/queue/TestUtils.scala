@@ -1,19 +1,23 @@
 package kanaloa.queue
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRefFactory, ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import kanaloa._
-import kanaloa.metrics.MetricsCollector
+import kanaloa.handler.GeneralActorRefHandler.ResultChecker
+import kanaloa.handler.HandlerProvider
+import kanaloa.metrics.Reporter
+import kanaloa.queue.Sampler.SamplerSettings
+import kanaloa.queue.WorkerPoolManager.{WorkerPoolSamplerFactory, WorkerFactory}
 
-object TestUtils {
+object QueueTestUtils {
 
   case class DelegateeMessage(msg: String)
   case class MessageProcessed(msg: String)
   case object MessageFailed
 
-  val resultChecker: ResultChecker = {
+  val resultChecker: ResultChecker[String, String] = {
     case MessageProcessed(msg) ⇒ Right(msg)
-    case m                     ⇒ Left(s"unrecognized message received by resultChecker: $m (${m.getClass})")
+    case m                     ⇒ Left(Some(s"unrecognized message received by resultChecker: $m (${m.getClass})"))
   }
 
   def iteratorQueueProps(
@@ -26,14 +30,25 @@ object TestUtils {
 
   class ScopeWithQueue(implicit system: ActorSystem) extends TestKit(system) with ImplicitSender {
 
-    val delegatee = TestProbe()
+    val service = TestProbe()
 
-    val backend = delegatee.ref
+    val handlerProvider = HandlerProvider.actorRef("test", service.ref)(resultChecker)
 
-    def defaultProcessorProps(
+    def defaultWorkerPoolProps(
       queue:            QueueRef,
-      settings:         ProcessingWorkerPoolSettings = ProcessingWorkerPoolSettings(startingPoolSize = 1),
-      metricsCollector: ActorRef                     = system.actorOf(MetricsCollector.props(None))
-    ) = QueueProcessor.default(queue, backend, settings, metricsCollector)(resultChecker)
+      settings:         WorkerPoolSettings = WorkerPoolSettings(startingPoolSize = 1),
+      metricsCollector: ActorRef           = system.actorOf(WorkerPoolSampler.props(None, TestProbe().ref, SamplerSettings(), None))
+    ) = WorkerPoolManager.default(
+      queue,
+      TestUtils.HandlerProviders.simpleHandler(service.ref, resultChecker),
+      settings,
+      WorkerFactory.default,
+      new WorkerPoolSamplerFactory {
+        def apply(reporter: Option[Reporter], mft: Option[ActorRef])(implicit ac: ActorRefFactory): ActorRef = metricsCollector
+      },
+      None,
+      None,
+      None
+    )
   }
 }

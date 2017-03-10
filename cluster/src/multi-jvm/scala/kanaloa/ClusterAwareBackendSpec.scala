@@ -1,16 +1,21 @@
 package kanaloa
 
 
+import akka.actor.Actor.Receive
 import akka.actor._
-import akka.cluster.ClusterSpec
+import akka.cluster.{Cluster, ClusterSpec}
 import akka.pattern.ask
 import akka.remote.testkit.MultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
 import akka.testkit._
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import kanaloa.ClusterAwareBackendLoadBalance2Spec.DelayedEcho
 import kanaloa.ClusterAwareBackendSpec._
+import kanaloa.handler.{HandlerProvider, ResultChecker}
 import kanaloa.metrics.StatsDClient
+import kanaloa.util.MessageScheduler
+import org.scalatest.Tag
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -32,6 +37,7 @@ object ClusterAwareBackendSpec extends ClusterConfig {
     """
       |kanaloa {
       |  default-dispatcher {
+      |    initial-grace-period = 20s #cluster handler needs more time to boot up.
       |    worker-pool.starting-pool-size = 2
       |  }
       |}
@@ -39,17 +45,24 @@ object ClusterAwareBackendSpec extends ClusterConfig {
 
 }
 
-
-class ClusterAwareBackendSpecMultiJvmNode1 extends ClusterAwareBackendSpec
-class ClusterAwareBackendSpecMultiJvmNode2 extends ClusterAwareBackendSpec
-class ClusterAwareBackendSpecMultiJvmNode3 extends ClusterAwareBackendSpec
-
 case class EchoMessage(i: Int)
 
-class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) with ClusterSpec with ImplicitSender {
+abstract class ClusterAwareBackendSpecBase extends  MultiNodeSpec(ClusterAwareBackendSpec) with ClusterSpec with ImplicitSender {
+
   import ClusterAwareBackendSpec._
+
   implicit val noStatsD: Option[StatsDClient] = None
 
+  implicit val ex = system.dispatcher
+
+}
+
+class ClusterAwareBackendBasicSpecMultiJvmNode1 extends ClusterAwareBackendBasicSpec
+class ClusterAwareBackendBasicSpecMultiJvmNode2 extends ClusterAwareBackendBasicSpec
+class ClusterAwareBackendBasicSpecMultiJvmNode3 extends ClusterAwareBackendBasicSpec
+
+
+class ClusterAwareBackendBasicSpec extends ClusterAwareBackendSpecBase {
   "A ClusterAwareBackend" must {
 
     "startup 2 node cluster" in within(15 seconds) {
@@ -59,24 +72,21 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
     }
 
     "send messages through" in within(5 seconds) {
-
-      runOn(third) {
-        enterBarrier("deployed")
-      }
-
       runOn(second) {
         system.actorOf(TestActors.echoActorProps, "echoService")
-        enterBarrier("deployed")
       }
 
+      enterBarrier("deployed")
+
       runOn(first) {
-        enterBarrier("deployed")
-        val backend = ClusterAwareBackend("echoService", serviceClusterRole)
+        val backend: HandlerProvider[Any] =
+          new ClusterAwareHandlerProvider("echoService", serviceClusterRole)((ResultChecker.expectType[EchoMessage]))
+
         val dispatcher = system.actorOf(PushingDispatcher.props(
           name = "test",
           backend,
           kanaloaConfig
-        )(ResultChecker.expectType[EchoMessage]))
+        ))
 
         dispatcher ! EchoMessage(1)
         expectMsg(EchoMessage(1))
@@ -85,9 +95,76 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
 
       enterBarrier("testOne")
     }
+  }
+}
 
 
-    "slow routees doesn't block dispatcher" in within(15 seconds) {
+class ClusterAwareBackendLoadBalanceSpecMultiJvmNode1 extends ClusterAwareBackendLoadBalanceSpec
+class ClusterAwareBackendLoadBalanceSpecMultiJvmNode2 extends ClusterAwareBackendLoadBalanceSpec
+class ClusterAwareBackendLoadBalanceSpecMultiJvmNode3 extends ClusterAwareBackendLoadBalanceSpec
+
+class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
+  "A ClusterAwareBackend" must {
+    "slow routees doesn't block dispatcher" taggedAs (Tag("loadbalancing")) in within(15 seconds) {
+
+      awaitClusterUp(first, second, third)
+
+      val servicePath = "service2"
+
+      runOn(third) {
+        system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
+
+        enterBarrier("service started")
+        enterBarrier("requests sent")
+
+      }
+
+      runOn(second) {
+
+        val prob: TestProbe = TestProbe()
+        system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
+        enterBarrier("service started")
+        enterBarrier("requests sent")
+        prob.expectMsg(EchoMessage(1))
+        prob.expectMsg(EchoMessage(1))
+      }
+
+      runOn(first) {
+        enterBarrier("service started")
+        val backend: HandlerProvider[Any] = new ClusterAwareHandlerProvider(servicePath, serviceClusterRole)(ResultChecker.expectType[EchoMessage])
+        val dispatcher = system.actorOf(PushingDispatcher.props(
+          name = "test",
+          backend,
+          kanaloaConfig
+        ))
+
+        (1 to 50).foreach { _ =>
+          Thread.sleep(10)
+          dispatcher ! EchoMessage(1)
+        }
+
+        enterBarrier("requests sent")
+      }
+
+      runOn(first) {
+        receiveN(48, 60.seconds).foreach { m =>  //the slow worker pool has two workers, which took two requests
+           m shouldBe EchoMessage(1)
+        }
+      }
+
+      enterBarrier("spec complete")
+
+    }
+
+  }
+}
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode1 extends ClusterAwareBackendLoadBalance2Spec
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode2 extends ClusterAwareBackendLoadBalance2Spec
+class ClusterAwareBackendLoadBalance2SpecMultiJvmNode3 extends ClusterAwareBackendLoadBalance2Spec
+
+class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
+  "A ClusterAwareBackend" must {
+    "allow instance to leave cluster without losing requests" taggedAs (Tag("loadBalancing")) in within(15 seconds) {
 
       awaitClusterUp(first, second, third)
 
@@ -95,43 +172,73 @@ class ClusterAwareBackendSpec extends  MultiNodeSpec(ClusterAwareBackendSpec) wi
 
 
       runOn(third) {
-        val prob: TestProbe = TestProbe()
-        system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
-
-        enterBarrier("service2-deployed")
-        enterBarrier("all-message-replied")
-        prob.expectMsg(EchoMessage(1))
+        system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
+        enterBarrier("servicesStarted")
+        enterBarrier("firstBatchSent")
       }
 
       runOn(second) {
-        system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
-        enterBarrier("service2-deployed")
-        enterBarrier("all-message-replied")
-
+        val service = system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
+        enterBarrier("servicesStarted")
+        enterBarrier("firstBatchSent")
+        cluster leave myself
+        watch(service)
+        Thread.sleep(700) //wait for the leaveto take effect before killing self.
+        service ! PoisonPill
+        expectTerminated(service)
       }
 
+
       runOn(first) {
-        enterBarrier("service2-deployed")
-        val backend = ClusterAwareBackend(servicePath, serviceClusterRole)
+        enterBarrier("servicesStarted")
+        val backend: HandlerProvider[Any] = new ClusterAwareHandlerProvider(servicePath, serviceClusterRole)(ResultChecker.expectType[EchoMessage])
         val dispatcher = system.actorOf(PushingDispatcher.props(
           name = "test",
           backend,
           kanaloaConfig
-        )(ResultChecker.expectType[EchoMessage]))
+        ))
 
-        (1 to 100).foreach { _ =>
-          dispatcher ! EchoMessage(1)
+        val numOfMessagesBeforeOneNodeLeaving = 50
+        val numOfMessagesAfterOneNodeLeaving = 150
+        val totalMsgs = numOfMessagesAfterOneNodeLeaving + numOfMessagesBeforeOneNodeLeaving
+
+        def sendMessages(num: Int): Unit = {
+          (1 to num).foreach { _ =>
+            Thread.sleep(10)
+            dispatcher ! EchoMessage(1)
+          }
         }
 
-        receiveN(99).foreach { m =>
-           m should ===(EchoMessage(1))
+        sendMessages( numOfMessagesBeforeOneNodeLeaving )
+
+        enterBarrier("firstBatchSent")
+
+        sendMessages( numOfMessagesAfterOneNodeLeaving )
+
+
+        val (succeeds, failures) = receiveN(totalMsgs, 30.seconds).partition(
+          _ == EchoMessage(1)
+        )
+
+        withClue(s"${failures.size} requests failed: ${failures.distinct.map(f => s"${f.getClass}: $f").mkString(", ")} ") {
+          succeeds.length shouldBe totalMsgs
         }
-        enterBarrier("all-message-replied")
 
       }
 
-      enterBarrier("second-finished")
+      enterBarrier("finished")
     }
 
   }
 }
+
+object ClusterAwareBackendLoadBalance2Spec {
+  case class Reply(m: Any, replyTo: ActorRef)
+  class DelayedEcho extends Actor with ActorLogging with MessageScheduler {
+    override def receive: Receive = {
+      case Reply(m, replyTo) => replyTo ! m
+      case m => delayedMsg(10.milliseconds, Reply(m, sender))
+    }
+  }
+}
+

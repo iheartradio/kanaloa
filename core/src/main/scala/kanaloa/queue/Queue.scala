@@ -1,19 +1,21 @@
 package kanaloa.queue
 
+import java.time.LocalDateTime
+
 import akka.actor._
-import kanaloa.ApiProtocol.{QueryStatus, WorkRejected}
-import kanaloa.PerformanceSampler
+import kanaloa.ApiProtocol.{WorkTimedOut, QueryStatus, WorkRejected}
 import kanaloa.Types.QueueLength
-import kanaloa.metrics.{MetricsCollector, Metric}
-import kanaloa.queue.Queue.{InternalState, _}
-import kanaloa.util.MessageScheduler
+import kanaloa.metrics.Metric
+import kanaloa.queue.Queue._
+import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
+import kanaloa.util.Java8TimeExtensions._
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue ⇒ ScalaQueue}
 import scala.concurrent.duration._
 
-trait Queue extends Actor with ActorLogging with MessageScheduler {
-  def defaultWorkSettings: WorkSettings
+private[kanaloa] trait Queue[T] extends Actor with ActorLogging with MessageScheduler {
+  def workSettings: WorkSettings
   def metricsCollector: ActorRef
 
   val initialState = InternalState()
@@ -33,9 +35,9 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
 
   final def processing(state: InternalState): Receive =
     handleWork(state, false) orElse {
-      case e @ Enqueue(workMessage, sendAcks, sendResultsTo) ⇒
-        val newWork = Work(workMessage, sendResultsTo, defaultWorkSettings)
-        val newBuffer: ScalaQueue[Work] = state.workBuffer.enqueue(newWork)
+      case e @ Enqueue(workMessage: T @unchecked, sendAcks, sendResultsTo) ⇒
+        val newWork = Work(workMessage, sendResultsTo, workSettings)
+        val newBuffer: ScalaQueue[Work[T]] = state.workBuffer.enqueue(newWork)
         val newStatus: InternalState = dispatchWork(state.copy(workBuffer = newBuffer))
         if (sendAcks) {
           sender() ! WorkEnqueued
@@ -61,7 +63,9 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       PartialFunction.empty //doesn't matter after finish, but is required by the api.
     } else handleWork(state, true) orElse {
       case e @ Enqueue(_, _, _) ⇒ sender() ! EnqueueRejected(e, Queue.EnqueueRejected.Retiring)
-      case RetiringTimeout      ⇒ finish(state, "Forcefully retire after timed out")
+      case RetiringTimeout ⇒
+        finish(discardAll(state, "retiring timed out"), "Forcefully 122" +
+          "retire after timed out")
     }
 
   private def finish(state: InternalState, withMessage: String): Unit = {
@@ -71,7 +75,7 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
   }
 
   private def handleWork(state: InternalState, isRetiring: Boolean): Receive = {
-    def dispatchWorkAndBecome(state: InternalState): InternalState = {
+    def dispatchWorkAndNext(state: InternalState): InternalState = {
       val newState = dispatchWork(state)
       next(newState)
       newState
@@ -83,21 +87,38 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
     {
       case RequestWork(requester) ⇒
         context watch requester
-        val newState = dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)))
+        val newState = dispatchWorkAndNext(state.copy(queuedWorkers = state.queuedWorkers.enqueue(requester)))
         if (newState.workBuffer.isEmpty && !newState.queuedWorkers.isEmpty && !isRetiring)
           onQueuedWorkExhausted()
 
       case Unregister(worker) ⇒
-        dispatchWorkAndBecome(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ == worker)))
+        dispatchWorkAndNext(state.copy(queuedWorkers = state.queuedWorkers.filterNot(_ === worker)))
         worker ! Unregistered
 
       case Terminated(worker) ⇒
         next(state.copy(queuedWorkers = state.queuedWorkers.filter(_ != worker)))
 
-      case Rejected(w, reason) ⇒
-        log.debug(s"work rejected by worker, reason given by worker is '$reason'")
-        dispatchWorkAndBecome(state.copy(workBuffer = state.workBuffer.enqueue(w)))
+      case r: Rejected[T] ⇒
+        log.debug(s"work rejected by worker, reason given by worker is '${r.reason}'")
+        dispatchWorkAndNext(state.copy(workBuffer =
+          r.work +: state.workBuffer))
+
+      case DiscardAll(reason) ⇒
+        next(discardAll(state, reason))
     }
+  }
+
+  private def discardAll(state: InternalState, reason: String): InternalState = {
+    if (state.workBuffer.isEmpty)
+      state
+    else {
+      log.warning(s"""All ${state.workBuffer.size} queued work are discarded, reason being "$reason" """)
+      state.workBuffer.foreach { work ⇒
+        work.replyTo.foreach(_ ! WorkRejected(reason))
+      }
+      state.copy(workBuffer = ScalaQueue.empty)
+    }
+
   }
 
   /**
@@ -118,42 +139,57 @@ trait Queue extends Actor with ActorLogging with MessageScheduler {
       (worker, queuedWorkers) ← state.queuedWorkers.dequeueOption
       (work, workBuffer) ← state.workBuffer.dequeueOption
     } yield {
-      worker ! work
-      context unwatch worker
-      state.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = state.countOfWorkSent + 1)
+      if (!work.expired) {
+        worker ! work
+        context unwatch worker
+        state.copy(queuedWorkers = queuedWorkers, workBuffer = workBuffer, countOfWorkSent = state.countOfWorkSent + 1)
+      } else {
+        work.replyTo.foreach(_ ! WorkTimedOut(s"Stale work: stayed too long in the queue than request timeout ${workSettings.requestTimeout}"))
+        metricsCollector ! Metric.WorkShedded
+        state.copy(workBuffer = workBuffer)
+      }
     }) match {
       case Some(newState) ⇒ dispatchWork(newState, dispatched + 1, retiring) //actually in most cases, either works queue or workers queue is empty after one dispatch
       case None ⇒
-        metricsCollector ! statusOf(state)
+        val newStatus = statusOf(state)
+        metricsCollector ! DispatchReport(newStatus, dispatched)
         state
     }
   }
 
-  def fullyUtilized(state: InternalState): Boolean
+  def workBuffered(state: InternalState): Boolean
   def onQueuedWorkExhausted(): Unit = ()
   private def statusOf(state: InternalState): Queue.Status =
-    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), fullyUtilized(state))
+    Queue.Status(state.queuedWorkers.length, QueueLength(state.workBuffer.length), workBuffered(state))
+
+  protected case class InternalState(
+    workBuffer:      ScalaQueue[Work[T]]  = ScalaQueue.empty,
+    queuedWorkers:   ScalaQueue[ActorRef] = ScalaQueue.empty,
+    countOfWorkSent: Long                 = 0
+  )
+
 }
 
-case class DefaultQueue(
-  defaultWorkSettings: WorkSettings,
-  metricsCollector:    ActorRef
-) extends Queue {
-  def fullyUtilized(state: InternalState): Boolean = state.queuedWorkers.length == 0 && state.workBuffer.length > 0
+case class DefaultQueue[T](
+  workSettings:     WorkSettings,
+  metricsCollector: ActorRef
+) extends Queue[T] {
+  def workBuffered(state: InternalState): Boolean =
+    state.queuedWorkers.length == 0 && state.workBuffer.length > 0
 }
 
-class QueueOfIterator(
-  private val iterator:    Iterator[_],
-  val defaultWorkSettings: WorkSettings,
-  val metricsCollector:    ActorRef,
-  sendResultsTo:           Option[ActorRef] = None
-) extends Queue {
+class QueueOfIterator[T](
+  private val iterator: Iterator[T],
+  val workSettings:     WorkSettings,
+  val metricsCollector: ActorRef,
+  sendResultsTo:        Option[ActorRef] = None
+) extends Queue[T] {
   import QueueOfIterator._
 
   val enqueuer = context.actorOf(enqueueerProps(iterator, sendResultsTo, self, metricsCollector))
 
   /**
-   * Determines if a state indicates the workers pool are fully utilized.
+   * Determines if a state indicates the workers pool are all busy.
    * This is different from the default pushing [[DefaultQueue]]
    * for a QueueOfIterator, it only gets work when there is at least one queued worker,
    * which means there is a significant chance a second worker comes in before
@@ -166,29 +202,29 @@ class QueueOfIterator(
    * @param state
    * @return
    */
-  def fullyUtilized(state: InternalState): Boolean = state.queuedWorkers.length <= 2
+  def workBuffered(state: InternalState): Boolean = state.queuedWorkers.length <= 2
 
   override def onQueuedWorkExhausted(): Unit = enqueuer ! EnqueueMore
 }
 
 object QueueOfIterator {
-  def props(
-    iterator:            Iterator[_],
-    defaultWorkSettings: WorkSettings,
-    metricsCollector:    ActorRef,
-    sendResultsTo:       Option[ActorRef] = None
+  def props[T](
+    iterator:         Iterator[T],
+    workSettings:     WorkSettings,
+    metricsCollector: ActorRef,
+    sendResultsTo:    Option[ActorRef] = None
   ): Props =
     Props(new QueueOfIterator(
       iterator,
-      defaultWorkSettings,
+      workSettings,
       metricsCollector,
       sendResultsTo
     )).withDeploy(Deploy.local)
 
   private case object EnqueueMore
 
-  private class Enqueuer(
-    iterator:         Iterator[_],
+  private class Enqueuer[T](
+    iterator:         Iterator[T],
     sendResultsTo:    Option[ActorRef],
     queue:            ActorRef,
     metricsCollector: ActorRef
@@ -205,15 +241,16 @@ object QueueOfIterator {
     }
   }
 
-  private def enqueueerProps(
-    iterator:         Iterator[_],
+  private def enqueueerProps[T](
+    iterator:         Iterator[T],
     sendResultsTo:    Option[ActorRef],
     queue:            ActorRef,
     metricsCollector: ActorRef
   ): Props = Props(new Enqueuer(iterator, sendResultsTo, queue, metricsCollector)).withDeploy(Deploy.local)
+
 }
 
-object Queue {
+private[kanaloa] object Queue {
 
   case class RequestWork(requester: ActorRef)
   private case object SubmitReport
@@ -227,10 +264,12 @@ object Queue {
    * @param sendAcks Send ack messages.  This does not control [[WorkRejected]] messages, which are sent regardless for backpressure.
    * @param sendResultsTo Actor which can optionally receive responses from downstream backends.
    */
-  case class Enqueue(workMessage: Any, sendAcks: Boolean = false, sendResultsTo: Option[ActorRef] = None)
+  case class Enqueue[T](workMessage: T, sendAcks: Boolean = false, sendResultsTo: Option[ActorRef] = None)
 
   case object WorkEnqueued
   case object Unregistered
+
+  case class DiscardAll(reason: String)
 
   case class Unregister(worker: WorkerRef)
 
@@ -240,7 +279,7 @@ object Queue {
    * @param message  Rejected [[Enqueue]] message
    * @param reason  Reason for rejection
    */
-  case class EnqueueRejected(message: Enqueue, reason: EnqueueRejected.Reason)
+  case class EnqueueRejected[T](message: Enqueue[T], reason: EnqueueRejected.Reason)
 
   object EnqueueRejected {
     sealed trait Reason
@@ -252,41 +291,36 @@ object Queue {
 
   private case object RetiringTimeout
 
-  protected[queue] case class InternalState(
-    workBuffer:      ScalaQueue[Work]     = ScalaQueue.empty,
-    queuedWorkers:   ScalaQueue[ActorRef] = ScalaQueue.empty,
-    countOfWorkSent: Long                 = 0
-  )
-
   /**
    * Public status of the queue
    *
    * @param idleWorkers workers that are waiting for work
    * @param queueLength work in the queue waiting to be picked up by workers
-   * @param fullyUtilized are all workers in the worker pool utilized
+   * @param workBuffered indicate if there is there work buffered in the queue, a sign that all workers are busy and that the system could be experiencing a traffic oversaturation.
    */
-  case class Status(idleWorkers: Int, queueLength: QueueLength, fullyUtilized: Boolean)
+  case class Status(idleWorkers: Int, queueLength: QueueLength, workBuffered: Boolean)
+  case class DispatchReport(status: Status, dispatched: Int)
 
-  def ofIterable(
-    iterable:           Iterable[_],
+  def ofIterable[T](
+    iterable:           Iterable[T],
     metricsCollector:   ActorRef,
     defaultWorkSetting: WorkSettings     = WorkSettings(),
     sendResultsTo:      Option[ActorRef] = None
   ): Props =
     QueueOfIterator.props(iterable.iterator, defaultWorkSetting, metricsCollector, sendResultsTo).withDeploy(Deploy.local)
 
-  def ofIterator(
-    iterator:           Iterator[_],
+  def ofIterator[T](
+    iterator:           Iterator[T],
     metricsCollector:   ActorRef,
     defaultWorkSetting: WorkSettings     = WorkSettings(),
     sendResultsTo:      Option[ActorRef] = None
   ): Props =
     QueueOfIterator.props(iterator, defaultWorkSetting, metricsCollector, sendResultsTo).withDeploy(Deploy.local)
 
-  def default(
+  def default[T](
     metricsCollector:   ActorRef,
     defaultWorkSetting: WorkSettings = WorkSettings()
   ): Props =
-    Props(new DefaultQueue(defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
+    Props(new DefaultQueue[T](defaultWorkSetting, metricsCollector)).withDeploy(Deploy.local)
 
 }

@@ -2,18 +2,19 @@ package kanaloa.queue
 
 import akka.actor._
 import akka.testkit.{TestActorRef, TestProbe}
-import kanaloa.ApiProtocol.{QueryStatus, ShutdownSuccessfully}
-import kanaloa.metrics.{Metric, MetricsCollector, Reporter}
+import kanaloa.ApiProtocol.{WorkTimedOut, WorkRejected, ShutdownSuccessfully}
+import kanaloa.handler.GeneralActorRefHandler
+import kanaloa.metrics.{Metric, Reporter}
 import kanaloa.queue.Queue._
-import kanaloa.queue.QueueProcessor.{Shutdown, _}
-import kanaloa.queue.TestUtils._
-import kanaloa.{Backends, SpecWithActorSystem}
+import kanaloa.TestUtils._
+import kanaloa.queue.Sampler.SamplerSettings
+import kanaloa.queue.WorkerPoolManager.{Shutdown, _}
+import kanaloa.queue.QueueTestUtils._
+import kanaloa.SpecWithActorSystem
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
 
 import scala.concurrent.duration._
 import scala.util.Random
-
 class QueueSpec extends SpecWithActorSystem {
   "Queue" should {
 
@@ -21,13 +22,13 @@ class QueueSpec extends SpecWithActorSystem {
       val queue = defaultQueue()
       initQueue(queue, numberOfWorkers = 3)
 
-      delegatee.expectNoMsg(40.milliseconds)
+      service.expectNoMsg(40.milliseconds)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+      service.expectMsg("b")
 
     }
 
@@ -36,14 +37,14 @@ class QueueSpec extends SpecWithActorSystem {
       initQueue(queue, numberOfWorkers = 2)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
+      service.expectMsg("b")
 
       queue ! Enqueue("c")
 
-      delegatee.expectNoMsg(100.milliseconds)
+      service.expectNoMsg(100.milliseconds)
     }
 
     "reuse workers" in new QueueScope {
@@ -51,31 +52,31 @@ class QueueSpec extends SpecWithActorSystem {
       initQueue(queue, numberOfWorkers = 2)
 
       queue ! Enqueue("a")
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+      service.expectMsg("a")
+      service.reply(MessageProcessed("a"))
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageProcessed("b"))
+      service.expectMsg("b")
+      service.reply(MessageProcessed("b"))
 
       queue ! Enqueue("c")
-      delegatee.expectMsg("c")
+      service.expectMsg("c")
     }
 
-    "shutdown with all outstanding work done" in new QueueScope {
+    "shutdown with all outstanding work done" taggedAs (shutdown) in new QueueScope {
 
       val queue = defaultQueue()
-      val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+      val workerPoolManager = initQueue(queue, numberOfWorkers = 2)
 
       queue ! Enqueue("a")
 
-      delegatee.expectMsg("a")
+      service.expectMsg("a")
 
-      queueProcessor ! Shutdown(Some(self))
+      workerPoolManager ! Shutdown(Some(self))
 
       expectNoMsg(100.milliseconds) //shouldn't shutdown until the last work is done
 
-      delegatee.reply(MessageProcessed("a"))
+      service.reply(MessageProcessed("a"))
 
       expectMsg(ShutdownSuccessfully)
     }
@@ -83,34 +84,34 @@ class QueueSpec extends SpecWithActorSystem {
 
   "send ack messages when turned on" in new QueueScope {
     val queue = defaultQueue()
-    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 2)
 
     queue ! Enqueue("a", sendAcks = true)
     expectMsg(WorkEnqueued)
-    delegatee.expectMsg("a")
+    service.expectMsg("a")
   }
 
   "send results to an actor" in new QueueScope {
     val queue = defaultQueue()
-    val queueProcessor = initQueue(queue, numberOfWorkers = 2)
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 2)
 
     val sendProbe = TestProbe()
 
     queue ! Enqueue("a", sendResultsTo = Some(sendProbe.ref))
 
-    delegatee.expectMsg("a")
-    delegatee.reply(MessageProcessed("response"))
+    service.expectMsg("a")
+    service.reply(MessageProcessed("response"))
     sendProbe.expectMsg("response")
   }
 
   "reject work when retiring" in new QueueScope {
     val queue = defaultQueue()
     watch(queue)
-    val queueProcessor = initQueue(queue, numberOfWorkers = 1)
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
     queue ! Enqueue("a")
-    delegatee.expectMsg("a")
+    service.expectMsg("a")
     queue ! Enqueue("b")
-    delegatee.expectNoMsg()
+    service.expectNoMsg()
     //"b" shoud get buffered, since there is only one worker, who is
     //has not "finished" with "a" (we didn't have the probe send back the finished message to the Worker)
     queue ! Retire(50.milliseconds) //give this some time to kill itself
@@ -118,7 +119,73 @@ class QueueSpec extends SpecWithActorSystem {
     expectMsg(EnqueueRejected(Enqueue("c"), Queue.EnqueueRejected.Retiring))
     //after the the Retiring state is expired, the Queue goes away
     expectTerminated(queue, 75.milliseconds)
-    //TODO: need to have more tests for Queue <=> Worker messaging
+
+  }
+
+  "reject all work still in queue when retiring timed out" in new QueueScope {
+    val queue = defaultQueue()
+
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
+
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    service.expectMsg("a")
+    queue ! Enqueue("b", sendResultsTo = Some(self))
+    service.expectNoMsg()
+    //message "a" is received by the service,  message "b" is still in the queue
+
+    queue ! Retire(100.milliseconds)
+
+    expectNoMsg(80.milliseconds) //no rejection within the timeout
+
+    expectMsgType[WorkRejected]
+
+  }
+
+  "reject all work when commanded to" in new QueueScope {
+    val queue = defaultQueue()
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    queue ! Enqueue("b", sendResultsTo = Some(self))
+    queue ! Enqueue("c", sendResultsTo = Some(self))
+    queue ! Enqueue("d", sendResultsTo = Some(self))
+
+    queue ! Queue.DiscardAll("discard them")
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectMsg(WorkRejected("discard them"))
+    expectNoMsg()
+
+  }
+
+  "abandon work directly when the work is stale" in new QueueScope {
+    val queue = defaultQueue(WorkSettings(serviceTimeout = 95.milliseconds, requestTimeout = Some(100.milliseconds)))
+    val workerPoolManager = initQueue(queue, numberOfWorkers = 1)
+
+    queue ! Enqueue("a", sendResultsTo = Some(self))
+    queue ! Enqueue("b", sendResultsTo = None)
+    queue ! Enqueue("c", sendResultsTo = Some(self))
+
+    service.expectMsg("a")
+    expectNoMsg(60.milliseconds)
+    service.reply(MessageProcessed("reply for A"))
+    expectMsg("reply for A")
+
+    queue ! Enqueue("d", sendResultsTo = Some(self))
+
+    service.expectMsg("b")
+    expectNoMsg(60.milliseconds) //120ms passed
+    service.reply(MessageProcessed("replyB")) //the worker will now try to grab work c but it is stale
+
+    service.expectMsg("d") //service gets d instead
+    expectMsgType[WorkTimedOut]
+
+    //back to normal business
+    queue ! Enqueue("e", sendResultsTo = Some(self))
+    service.reply(MessageProcessed("replyD"))
+    expectMsg("replyD")
+    service.expectMsg("e") //service gets d instead
+    service.reply(MessageProcessed("replyE"))
+    expectMsg("replyE")
 
   }
 }
@@ -145,29 +212,29 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
 
       val workerProps: Props = Worker.default(
         TestProbe().ref,
-        TestProbe().ref,
+        GeneralActorRefHandler("tst", TestProbe().ref, system)(resultChecker),
         TestProbe().ref
-      )(resultChecker)
+      )
 
-      val queue: QueueRef = defaultQueue(WorkSettings(timeout = 60.milliseconds))
-      val processor: ActorRef = TestActorRef(defaultProcessorProps(queue, metricsCollector = metricsCollector))
+      val queue: QueueRef = defaultQueue(WorkSettings(serviceTimeout = 60.milliseconds))
+      val workerPool: ActorRef = TestActorRef(defaultWorkerPoolProps(queue, metricsCollector = workerPoolMetricsCollector))
 
-      watch(processor)
+      watch(workerPool)
 
       queue ! Enqueue("a")
 
-      delegatee.expectMsg("a")
-      delegatee.reply(MessageProcessed("a"))
+      service.expectMsg("a")
+      service.reply(MessageProcessed("a"))
 
       queue ! Enqueue("b")
-      delegatee.expectMsg("b")
-      delegatee.reply(MessageFailed)
+      service.expectMsg("b")
+      service.reply(MessageFailed)
 
       queue ! Enqueue("c")
-      delegatee.expectMsg("c") //timeout this one
+      service.expectMsg("c") //timeout this one
 
       queue ! Enqueue("d")
-      delegatee.expectMsg("d")
+      service.expectMsg("d")
 
       eventually {
         receivedMetrics should contain allOf (Metric.WorkFailed, Metric.WorkTimedOut)
@@ -177,12 +244,20 @@ class QueueMetricsSpec extends SpecWithActorSystem with Eventually {
   }
 }
 
-class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
-  val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(None)) // To be overridden
+class QueueScope(implicit system: ActorSystem, factories: Factories) extends ScopeWithQueue {
 
-  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): QueueProcessorRef = {
-    val processorProps: Props = defaultProcessorProps(queue, ProcessingWorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize), metricsCollector)
-    system.actorOf(processorProps)
+  lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(None)) // To be overridden
+  lazy val workerPoolMetricsCollector: ActorRef = factories.workerPoolSampler(
+    factories.workerPoolSamplerFactory(queueSampler = queueSampler, settings = SamplerSettings())
+  )
+
+  def initQueue(queue: ActorRef, numberOfWorkers: Int = 1, minPoolSize: Int = 1): WorkerPoolManagerRef = {
+    val workerPoolProps: Props = defaultWorkerPoolProps(
+      queue,
+      WorkerPoolSettings(startingPoolSize = numberOfWorkers, minPoolSize = minPoolSize),
+      workerPoolMetricsCollector
+    )
+    system.actorOf(workerPoolProps)
   }
 
   def iteratorQueue(
@@ -191,25 +266,34 @@ class QueueScope(implicit system: ActorSystem) extends ScopeWithQueue {
     sendResultsTo: Option[ActorRef] = None
   ): QueueRef =
     system.actorOf(
-      iteratorQueueProps(iterator, metricsCollector, workSetting, sendResultsTo),
+      iteratorQueueProps(iterator, queueSampler, workSetting, sendResultsTo),
       "iterator-queue-" + Random.nextInt(100000)
     )
 
   def defaultQueue(workSetting: WorkSettings = WorkSettings()): QueueRef =
     system.actorOf(
-      Queue.default(metricsCollector, workSetting),
+      Queue.default(queueSampler, workSetting),
       "default-queue-" + Random.nextInt(100000)
     )
 
 }
 
-class MetricCollectorScope(implicit system: ActorSystem) extends QueueScope {
+class MetricCollectorScope(implicit system: ActorSystem, factories: Factories) extends QueueScope {
   @volatile
   var receivedMetrics: List[Metric] = Nil
 
-  override val metricsCollector: ActorRef = system.actorOf(MetricsCollector.props(Some(new Reporter {
+  def mockReporter = new Reporter {
     def report(metric: Metric): Unit = receivedMetrics = metric :: receivedMetrics
-  })))
 
+    def withNewPrefix(modifier: (String) ⇒ String): Reporter = this
+  }
+
+  override lazy val queueSampler: ActorRef = system.actorOf(QueueSampler.props(Some(mockReporter)))
+
+  override lazy val workerPoolMetricsCollector: ActorRef =
+    factories.workerPoolSampler(
+      factories.workerPoolSamplerFactory(queueSampler = queueSampler, settings = SamplerSettings()),
+      Some(mockReporter)
+    )
 }
 
