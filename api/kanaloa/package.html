@@ -1,0 +1,470 @@
+<!DOCTYPE html >
+<html>
+        <head>
+          <title>kanaloa - kanaloa</title>
+          <meta name="description" content="kanaloa - kanaloa" />
+          <meta name="keywords" content="kanaloa kanaloa" />
+          <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+          
+      <link href="../lib/template.css" media="screen" type="text/css" rel="stylesheet" />
+      <link href="../lib/diagrams.css" media="screen" type="text/css" rel="stylesheet" id="diagrams-css" />
+      <script type="text/javascript" src="../lib/jquery.js" id="jquery-js"></script>
+      <script type="text/javascript" src="../lib/jquery-ui.js"></script>
+      <script type="text/javascript" src="../lib/template.js"></script>
+      <script type="text/javascript" src="../lib/tools.tooltip.js"></script>
+      <script type="text/javascript" src="../lib/modernizr.custom.js"></script><script type="text/javascript" src="../lib/diagrams.js" id="diagrams-js"></script>
+      <script type="text/javascript">
+         if(top === self) {
+            var url = '../index.html';
+            var hash = 'kanaloa.package';
+            var anchor = window.location.hash;
+            var anchor_opt = '';
+            if (anchor.length >= 1)
+              anchor_opt = '@' + anchor.substring(1);
+            window.location.href = url + '#' + hash + anchor_opt;
+         }
+   	  </script>
+    
+        </head>
+        <body class="value">
+      <div id="definition">
+        <img alt="Package" src="../lib/package_big.png" />
+        
+        <h1>kanaloa</h1><span class="permalink">
+      <a href="../index.html#kanaloa.package" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      </div>
+
+      <h4 id="signature" class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <span class="name">kanaloa</span>
+      </span>
+      </h4>
+      
+          <div id="comment" class="fullcommenttop"><dl class="attributes block"> <dt>Source</dt><dd><a href="https://github.com/iheartradio/kanaloa/tree/master/core/src/main/scala/kanaloa/package.scala" target="_blank">package.scala</a></dd></dl><div class="toggleContainer block">
+          <span class="toggle">Linear Supertypes</span>
+          <div class="superTypes hiddenContent"><span class="extype" name="scala.AnyRef">AnyRef</span>, <span class="extype" name="scala.Any">Any</span></div>
+        </div></div>
+        
+
+      <div id="mbrsel">
+        <div id="textfilter"><span class="pre"></span><span class="input"><input id="mbrsel-input" type="text" accesskey="/" /></span><span class="post"></span></div>
+        <div id="order">
+              <span class="filtertype">Ordering</span>
+              <ol>
+                
+                <li class="alpha in"><span>Alphabetic</span></li>
+                <li class="inherit out"><span>By Inheritance</span></li>
+              </ol>
+            </div>
+        <div id="ancestors">
+                <span class="filtertype">Inherited<br />
+                </span>
+                <ol id="linearization">
+                  <li class="in" name="kanaloa"><span>kanaloa</span></li><li class="in" name="scala.AnyRef"><span>AnyRef</span></li><li class="in" name="scala.Any"><span>Any</span></li>
+                </ol>
+              </div><div id="ancestors">
+            <span class="filtertype"></span>
+            <ol>
+              <li class="hideall out"><span>Hide All</span></li>
+              <li class="showall in"><span>Show All</span></li>
+            </ol>
+          </div>
+        <div id="visbl">
+            <span class="filtertype">Visibility</span>
+            <ol><li class="public in"><span>Public</span></li><li class="all out"><span>All</span></li></ol>
+          </div>
+      </div>
+
+      <div id="template">
+        <div id="allMembers">
+        
+
+        <div id="types" class="types members">
+              <h3>Type Members</h3>
+              <ol><li name="kanaloa.ClusterAwareHandlerProvider" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ClusterAwareHandlerProvider[TResp,TError]extendsAgentHandlerProvider[Any]"></a>
+      <a id="ClusterAwareHandlerProvider[TResp,TError]:ClusterAwareHandlerProvider[TResp,TError]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="ClusterAwareHandlerProvider.html"><span class="name">ClusterAwareHandlerProvider</span></a><span class="tparams">[<span name="TResp">TResp</span>, <span name="TError">TError</span>]</span><span class="result"> extends <a href="handler/AgentHandlerProvider.html" class="extype" name="kanaloa.handler.AgentHandlerProvider">AgentHandlerProvider</a>[<span class="extype" name="scala.Any">Any</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ClusterAwareHandlerProvider[TResp,TError]extendsAgentHandlerProvider[Any]" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">A <a href="handler/HandlerProvider.html" class="extype" name="kanaloa.handler.HandlerProvider">kanaloa.handler.HandlerProvider</a> that represent actor deployed on remote cluster members.</p>
+    </li><li name="kanaloa.Dispatcher" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="Dispatcher[T]extendsActorwithActorLoggingwithMessageScheduler"></a>
+      <a id="Dispatcher[T]:Dispatcher[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="Dispatcher.html"><span class="name">Dispatcher</span></a><span class="tparams">[<span name="T">T</span>]</span><span class="result"> extends <span class="extype" name="akka.actor.Actor">Actor</span> with <span class="extype" name="akka.actor.ActorLogging">ActorLogging</span> with <a href="util/MessageScheduler.html" class="extype" name="kanaloa.util.MessageScheduler">MessageScheduler</a></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@Dispatcher[T]extendsActorwithActorLoggingwithMessageScheduler" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.PullingDispatcher" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="PullingDispatcher[T]extendsDispatcher[T]withProductwithSerializable"></a>
+      <a id="PullingDispatcher[T]:PullingDispatcher[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">case class</span>
+      </span>
+      <span class="symbol">
+        <a href="PullingDispatcher.html"><span class="name">PullingDispatcher</span></a><span class="tparams">[<span name="T">T</span>]</span><span class="params">(<span name="name">name: <span class="extype" name="scala.Predef.String">String</span></span>, <span name="iterator">iterator: <span class="extype" name="scala.Iterator">Iterator</span>[<span class="extype" name="kanaloa.PullingDispatcher.T">T</span>]</span>, <span name="settings">settings: <a href="Dispatcher$$Settings.html" class="extype" name="kanaloa.Dispatcher.Settings">Settings</a></span>, <span name="handlerProvider">handlerProvider: <a href="handler/HandlerProvider.html" class="extype" name="kanaloa.handler.HandlerProvider">HandlerProvider</a>[<span class="extype" name="kanaloa.PullingDispatcher.T">T</span>]</span>, <span name="reporter">reporter: <span class="extype" name="scala.Option">Option</span>[<a href="metrics/Reporter.html" class="extype" name="kanaloa.metrics.Reporter">Reporter</a>]</span>, <span name="sendResultsTo">sendResultsTo: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="akka.actor.ActorRef">ActorRef</span>]</span>)</span><span class="result"> extends <a href="Dispatcher.html" class="extype" name="kanaloa.Dispatcher">Dispatcher</a>[<span class="extype" name="kanaloa.PullingDispatcher.T">T</span>] with <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@PullingDispatcher[T]extendsDispatcher[T]withProductwithSerializable" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.PushingDispatcher" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="PushingDispatcher[T]extendsPushingDispatcherBase[T]withProductwithSerializable"></a>
+      <a id="PushingDispatcher[T]:PushingDispatcher[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">case class</span>
+      </span>
+      <span class="symbol">
+        <a href="PushingDispatcher.html"><span class="name">PushingDispatcher</span></a><span class="tparams">[<span name="T">T</span>]</span><span class="params">(<span name="name">name: <span class="extype" name="scala.Predef.String">String</span></span>, <span name="settings">settings: <a href="Dispatcher$$Settings.html" class="extype" name="kanaloa.Dispatcher.Settings">Settings</a></span>, <span name="handlerProvider">handlerProvider: <a href="handler/HandlerProvider.html" class="extype" name="kanaloa.handler.HandlerProvider">HandlerProvider</a>[<span class="extype" name="kanaloa.PushingDispatcher.T">T</span>]</span>, <span name="reporter">reporter: <span class="extype" name="scala.Option">Option</span>[<a href="metrics/Reporter.html" class="extype" name="kanaloa.metrics.Reporter">Reporter</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="evidence$2">evidence$2: <span class="extype" name="scala.reflect.ClassTag">ClassTag</span>[<span class="extype" name="kanaloa.PushingDispatcher.T">T</span>]</span>)</span><span class="result"> extends <a href="PushingDispatcherBase.html" class="extype" name="kanaloa.PushingDispatcherBase">PushingDispatcherBase</a>[<span class="extype" name="kanaloa.PushingDispatcher.T">T</span>] with <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@PushingDispatcher[T]extendsPushingDispatcherBase[T]withProductwithSerializable" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.PushingDispatcherBase" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="PushingDispatcherBase[T]extendsDispatcher[T]"></a>
+      <a id="PushingDispatcherBase[T]:PushingDispatcherBase[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">sealed abstract </span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="PushingDispatcherBase.html"><span class="name">PushingDispatcherBase</span></a><span class="tparams">[<span name="T">T</span>]</span><span class="result"> extends <a href="Dispatcher.html" class="extype" name="kanaloa.Dispatcher">Dispatcher</a>[<span class="extype" name="kanaloa.PushingDispatcherBase.T">T</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@PushingDispatcherBase[T]extendsDispatcher[T]" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.ReverseProxy" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="ReverseProxy[TReq,TResp]extendsTReq=&gt;scala.concurrent.Future[Either[kanaloa.WorkException,TResp]]"></a>
+      <a id="ReverseProxy[TReq,TResp]:ReverseProxy[TReq,TResp]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="ReverseProxy.html"><span class="name">ReverseProxy</span></a><span class="tparams">[<span name="TReq">TReq</span>, <span name="TResp">TResp</span>]</span><span class="result"> extends (<span class="extype" name="kanaloa.ReverseProxy.TReq">TReq</span>) ⇒ <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Either">Either</span>[<a href="WorkException.html" class="extype" name="kanaloa.WorkException">WorkException</a>, <span class="extype" name="kanaloa.ReverseProxy.TResp">TResp</span>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ReverseProxy[TReq,TResp]extendsTReq=&gt;scala.concurrent.Future[Either[kanaloa.WorkException,TResp]]" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.ReverseProxyFactory" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ReverseProxyFactoryextendsAnyRef"></a>
+      <a id="ReverseProxyFactory:ReverseProxyFactory"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="ReverseProxyFactory.html"><span class="name">ReverseProxyFactory</span></a><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ReverseProxyFactoryextendsAnyRef" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.WorkException" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="WorkExceptionextendsAnyRef"></a>
+      <a id="WorkException:WorkException"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">sealed </span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="WorkException.html"><span class="name">WorkException</span></a><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@WorkExceptionextendsAnyRef" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li></ol>
+            </div>
+
+        
+
+        <div id="values" class="values members">
+              <h3>Value Members</h3>
+              <ol><li name="kanaloa.ApiProtocol" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ApiProtocol"></a>
+      <a id="ApiProtocol:ApiProtocol"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="ApiProtocol$.html"><span class="name">ApiProtocol</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ApiProtocol" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.ClusterAwareHandlerProvider" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ClusterAwareHandlerProvider"></a>
+      <a id="ClusterAwareHandlerProvider:ClusterAwareHandlerProvider"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="ClusterAwareHandlerProvider$.html"><span class="name">ClusterAwareHandlerProvider</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ClusterAwareHandlerProvider" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.Dispatcher" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="Dispatcher"></a>
+      <a id="Dispatcher:Dispatcher"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="Dispatcher$.html"><span class="name">Dispatcher</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@Dispatcher" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.PullingDispatcher" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="PullingDispatcher"></a>
+      <a id="PullingDispatcher:PullingDispatcher"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="PullingDispatcher$.html"><span class="name">PullingDispatcher</span></a><span class="result"> extends <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@PullingDispatcher" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.PushingDispatcher" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="PushingDispatcher"></a>
+      <a id="PushingDispatcher:PushingDispatcher"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="PushingDispatcher$.html"><span class="name">PushingDispatcher</span></a><span class="result"> extends <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@PushingDispatcher" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.ReverseProxy" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ReverseProxy"></a>
+      <a id="ReverseProxy:ReverseProxy"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="ReverseProxy$.html"><span class="name">ReverseProxy</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ReverseProxy" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.ReverseProxyFactory" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ReverseProxyFactory"></a>
+      <a id="ReverseProxyFactory:ReverseProxyFactory"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="ReverseProxyFactory$.html"><span class="name">ReverseProxyFactory</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@ReverseProxyFactory" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.Types" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="Types"></a>
+      <a id="Types:Types"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="Types$.html"><span class="name">Types</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@Types" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="handler"></a>
+      <a id="handler:handler"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <a href="handler/package.html"><span class="name">handler</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@handler" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.metrics" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="metrics"></a>
+      <a id="metrics:metrics"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <a href="metrics/package.html"><span class="name">metrics</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@metrics" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.queue" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="queue"></a>
+      <a id="queue:queue"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <a href="queue/package.html"><span class="name">queue</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@queue" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.util" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="util"></a>
+      <a id="util:util"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <a href="util/package.html"><span class="name">util</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../index.html#kanaloa.package@util" title="Permalink" target="_top">
+        <img src="../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li></ol>
+            </div>
+
+        
+
+        
+        </div>
+
+        <div id="inheritedMembers">
+        <div class="parent" name="scala.AnyRef">
+              <h3>Inherited from <span class="extype" name="scala.AnyRef">AnyRef</span></h3>
+            </div><div class="parent" name="scala.Any">
+              <h3>Inherited from <span class="extype" name="scala.Any">Any</span></h3>
+            </div>
+        
+        </div>
+
+        <div id="groupedMembers">
+        <div class="group" name="Ungrouped">
+              <h3>Ungrouped</h3>
+              
+            </div>
+        </div>
+
+      </div>
+
+      <div id="tooltip"></div>
+
+      <div id="footer">  </div>
+
+
+    </body>
+      </html>

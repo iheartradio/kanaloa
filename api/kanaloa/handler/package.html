@@ -1,0 +1,449 @@
+<!DOCTYPE html >
+<html>
+        <head>
+          <title>handler - kanaloa.handler</title>
+          <meta name="description" content="handler - kanaloa.handler" />
+          <meta name="keywords" content="handler kanaloa.handler" />
+          <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+          
+      <link href="../../lib/template.css" media="screen" type="text/css" rel="stylesheet" />
+      <link href="../../lib/diagrams.css" media="screen" type="text/css" rel="stylesheet" id="diagrams-css" />
+      <script type="text/javascript" src="../../lib/jquery.js" id="jquery-js"></script>
+      <script type="text/javascript" src="../../lib/jquery-ui.js"></script>
+      <script type="text/javascript" src="../../lib/template.js"></script>
+      <script type="text/javascript" src="../../lib/tools.tooltip.js"></script>
+      <script type="text/javascript" src="../../lib/modernizr.custom.js"></script><script type="text/javascript" src="../../lib/diagrams.js" id="diagrams-js"></script>
+      <script type="text/javascript">
+         if(top === self) {
+            var url = '../../index.html';
+            var hash = 'kanaloa.handler.package';
+            var anchor = window.location.hash;
+            var anchor_opt = '';
+            if (anchor.length >= 1)
+              anchor_opt = '@' + anchor.substring(1);
+            window.location.href = url + '#' + hash + anchor_opt;
+         }
+   	  </script>
+    
+        </head>
+        <body class="value">
+      <div id="definition">
+        <img alt="Package" src="../../lib/package_big.png" />
+        <p id="owner"><a href="../package.html" class="extype" name="kanaloa">kanaloa</a></p>
+        <h1>handler</h1><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      </div>
+
+      <h4 id="signature" class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">package</span>
+      </span>
+      <span class="symbol">
+        <span class="name">handler</span>
+      </span>
+      </h4>
+      
+          <div id="comment" class="fullcommenttop"></div>
+        
+
+      <div id="mbrsel">
+        <div id="textfilter"><span class="pre"></span><span class="input"><input id="mbrsel-input" type="text" accesskey="/" /></span><span class="post"></span></div>
+        
+        
+        <div id="visbl">
+            <span class="filtertype">Visibility</span>
+            <ol><li class="public in"><span>Public</span></li><li class="all out"><span>All</span></li></ol>
+          </div>
+      </div>
+
+      <div id="template">
+        <div id="allMembers">
+        
+
+        <div id="types" class="types members">
+              <h3>Type Members</h3>
+              <ol><li name="kanaloa.handler.AgentHandlerProvider" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="AgentHandlerProvider[T]extendsHandlerProvider[T]"></a>
+      <a id="AgentHandlerProvider[T]:AgentHandlerProvider[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="AgentHandlerProvider.html"><span class="name">AgentHandlerProvider</span></a><span class="tparams">[<span name="T">T</span>]</span><span class="result"> extends <a href="HandlerProvider.html" class="extype" name="kanaloa.handler.HandlerProvider">HandlerProvider</a>[<span class="extype" name="kanaloa.handler.AgentHandlerProvider.T">T</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@AgentHandlerProvider[T]extendsHandlerProvider[T]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.Cancellable" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="CancellableextendsAnyRef"></a>
+      <a id="Cancellable:Cancellable"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="Cancellable.html"><span class="name">Cancellable</span></a><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@CancellableextendsAnyRef" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.GeneralActorRefHandler" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="GeneralActorRefHandler[TResp,TError]extendsHandler[Any]"></a>
+      <a id="GeneralActorRefHandler[TResp,TError]:GeneralActorRefHandler[TResp,TError]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="GeneralActorRefHandler.html"><span class="name">GeneralActorRefHandler</span></a><span class="tparams">[<span name="TResp">TResp</span>, <span name="TError">TError</span>]</span><span class="result"> extends <a href="Handler.html" class="extype" name="kanaloa.handler.Handler">Handler</a>[<span class="extype" name="scala.Any">Any</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@GeneralActorRefHandler[TResp,TError]extendsHandler[Any]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">Handler based on general actors who do not have ability to provide pressure information or instructions back to users.</p>
+    </li><li name="kanaloa.handler.Handler" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="Handler[-TReq]extendsAnyRef"></a>
+      <a id="Handler[-TReq]:Handler[TReq]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="Handler.html"><span class="name">Handler</span></a><span class="tparams">[<span name="TReq">-TReq</span>]</span><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@Handler[-TReq]extendsAnyRef" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.HandlerProvider" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="HandlerProvider[-T]extendsAnyRef"></a>
+      <a id="HandlerProvider[-T]:HandlerProvider[T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="HandlerProvider.html"><span class="name">HandlerProvider</span></a><span class="tparams">[<span name="T">-T</span>]</span><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HandlerProvider[-T]extendsAnyRef" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.HandlerProviderAdaptor" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="HandlerProviderAdaptor[A,-T]extendsA=&gt;kanaloa.handler.HandlerProvider[T]"></a>
+      <a id="HandlerProviderAdaptor[A,-T]:HandlerProviderAdaptor[A,T]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="HandlerProviderAdaptor.html"><span class="name">HandlerProviderAdaptor</span></a><span class="tparams">[<span name="A">A</span>, <span name="T">-T</span>]</span><span class="result"> extends (<span class="extype" name="kanaloa.handler.HandlerProviderAdaptor.A">A</span>) ⇒ <a href="HandlerProvider.html" class="extype" name="kanaloa.handler.HandlerProvider">HandlerProvider</a>[<span class="extype" name="kanaloa.handler.HandlerProviderAdaptor.T">T</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HandlerProviderAdaptor[A,-T]extendsA=&gt;kanaloa.handler.HandlerProvider[T]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.HandlerProviderFactories" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="HandlerProviderFactoriesextendsAnyRef"></a>
+      <a id="HandlerProviderFactories:HandlerProviderFactories"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="HandlerProviderFactories.html"><span class="name">HandlerProviderFactories</span></a><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HandlerProviderFactoriesextendsAnyRef" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.Handling" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="Handling[TResp,TError]extendsAnyRef"></a>
+      <a id="Handling[TResp,TError]:Handling[TResp,TError]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">trait</span>
+      </span>
+      <span class="symbol">
+        <a href="Handling.html"><span class="name">Handling</span></a><span class="tparams">[<span name="TResp">TResp</span>, <span name="TError">TError</span>]</span><span class="result"> extends <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@Handling[TResp,TError]extendsAnyRef" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">Represent an handling of a request
+The main purpose of this type is to provide the optional cancellable
+</p>
+    </li><li name="kanaloa.handler.Hold" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="HoldextendsInstructionwithProductwithSerializable"></a>
+      <a id="Hold:Hold"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">case class</span>
+      </span>
+      <span class="symbol">
+        <a href="Hold.html"><span class="name">Hold</span></a><span class="params">(<span name="duration">duration: <span class="extype" name="scala.concurrent.duration.FiniteDuration">FiniteDuration</span></span>)</span><span class="result"> extends <a href="Instruction.html" class="extype" name="kanaloa.handler.Instruction">Instruction</a> with <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HoldextendsInstructionwithProductwithSerializable" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">Kanaloa should pause using this handler for {{@param duration}}
+</p>
+    </li><li name="kanaloa.handler.Instruction" visbl="pub" data-isabs="true" fullComment="no" group="Ungrouped">
+      <a id="InstructionextendsProductwithSerializable"></a>
+      <a id="Instruction:Instruction"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">sealed abstract </span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="Instruction.html"><span class="name">Instruction</span></a><span class="result"> extends <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@InstructionextendsProductwithSerializable" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">Instruction from Handler to kanaloa
+</p>
+    </li><li name="kanaloa.handler.Result" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="Result[TResp,TError]extendsProductwithSerializable"></a>
+      <a id="Result[TResp,TError]:Result[TResp,TError]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">case class</span>
+      </span>
+      <span class="symbol">
+        <a href="Result.html"><span class="name">Result</span></a><span class="tparams">[<span name="TResp">TResp</span>, <span name="TError">TError</span>]</span><span class="params">(<span name="reply">reply: <span class="extype" name="scala.Either">Either</span>[<span class="extype" name="kanaloa.handler.Result.TError">TError</span>, <span class="extype" name="kanaloa.handler.Result.TResp">TResp</span>]</span>, <span name="instruction">instruction: <span class="extype" name="scala.Option">Option</span>[<a href="Instruction.html" class="extype" name="kanaloa.handler.Instruction">Instruction</a>]</span>)</span><span class="result"> extends <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@Result[TResp,TError]extendsProductwithSerializable" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt"></p><div class="fullcomment"><div class="comment cmt"></div><dl class="paramcmts block"><dt class="param">reply</dt><dd class="cmt"><p>the message replying to the client</p></dd><dt class="param">instruction</dt><dd class="cmt"><p>instruction to kanaloa</p></dd></dl></div>
+    </li><li name="kanaloa.handler.SimpleFunctionHandler" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="SimpleFunctionHandler[TReq,TResp]extendsHandler[TReq]"></a>
+      <a id="SimpleFunctionHandler[TReq,TResp]:SimpleFunctionHandler[TReq,TResp]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="SimpleFunctionHandler.html"><span class="name">SimpleFunctionHandler</span></a><span class="tparams">[<span name="TReq">TReq</span>, <span name="TResp">TResp</span>]</span><span class="result"> extends <a href="Handler.html" class="extype" name="kanaloa.handler.Handler">Handler</a>[<span class="extype" name="kanaloa.handler.SimpleFunctionHandler.TReq">TReq</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@SimpleFunctionHandler[TReq,TResp]extendsHandler[TReq]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">For simple async function without the error handling capability
+</p>
+    </li><li name="kanaloa.handler.SingleActorHandlerProvider" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="SingleActorHandlerProviderextendsAgentHandlerProvider[Any]"></a>
+      <a id="SingleActorHandlerProvider:SingleActorHandlerProvider"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="SingleActorHandlerProvider.html"><span class="name">SingleActorHandlerProvider</span></a><span class="result"> extends <a href="AgentHandlerProvider.html" class="extype" name="kanaloa.handler.AgentHandlerProvider">AgentHandlerProvider</a>[<span class="extype" name="scala.Any">Any</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@SingleActorHandlerProviderextendsAgentHandlerProvider[Any]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li></ol>
+            </div>
+
+        
+
+        <div id="values" class="values members">
+              <h3>Value Members</h3>
+              <ol><li name="kanaloa.handler.GeneralActorRefHandler" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="GeneralActorRefHandler"></a>
+      <a id="GeneralActorRefHandler:GeneralActorRefHandler"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="GeneralActorRefHandler$.html"><span class="name">GeneralActorRefHandler</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@GeneralActorRefHandler" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.Handler" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="Handler"></a>
+      <a id="Handler:Handler"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="Handler$.html"><span class="name">Handler</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@Handler" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.HandlerProvider" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="HandlerProvider"></a>
+      <a id="HandlerProvider:HandlerProvider"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="HandlerProvider$.html"><span class="name">HandlerProvider</span></a><span class="result"> extends <a href="HandlerProviderFactories.html" class="extype" name="kanaloa.handler.HandlerProviderFactories">HandlerProviderFactories</a></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HandlerProvider" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.HandlerProviderAdaptor" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="HandlerProviderAdaptor"></a>
+      <a id="HandlerProviderAdaptor:HandlerProviderAdaptor"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="HandlerProviderAdaptor$.html"><span class="name">HandlerProviderAdaptor</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@HandlerProviderAdaptor" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.ResultChecker" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="ResultChecker"></a>
+      <a id="ResultChecker:ResultChecker"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="ResultChecker$.html"><span class="name">ResultChecker</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@ResultChecker" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.SingleActorHandlerProvider" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="SingleActorHandlerProvider"></a>
+      <a id="SingleActorHandlerProvider:SingleActorHandlerProvider"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="SingleActorHandlerProvider$.html"><span class="name">SingleActorHandlerProvider</span></a>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@SingleActorHandlerProvider" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="kanaloa.handler.Terminate" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="Terminate"></a>
+      <a id="Terminate:Terminate"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">object</span>
+      </span>
+      <span class="symbol">
+        <a href="Terminate$.html"><span class="name">Terminate</span></a><span class="result"> extends <a href="Instruction.html" class="extype" name="kanaloa.handler.Instruction">Instruction</a> with <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#kanaloa.handler.package@Terminate" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <p class="shortcomment cmt">Kanaloa should stop using this handler and abandon it.</p>
+    </li></ol>
+            </div>
+
+        
+
+        
+        </div>
+
+        <div id="inheritedMembers">
+        
+        
+        </div>
+
+        <div id="groupedMembers">
+        <div class="group" name="Ungrouped">
+              <h3>Ungrouped</h3>
+              
+            </div>
+        </div>
+
+      </div>
+
+      <div id="tooltip"></div>
+
+      <div id="footer">  </div>
+
+
+    </body>
+      </html>

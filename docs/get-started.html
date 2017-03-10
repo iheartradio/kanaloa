@@ -1,0 +1,58 @@
+<html><head><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><title>Kanaloa</title><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="For your resiliency - traffic control with adaptive concurrency throttling." /><meta name="author" content="Kanaloa contributors" /><meta name="og:image" content="/kanaloa/img/poster.png" /><meta name="og:title" content="Kanaloa" /><meta name="og:site_name" content="Kanaloa" /><meta name="og:url" content="http://iheartradio.github.io/kanaloa" /><meta name="og:type" content="website" /><meta name="og:description" content="For your resiliency - traffic control with adaptive concurrency throttling." /><meta name="twitter:image" content="/kanaloa/img/poster.png" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:site" content="" /><link rel="icon" type="image/png" href="/kanaloa/img/favicon.png" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/kanaloa/highlight/styles/atom-one-light.css" /><link rel="stylesheet" href="/kanaloa/css/style.css" /><link rel="stylesheet" href="/kanaloa/css/palette.css" /><link rel="stylesheet" href="/kanaloa/css/override.css" /></head><body><header id="site-header"><div class="navbar-wrapper navbar-inverse"><div class="container"><div class="navbar-header"><button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false"><span class="sr-only">Toggle navigation</span><span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span></button><a href="/kanaloa/" class="brand"><div class="icon-wrapper" style="background:url('/kanaloa/img/navbar_brand.png') no-repeat"><span>Kanaloa</span></div></a></div><nav class="text-right"><ul class=""><li><a href="https://github.com/iheartradio/kanaloa"><i class="fa fa-github"></i><span class="hidden-xs">GitHub</span></a></li><li><a href="/kanaloa/api"><i class="fa fa-file-text"></i><span class="hidden-xs">Documentation</span></a></li></ul></nav></div></div><div class="jumbotron" style="background-image:url('/kanaloa/img/jumbotron_pattern.png')"></div><div><ul class="horizontalNav">                 <li><a class=" active " href="/kanaloa/docs/get-started.html">Get Started</a></li>  <li><a class="" href="/kanaloa/docs/guide.html">Guide</a></li>  <li><a class="" href="/kanaloa/docs/theories.html">Theories</a></li>  <li><a class="" href="/kanaloa/docs/architecture.html">Architecture</a></li> </ul></div></header><main id="site-main"><section class="use"><div class="container"><div id="content"><h4 id="install-dependency">Install dependency</h4>
+<div class="highlighter-rouge"><pre class="highlight"><code>resolvers += Resolver.jcenterRepo
+
+libraryDependencies +=  "com.iheart" %% "kanaloa-core" % "0.5.0"
+</code></pre>
+</div>
+
+<h4 id="use-proxy">Use proxy</h4>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">import</span> <span class="nn">kanaloa._</span>
+<span class="k">import</span> <span class="nn">scala.concurrent.Future</span>
+<span class="k">import</span> <span class="nn">scala.concurrent.ExecutionContext.Implicits.global</span>
+</code></pre>
+</div>
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">proxyFactory</span> <span class="k">=</span> <span class="nc">ReverseProxyFactory</span><span class="o">()</span>
+<span class="c1">// proxyFactory: kanaloa.ReverseProxyFactory = kanaloa.ReverseProxyFactory@5af5626d
+</span>
+<span class="c1">//assuming this is your service
+</span><span class="k">val</span> <span class="n">service</span> <span class="k">=</span> <span class="o">(</span><span class="n">i</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="nc">Future</span><span class="o">(</span><span class="n">i</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
+<span class="c1">// service: Int =&gt; scala.concurrent.Future[String] = &lt;function1&gt;
+</span>
+<span class="k">val</span> <span class="n">proxy</span><span class="k">:</span> <span class="kt">Int</span> <span class="o">=&gt;</span> <span class="nc">Future</span><span class="o">[</span><span class="kt">Either</span><span class="o">[</span><span class="kt">WorkException</span>, <span class="kt">String</span><span class="o">]]</span> <span class="k">=</span> <span class="n">proxyFactory</span><span class="o">(</span><span class="n">service</span><span class="o">)</span>
+<span class="c1">// proxy: Int =&gt; scala.concurrent.Future[Either[kanaloa.WorkException,String]] = &lt;function1&gt;
+</span>
+<span class="c1">//voilà, you have a super resilient toString service now.
+</span>
+<span class="k">val</span> <span class="n">result</span> <span class="k">=</span> <span class="n">proxy</span><span class="o">(</span><span class="mi">42</span><span class="o">)</span>
+<span class="c1">// result: scala.concurrent.Future[Either[kanaloa.WorkException,String]] = List()
+</span>
+<span class="n">result</span><span class="o">.</span><span class="n">foreach</span><span class="o">(</span><span class="n">println</span><span class="o">)</span>
+<span class="nc">Right</span><span class="o">(</span><span class="mi">42</span><span class="o">)</span>
+
+<span class="nc">Thread</span><span class="o">.</span><span class="n">sleep</span><span class="o">(</span><span class="mi">100</span><span class="o">)</span> <span class="c1">//job done! let's shutdown the system
+</span>
+<span class="n">proxyFactory</span><span class="o">.</span><span class="n">close</span><span class="o">()</span>
+</code></pre>
+</div>
+
+<h4 id="config-kanaloa-optional">Config kanaloa [Optional]</h4>
+
+<p>An example of a <code class="highlighter-rouge">my-service1</code></p>
+<div class="highlighter-rouge"><pre class="highlight"><code>kanaloa {
+  dispatchers {
+    my-service1 {
+      worker-pool {
+       starting-pool-size = 50
+      }
+    }
+  }
+}
+</code></pre>
+</div>
+<p>For more configuration settings and their documentation please see the <a href="https://github.com/iheartradio/kanaloa/blob/master/core/src/main/resources/reference.conf">reference configuration</a></p>
+</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>Kanaloa is designed and developed by <a href="http://iheartradio.github.io/kanaloa" target="_blank">Kanaloa contributors</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/iheartradio/kanaloa"><span class="fa fa-github"></span>View on Github</a></p></div></div></div></footer><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script><script src="/kanaloa/highlight/highlight.pack.js"></script><script>hljs.configure({
+languages:['scala','java','bash']
+});
+hljs.initHighlighting();
+             </script></body></html>

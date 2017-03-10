@@ -1,0 +1,57 @@
+<html><head><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><title>Kanaloa</title><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="For your resiliency - traffic control with adaptive concurrency throttling." /><meta name="author" content="Kanaloa contributors" /><meta name="og:image" content="/kanaloa/img/poster.png" /><meta name="og:title" content="Kanaloa" /><meta name="og:site_name" content="Kanaloa" /><meta name="og:url" content="http://iheartradio.github.io/kanaloa" /><meta name="og:type" content="website" /><meta name="og:description" content="For your resiliency - traffic control with adaptive concurrency throttling." /><meta name="twitter:image" content="/kanaloa/img/poster.png" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:site" content="" /><link rel="icon" type="image/png" href="/kanaloa/img/favicon.png" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/kanaloa/highlight/styles/atom-one-light.css" /><link rel="stylesheet" href="/kanaloa/css/style.css" /><link rel="stylesheet" href="/kanaloa/css/palette.css" /><link rel="stylesheet" href="/kanaloa/css/override.css" /></head><body><header id="site-header"><div class="navbar-wrapper navbar-inverse"><div class="container"><div class="navbar-header"><button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false"><span class="sr-only">Toggle navigation</span><span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span></button><a href="/kanaloa/" class="brand"><div class="icon-wrapper" style="background:url('/kanaloa/img/navbar_brand.png') no-repeat"><span>Kanaloa</span></div></a></div><nav class="text-right"><ul class=""><li><a href="https://github.com/iheartradio/kanaloa"><i class="fa fa-github"></i><span class="hidden-xs">GitHub</span></a></li><li><a href="/kanaloa/api"><i class="fa fa-file-text"></i><span class="hidden-xs">Documentation</span></a></li></ul></nav></div></div><div class="jumbotron" style="background-image:url('/kanaloa/img/jumbotron_pattern.png')"></div><div><ul class="horizontalNav">                 <li><a class="" href="/kanaloa/docs/get-started.html">Get Started</a></li>  <li><a class="" href="/kanaloa/docs/guide.html">Guide</a></li>  <li><a class="" href="/kanaloa/docs/theories.html">Theories</a></li>  <li><a class=" active " href="/kanaloa/docs/architecture.html">Architecture</a></li> </ul></div></header><main id="site-main"><section class="use"><div class="container"><div id="content"><h2 id="the-architecture-of-the-internal-implementation">The architecture of the internal implementation</h2>
+
+<p>Kanaloa is developed using Akka. This document record the architecture of the actors, mainly for the purpose getting new contributors on board.
+<img src="http://g.gravizo.com/g?
+  digraph G {
+    margin=&quot;0.3&quot;
+    node [shape=box,style=&quot;rounded&quot;]
+    { rank = same; Queue; WorkerPoolManager; }
+    { rank = same; Queue; QueueSampler; }
+    { rank = same; Worker, WorkerPoolSampler,CircuitBreaker, Autothrottler;}
+    Dispatcher
+    WorkerPoolManager [group=wp, color=blue]
+    WorkerPoolSampler [group=wp]
+    Autothrottler [group=wp]
+    CircuitBreaker [group=wp]
+    Regulator
+    QueueSampler [group=queue]
+    Worker [group=wp, color=blue]
+    Queue [group=queue, color=blue]
+       HandlerProvider -&gt; Handler
+    subgraph cluster_0 {
+     Handler [shape=oval, group=service]
+     HandlerProvider [shape=oval, group=service]
+      graph[style=dotted, label=&quot;service&quot;]
+    }
+    Worker -&gt; Queue [label=&quot;dequeu request&quot;, style=dotted]
+    Worker -&gt; Handler [label=&quot;send request&quot;, style=dotted]
+    Dispatcher -&gt; Queue
+    Dispatcher -&gt; Queue [label=&quot;enqueue request&quot;, style=dotted]
+    Dispatcher -&gt; QueueSampler
+    QueueSampler -&gt; Queue [label=&quot;sample metrics&quot;, style=dotted]
+    Dispatcher -&gt; WorkerPoolManager
+    Dispatcher -&gt; Regulator
+    Regulator -&gt; Dispatcher [label=&quot;regulates&quot;, style=dotted]
+    Regulator -&gt; QueueSampler [label=&quot;retrieve metrics&quot;, style=dotted]
+    WorkerPoolManager -&gt; Worker
+    WorkerPoolManager -&gt; CircuitBreaker
+    WorkerPoolManager -&gt; Autothrottler
+    Autothrottler -&gt; WorkerPoolManager [label=&quot;resize worker pool&quot;,style=dotted]
+    WorkerPoolManager -&gt; Handler [Label=&quot;associated with&quot;, style=dotted]
+    WorkerPoolManager -&gt; WorkerPoolSampler
+    WorkerPoolSampler -&gt; WorkerPoolManager [label=&quot;sample metrics&quot;, style=dotted]
+    Dispatcher -&gt; HandlerProvider [label=&quot;retrieve handlers&quot;, style=dotted]
+    Autothrottler -&gt; WorkerPoolSampler [label=&quot;retreive metrics&quot;, style=dotted]
+  }" alt="Typeclass hierarchy" /></p>
+
+<p>The core of this system is <code class="highlighter-rouge">Queue</code>, <code class="highlighter-rouge">WorkerPoolManager</code> and <code class="highlighter-rouge">Worker</code>. The <code class="highlighter-rouge">Queue</code> buffers requests, <code class="highlighter-rouge">WorkerPoolManager</code> creates and manages <code class="highlighter-rouge">Worker</code>s who dequeue requests from the <code class="highlighter-rouge">Queue</code> and send them to the service. The service is abstracted as <code class="highlighter-rouge">Handler</code> and <code class="highlighter-rouge">HandlerProvider</code>. A <code class="highlighter-rouge">Handler</code> represents one instance of the service, while the <code class="highlighter-rouge">HandlerProvider</code> provides a list of <code class="highlighter-rouge">Handler</code>s. These two traits are not actors. They are implemented to support different protocols and service locators.</p>
+
+<p>On the queue side, the <code class="highlighter-rouge">QueueSampler</code> samples the queue’s length and dequeue speed, the <code class="highlighter-rouge">Regulator</code> then applies the PIE traffic regulation logic based on the metrics collected by <code class="highlighter-rouge">QueueSampler</code>.
+On the worker pool side, the <code class="highlighter-rouge">WorkerPoolSampler</code> samples the performance of the <code class="highlighter-rouge">Handler</code>, i.e. the service, at each pool size, then the <code class="highlighter-rouge">AutoThrottler</code> resizes the worker pool based on the optimization logic during traffic oversaturations. The <code class="highlighter-rouge">Dispatcher</code> is the top supervisor in the hierarchy.</p>
+
+<p>When kanaloa load balances between multiple service instances, it creates for each service instance a dedicated <code class="highlighter-rouge">WorkerPoolManager</code>. This <code class="highlighter-rouge">WorkerPoolManager</code> comes with its own <code class="highlighter-rouge">WorkerPoolSampler</code> and <code class="highlighter-rouge">Autothrottler</code>, which means that the concurrency throttling is per service instance.</p>
+</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>Kanaloa is designed and developed by <a href="http://iheartradio.github.io/kanaloa" target="_blank">Kanaloa contributors</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/iheartradio/kanaloa"><span class="fa fa-github"></span>View on Github</a></p></div></div></div></footer><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script><script src="/kanaloa/highlight/highlight.pack.js"></script><script>hljs.configure({
+languages:['scala','java','bash']
+});
+hljs.initHighlighting();
+             </script></body></html>

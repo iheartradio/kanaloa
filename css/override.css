@@ -1,0 +1,18 @@
+#content img {
+  max-width: 800px;
+}
+
+#content .center {
+  text-align: center;
+}
+
+#content .caption {
+  color:gray;
+  font-size: 80%;
+}
+
+.center-image
+{
+    margin: 0 auto;
+    display: block;
+}
