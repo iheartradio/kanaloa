@@ -210,7 +210,7 @@ object WorkerPoolManager {
         workerPoolManagerRef: WorkerPoolManagerRef,
         reporter:             Option[Reporter]
       )(implicit arf: ActorRefFactory): ActorRef =
-        arf.actorOf(CircuitBreaker.props(workerPoolManagerRef, settings, reporter))
+        arf.actorOf(CircuitBreaker.props(workerPoolManagerRef, settings, reporter), "circuit-breaker")
     }
   }
 
@@ -224,7 +224,7 @@ object WorkerPoolManager {
       settings:     SamplerSettings
     ): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
       def apply(reporter: Option[Reporter], metricsForwardTo: Option[ActorRef])(implicit arf: ActorRefFactory) = {
-        arf.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings, metricsForwardTo))
+        arf.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings, metricsForwardTo), "sampler")
       }
     }
   }

@@ -116,7 +116,6 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
         system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
         enterBarrier("service started")
         enterBarrier("requests sent")
-
       }
 
       runOn(second) {
@@ -169,13 +168,13 @@ class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
       runOn(third) {
         system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
         enterBarrier("servicesStarted")
-        enterBarrier("first100messages")
+        enterBarrier("firstBatchSent")
       }
 
       runOn(second) {
         val service = system.actorOf(Props(classOf[DelayedEcho]), servicePath) //a supper fast service
         enterBarrier("servicesStarted")
-        enterBarrier("first100messages")
+        enterBarrier("firstBatchSent")
         cluster leave myself
         watch(service)
         Thread.sleep(700) //wait for the leaveto take effect before killing self.
@@ -206,12 +205,12 @@ class ClusterAwareBackendLoadBalance2Spec extends ClusterAwareBackendSpecBase {
 
         sendMessages( numOfMessagesBeforeOneNodeLeaving )
 
-        enterBarrier("first100messages")
+        enterBarrier("firstBatchSent")
 
         sendMessages( numOfMessagesAfterOneNodeLeaving )
 
 
-        val (succeeds, failures) = receiveN(totalMsgs).partition(
+        val (succeeds, failures) = receiveN(totalMsgs, 30.seconds).partition(
           _ == EchoMessage(1)
         )
 

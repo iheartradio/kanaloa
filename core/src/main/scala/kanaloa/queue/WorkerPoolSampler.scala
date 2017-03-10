@@ -6,10 +6,11 @@ import akka.actor.{ActorRef, Props}
 import kanaloa.Types.Speed
 import kanaloa.metrics.Metric._
 import kanaloa.metrics.{Metric, Reporter, WorkerPoolMetricsCollector}
-import kanaloa.queue.QueueSampler.{PartialUtilized, Overflown}
+import kanaloa.queue.QueueSampler.{Overflown, PartialUtilized, QueueSample}
 import kanaloa.queue.WorkerPoolSampler._
 import kanaloa.util.Java8TimeExtensions._
 import Sampler._
+
 import scala.concurrent.duration._
 
 /**
@@ -84,6 +85,8 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
       rep foreach publish
       context become overflown(status)
       report(PoolUtilized(s.poolSize)) //take the chance to report utilization to reporter
+
+    case _: QueueSample ⇒ //ignore
   }
 
   private def partialUtilized(status: PartialUtilizedPoolStatus): Receive = handleSubscriptions orElse {
@@ -108,6 +111,8 @@ private[kanaloa] trait WorkerPoolSampler extends Sampler {
     case AddSample ⇒ //no sample is produced in the partial utilized state
       report(PoolUtilized(status.workingWorkers))
       publish(PartialUtilization(status.workingWorkers))
+
+    case _: QueueSample ⇒ //ignore
 
   }
 
