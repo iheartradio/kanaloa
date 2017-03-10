@@ -111,7 +111,6 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
 
       val servicePath = "service2"
 
-
       runOn(third) {
         system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
         enterBarrier("service started")

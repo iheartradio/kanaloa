@@ -1,6 +1,6 @@
 package kanaloa.queue
 
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
 import akka.actor._
 import kanaloa.ApiProtocol._
@@ -10,7 +10,7 @@ import kanaloa.queue.Sampler.SamplerSettings
 import kanaloa.queue.Worker.{CancelDelay, DelayBeforeNextWork}
 import kanaloa.queue.WorkerPoolManager._
 import kanaloa.util.AnyEq._
-import kanaloa.util.{Naming, MessageScheduler}
+import kanaloa.util.{MessageScheduler, Naming}
 
 import scala.concurrent.duration._
 
@@ -219,12 +219,13 @@ object WorkerPoolManager {
   }
 
   private[kanaloa] object WorkerPoolSamplerFactory {
+    val index = new AtomicInteger(0)
     def apply(
       queueSampler: ActorRef,
       settings:     SamplerSettings
     ): WorkerPoolSamplerFactory = new WorkerPoolSamplerFactory {
       def apply(reporter: Option[Reporter], metricsForwardTo: Option[ActorRef])(implicit arf: ActorRefFactory) = {
-        arf.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings, metricsForwardTo), "sampler")
+        arf.actorOf(WorkerPoolSampler.props(reporter, queueSampler, settings, metricsForwardTo), "sampler" + index.incrementAndGet())
       }
     }
   }
