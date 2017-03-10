@@ -67,6 +67,8 @@ class CircuitBreakerSpec extends SpecWithActorSystem with Eventually {
       serviceProbe.reply(Result("toBeIgnored"))
       serviceProbe.reply(Result("toBeIgnored"))
 
+      expectNoMsg(50.milliseconds)
+
       queue ! Enqueue(RequestMsg)
       serviceProbe.expectMsg(10.milliseconds, RequestMsg)
       serviceProbe.reply(Result("reply"))

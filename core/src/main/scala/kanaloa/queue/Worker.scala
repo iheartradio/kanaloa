@@ -57,7 +57,7 @@ private[queue] class Worker[T](
         queue ! Rejected(work, "onHold")
         askMoreWork()
       } else
-        sendWorkToHandler(work, 0)
+        sendWorkToHandler(work)
 
     //If there is no work left, or if the Queue dies, the Worker stops as well
     case NoWorkLeft ⇒ finish("Queue reports no Work left")
@@ -145,10 +145,7 @@ private[queue] class Worker[T](
       s"due to $e"
     }.getOrElse("")
 
-    def message = {
-      val retryMessage = if (outstanding.retried > 0) s"after ${outstanding.retried + 1} try(s)" else ""
-      s"Processing of '${outstanding.workDescription}' failed $retryMessage $errorDesc"
-    }
+    def message = s"Processing of '${outstanding.workDescription}' failed $errorDesc"
 
     log.warning(s"$message, work abandoned")
     outstanding.fail(WorkFailed(message))
@@ -156,7 +153,7 @@ private[queue] class Worker[T](
 
   }
 
-  private def sendWorkToHandler(work: Work[T], retried: Int): Unit = {
+  private def sendWorkToHandler(work: Work[T]): Unit = {
     workCounter += 1 //do we increase this on a retry?
     val newWorkId = workCounter
 
@@ -166,7 +163,7 @@ private[queue] class Worker[T](
       self ! WorkResult(newWorkId, r)
     }
     val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout)
-    val out = Outstanding(work, newWorkId, timeout, handling, retried)
+    val out = Outstanding(work, newWorkId, timeout, handling)
     context become working(out)
     metricsCollector ! WorkerStartWorking
 
@@ -183,7 +180,6 @@ private[queue] class Worker[T](
     workId:        Long,
     timeoutHandle: akka.actor.Cancellable,
     handling:      Handling[_, _],
-    retried:       Int                    = 0,
     startAt:       LocalDateTime          = LocalDateTime.now
   ) {
     def success(result: Any): Unit = {
