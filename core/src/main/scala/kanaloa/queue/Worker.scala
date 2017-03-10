@@ -146,7 +146,6 @@ private[queue] class Worker[T](
       onComplete
   }
 
-
   private def sendWorkToHandler(work: Work[T]): Unit = {
     workCounter += 1 //do we increase this on a retry?
     val newWorkId = workCounter

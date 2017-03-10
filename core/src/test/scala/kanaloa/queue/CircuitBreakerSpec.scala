@@ -16,71 +16,81 @@ class CircuitBreakerSpec extends SpecWithActorSystem with Eventually {
   "Circuitbreaker" should {
 
     "not open before timeout hitting the threshold" in new CBScope(factories) {
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      val receiver = TestProbe()
+
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectMsg(RequestMsg)
       serviceProbe.expectMsg(RequestMsg)
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
     }
 
     //todo: move this test to dispatcher
     "reply after timeout should be ignore" in new CBScope(factories) {
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      val receiver = TestProbe()
+
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectMsg(RequestMsg)
       serviceProbe.expectMsg(RequestMsg)
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
 
       serviceProbe.reply("tobe ignored")
       expectNoMsg(100.milliseconds)
     }
 
     "open after timeout hitting the threshold and close after duration" in new CBScope(factories) {
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      val receiver = TestProbe()
+
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectMsg(RequestMsg)
       serviceProbe.expectMsg(RequestMsg)
       serviceProbe.expectMsg(RequestMsg)
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
 
       Thread.sleep(20) //wait for the open to take effect
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectNoMsg(80.milliseconds) //no message during CB Open
 
       serviceProbe.expectMsg(RequestMsg) //after CB closes the message delivers
     }
 
     "resetting timeout count if it get response" in new CBScope(factories) {
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      val receiver = TestProbe()
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectMsg(RequestMsg)
       serviceProbe.expectMsg(RequestMsg)
 
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
 
       serviceProbe.reply(Result("toBeIgnored"))
       serviceProbe.reply(Result("toBeIgnored"))
 
-      expectNoMsg(50.milliseconds)
+      receiver.expectNoMsg(50.milliseconds)
 
       queue ! Enqueue(RequestMsg)
       serviceProbe.expectMsg(10.milliseconds, RequestMsg)
       serviceProbe.reply(Result("reply"))
 
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
-      queue ! Enqueue(RequestMsg, sendResultsTo = Some(self))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
 
-      expectMsgType[WorkTimedOut]
-      expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
+      receiver.expectMsgType[WorkTimedOut]
 
-      queue ! Enqueue(RequestMsg)
+      queue ! Enqueue(RequestMsg, sendResultsTo = Some(receiver.ref))
       serviceProbe.expectMsg(10.milliseconds, RequestMsg)
+
+      receiver.expectMsgType[WorkTimedOut]
+
     }
   }
 
