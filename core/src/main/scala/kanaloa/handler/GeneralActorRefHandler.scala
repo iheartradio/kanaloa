@@ -27,7 +27,7 @@ class GeneralActorRefHandler[TResp, TError](
 )(resultChecker: ResultChecker[TResp, TError]) extends Handler[Any] {
   import GeneralActorRefHandler._
 
-  override type Error = Option[TError]
+  override type Error = ActorError
   override type Resp = TResp
 
   val maxConcurrentHandling = 100000000 //the actual max concurrent handling is controlled by the kanaloa, this number is just a hard limit, not suggesting that the concurrent handling should be allowed to go there.
@@ -46,10 +46,10 @@ class GeneralActorRefHandler[TResp, TError](
     import factory.dispatcher
 
     override val result: Future[Result[Resp, Error]] = promise.future.map {
-      case Left(TargetTerminated) ⇒
-        Result(Left(None), Some(Terminate))
-      case Left(Cancelled) ⇒ Result(Left(None), None) //Note: this result is going to be ignored by the worker since it cancels it. find a way to
-      case Right(m)        ⇒ Result(resultChecker(m), None)
+      case Left(TargetTerminated(msg)) ⇒
+        Result(Left(TargetTerminated(msg)), Some(Terminate))
+      case Left(Cancelled) ⇒ Result(Left(Cancelled), None) //Note: this result is going to be ignored by the worker since it cancels it. find a way to
+      case Right(m)        ⇒ Result(resultChecker(m).left.map(CustomResultError(_)), None)
     }
 
     override val cancellable: Option[Cancellable] = Some(new Cancellable {
@@ -65,6 +65,11 @@ class GeneralActorRefHandler[TResp, TError](
 }
 
 object GeneralActorRefHandler {
+
+  sealed abstract class ActorError extends Product with Serializable
+
+  case class CustomResultError[T](e: T) extends ActorError
+
   type ResultChecker[TResp, TError] = Any ⇒ Either[Option[TError], TResp]
 
   private class HandlerActor(promise: Promise[Either[Interrupted, Any]], target: ActorRef, cancelled: AtomicBoolean) extends Actor {
@@ -81,7 +86,7 @@ object GeneralActorRefHandler {
         complete(Left(Cancelled))
 
       case Terminated(`target`) ⇒
-        complete(Left(TargetTerminated))
+        complete(Left(TargetTerminated(s"service actor @ ${target.path.address} is terminated.")))
 
       case x ⇒
         complete(Right(x))
@@ -92,9 +97,9 @@ object GeneralActorRefHandler {
 
   private case object Cancel
 
-  sealed abstract class Interrupted extends Product with Serializable
+  sealed abstract class Interrupted extends ActorError
 
-  case object TargetTerminated extends Interrupted
+  case class TargetTerminated(msg: String) extends Interrupted
   case object Cancelled extends Interrupted
 
   def apply[TResp, TError](

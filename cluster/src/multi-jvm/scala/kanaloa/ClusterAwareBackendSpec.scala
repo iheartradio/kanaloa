@@ -122,6 +122,7 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
         prob.expectMsg(EchoMessage(1))
       }
 
+      enterBarrier("service started")
       runOn(first) {
 
         val backend: HandlerProvider[Any] = new ClusterAwareHandlerProvider(servicePath, serviceClusterRole)(ResultChecker.expectType[EchoMessage])

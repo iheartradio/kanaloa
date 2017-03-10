@@ -133,6 +133,7 @@ private[queue] class Worker[T](
 
           log.warning(s"$message, work abandoned")
           outstanding.fail(WorkFailed(message))
+          onComplete
       }
 
     }
