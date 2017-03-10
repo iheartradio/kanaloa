@@ -55,6 +55,23 @@ class KanaloaNegativeOverflowSimulation extends NegativeOverflowSimulation("clus
 
 class BaselineNegativeOverflowSimulation extends NegativeOverflowSimulation("round_robin")
 
+class BaselineOverheadGaugeSimulation extends Simulation {
+  setUp(
+    Users(
+      numOfUsers = 20,
+      path = "straight_unthrottled",
+      throttle = Some(500000),
+      rampUp = 1.seconds
+    )
+  ).protocols(http.disableCaching)
+    .assertions(
+      global.requestsPerSec.gte(800),
+      global.responseTime.percentile3.lte(4),
+      global.successfulRequests.percent.gte(100)
+    )
+}
+
+
 /**
  * Baseline LB without kanaloa
  */
@@ -84,5 +101,25 @@ class KanaloaOverheadGaugeSimulation extends Simulation {
       global.requestsPerSec.gte(800),
       global.responseTime.percentile3.lte(10),
       global.successfulRequests.percent.gte(100)
+    )
+}
+
+
+class BaselineLoadBalanceOneNodeUnresponsiveSimulation extends Simulation {
+  setUp(
+    Users(
+      numOfUsers = 900,
+      path = "round_robin",
+      throttle = Some(200),
+      rampUp = 1.seconds
+    ),
+    CommandSchedule(Command("unresponsive"), services(1), 30.seconds),
+    CommandSchedule(Command("back-online"), services(1), 55.seconds)
+  ).protocols(http.disableCaching)
+    .assertions(
+      global.requestsPerSec.gte(140),
+      global.responseTime.percentile3.lte(3000),
+      global.successfulRequests.percent.gte(90),
+      global.failedRequests.count.lte(100)
     )
 }
