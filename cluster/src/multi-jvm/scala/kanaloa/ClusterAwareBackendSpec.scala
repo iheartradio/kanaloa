@@ -135,7 +135,7 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
           dispatcher ! EchoMessage(1)
         }
 
-        receiveN(98).foreach { m =>  //the slow worker pool has two workers, which took two requests
+        receiveN(98, 30.seconds).foreach { m =>  //the slow worker pool has two workers, which took two requests
            m should ===(EchoMessage(1))
         }
 

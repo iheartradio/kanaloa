@@ -185,7 +185,7 @@ class KanaloaLoadBalanceOneNodeJoiningSimulation extends Simulation {
   ).protocols(http.disableCaching)
     .assertions(
       global.requestsPerSec.gte(350),
-      global.responseTime.percentile2.lte(250),
+      global.responseTime.percentile2.lte(300),
       global.successfulRequests.percent.gte(95)
     )
 }
