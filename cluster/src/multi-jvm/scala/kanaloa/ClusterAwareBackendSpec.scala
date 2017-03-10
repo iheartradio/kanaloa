@@ -114,17 +114,21 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
 
       runOn(third) {
         system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
+        enterBarrier("service started")
+        enterBarrier("requests sent")
+
       }
 
       runOn(second) {
         val prob: TestProbe = TestProbe()
         system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
+        enterBarrier("service started")
+        enterBarrier("requests sent")
         prob.expectMsg(EchoMessage(1))
       }
 
-      enterBarrier("service started")
       runOn(first) {
-
+        enterBarrier("service started")
         val backend: HandlerProvider[Any] = new ClusterAwareHandlerProvider(servicePath, serviceClusterRole)(ResultChecker.expectType[EchoMessage])
         val dispatcher = system.actorOf(PushingDispatcher.props(
           name = "test",
@@ -136,10 +140,11 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
           dispatcher ! EchoMessage(1)
         }
 
+        enterBarrier("requests sent")
+
         receiveN(98, 30.seconds).foreach { m =>  //the slow worker pool has two workers, which took two requests
            m should ===(EchoMessage(1))
         }
-
 
       }
 
