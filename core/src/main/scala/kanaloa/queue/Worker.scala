@@ -5,13 +5,13 @@ import java.time.LocalDateTime
 import akka.actor._
 import kanaloa.ApiProtocol.{QueryStatus, WorkFailed, WorkTimedOut}
 import kanaloa.handler._
-
 import kanaloa.metrics.Metric
 import kanaloa.queue.Queue.{NoWorkLeft, RequestWork, Unregister, Unregistered}
 import kanaloa.queue.Worker._
 import kanaloa.queue.WorkerPoolSampler.{WorkerStoppedWorking, WorkerStartWorking}
 import kanaloa.util.Java8TimeExtensions._
-import kanaloa.util.MessageScheduler, kanaloa.util.AnyEq._
+import kanaloa.util.MessageScheduler
+import kanaloa.util.AnyEq._
 
 import scala.concurrent.duration._
 
@@ -116,10 +116,10 @@ private[queue] class Worker[T](
   //onRouteeFailure is what gets called if while waiting for a Routee response, the Routee dies.
   def handleRouteeResponse(outstanding: Outstanding)(onComplete: ⇒ Unit): Receive = {
 
-    case wr: WorkResult[handler.Resp, handler.Error] @unchecked if wr.workId === outstanding.workId ⇒ {
-      wr.result.instruction.foreach(context.parent ! _) //forward instruction back to parent the WorkerPoolManager
+    case WorkResult(workId, result) if workId === outstanding.workId ⇒ {
+      result.instruction.foreach(context.parent ! _) //forward instruction back to parent the WorkerPoolManager
 
-      wr.result.reply match {
+      result.reply match {
         case Right(res) ⇒
           outstanding.success(res)
           onComplete
@@ -137,13 +137,15 @@ private[queue] class Worker[T](
 
     }
 
-    case WorkResult(_, _) ⇒
-      log.warning("Received a response for a request which has already been serviced/timedout")
-
-    case HandlerTimeout ⇒
+    case HandlerTimeout(workId) if workId === outstanding.workId ⇒
       log.warning(s"handler ${handler.name} timed out after ${outstanding.work.settings.serviceTimeout} work ${outstanding.work.messageToDelegatee} abandoned")
       outstanding.timeout()
       onComplete
+
+    case WorkResult(_, _) ⇒
+      log.warning("Received a response for a request which has already been serviced/timedout")
+
+    case HandlerTimeout(_) ⇒ //sometimes previously scheduled timeout message isn't canceled in time.
   }
 
   private def sendWorkToHandler(work: Work[T]): Unit = {
@@ -155,7 +157,7 @@ private[queue] class Worker[T](
     handling.result.foreach { r ⇒
       self ! WorkResult(newWorkId, r)
     }
-    val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout)
+    val timeout = delayedMsg(work.settings.serviceTimeout, HandlerTimeout(newWorkId))
     val out = Outstanding(work, newWorkId, timeout, handling)
     context become working(out)
     metricsCollector ! WorkerStartWorking
@@ -221,7 +223,7 @@ private[queue] class Worker[T](
 private[queue] object Worker {
   case class WorkResult[TResp, TError](workId: Long, result: Result[TResp, TError])
 
-  private case object HandlerTimeout
+  private case class HandlerTimeout(workId: Long)
   case class DelayBeforeNextWork(value: FiniteDuration)
   case object CancelDelay
   case object Retire
