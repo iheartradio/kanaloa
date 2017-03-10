@@ -3,7 +3,7 @@ package kanaloa
 
 import akka.actor.Actor.Receive
 import akka.actor._
-import akka.cluster.ClusterSpec
+import akka.cluster.{Cluster, ClusterSpec}
 import akka.pattern.ask
 import akka.remote.testkit.MultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
@@ -37,7 +37,7 @@ object ClusterAwareBackendSpec extends ClusterConfig {
     """
       |kanaloa {
       |  default-dispatcher {
-      |  initial-grace-period = 20s #cluster handler needs more time to boot up.
+      |    initial-grace-period = 20s #cluster handler needs more time to boot up.
       |    worker-pool.starting-pool-size = 2
       |  }
       |}
@@ -113,15 +113,19 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
 
       runOn(third) {
         system.actorOf(TestActors.echoActorProps, servicePath) //a supper fast service
+
         enterBarrier("service started")
         enterBarrier("requests sent")
+
       }
 
       runOn(second) {
+
         val prob: TestProbe = TestProbe()
         system.actorOf(TestActors.forwardActorProps(prob.ref), servicePath) //unresponsive service
         enterBarrier("service started")
         enterBarrier("requests sent")
+        prob.expectMsg(EchoMessage(1))
         prob.expectMsg(EchoMessage(1))
       }
 
@@ -134,19 +138,22 @@ class ClusterAwareBackendLoadBalanceSpec extends ClusterAwareBackendSpecBase {
           kanaloaConfig
         ))
 
-        (1 to 100).foreach { _ =>
+        (1 to 50).foreach { _ =>
+          Thread.sleep(10)
           dispatcher ! EchoMessage(1)
         }
 
         enterBarrier("requests sent")
-
-        receiveN(98, 30.seconds).foreach { m =>  //the slow worker pool has two workers, which took two requests
-           m should ===(EchoMessage(1))
-        }
-
       }
 
-      enterBarrier("finished")
+      runOn(first) {
+        receiveN(48, 60.seconds).foreach { m =>  //the slow worker pool has two workers, which took two requests
+           m shouldBe EchoMessage(1)
+        }
+      }
+
+      enterBarrier("spec complete")
+
     }
 
   }
