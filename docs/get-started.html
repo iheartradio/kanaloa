@@ -13,7 +13,7 @@ libraryDependencies +=  "com.iheart" %% "kanaloa-core" % "0.5.0"
 </code></pre>
 </div>
 <div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">proxyFactory</span> <span class="k">=</span> <span class="nc">ReverseProxyFactory</span><span class="o">()</span>
-<span class="c1">// proxyFactory: kanaloa.ReverseProxyFactory = kanaloa.ReverseProxyFactory@26e37e47
+<span class="c1">// proxyFactory: kanaloa.ReverseProxyFactory = kanaloa.ReverseProxyFactory@75ac51a
 </span>
 <span class="c1">//assuming this is your service
 </span><span class="k">val</span> <span class="n">service</span> <span class="k">=</span> <span class="o">(</span><span class="n">i</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="nc">Future</span><span class="o">(</span><span class="n">i</span><span class="o">.</span><span class="n">toString</span><span class="o">)</span>
