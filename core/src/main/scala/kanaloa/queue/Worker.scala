@@ -125,12 +125,19 @@ private[queue] class Worker[T](
           onComplete
 
         case Left(e) ⇒
-          abandon(outstanding, e)(onComplete)
+          val errorDesc = descriptionOf(e, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
+            s"due to $e"
+          }.getOrElse("")
+
+          def message = s"Processing of '${outstanding.workDescription}' failed $errorDesc"
+
+          log.warning(s"$message, work abandoned")
+          outstanding.fail(WorkFailed(message))
       }
 
     }
 
-    case WorkResult(wId, x) ⇒
+    case WorkResult(_, _) ⇒
       log.warning("Received a response for a request which has already been serviced/timedout")
 
     case HandlerTimeout ⇒
@@ -139,19 +146,6 @@ private[queue] class Worker[T](
       onComplete
   }
 
-  private def abandon(outstanding: Outstanding, error: handler.Error)(onComplete: ⇒ Unit): Unit = {
-
-    val errorDesc = descriptionOf(error, outstanding.work.settings.lengthOfDisplayForMessage).map { e ⇒
-      s"due to $e"
-    }.getOrElse("")
-
-    def message = s"Processing of '${outstanding.workDescription}' failed $errorDesc"
-
-    log.warning(s"$message, work abandoned")
-    outstanding.fail(WorkFailed(message))
-    onComplete
-
-  }
 
   private def sendWorkToHandler(work: Work[T]): Unit = {
     workCounter += 1 //do we increase this on a retry?
