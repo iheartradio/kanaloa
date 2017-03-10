@@ -46,3 +46,10 @@ kanaloa {
   }
 }
 ```
+
+
+#### Visualize with Grafana
+
+We provide a [grafana dashboard](https://github.com/iheartradio/kanaloa/blob/master/grafana/dashboard.json) if you are using grafana for statsD visualization.
+We also provide a [docker image](https://github.com/iheartradio/docker-grafana-graphite) with which you can quickly get up and running a statsD server and visualization web app. Please follow the instructions there.
+

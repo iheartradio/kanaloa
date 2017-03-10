@@ -32,12 +32,15 @@ Fig 2. Positive traffic oversataturation - responses per second
 Obviously, if the incoming traffic remains at 250 requests/second, i.e. if the high latencies didn't slow down the incoming traffic, the latencies will continue to grow dramatically.
 
 ### Negative oversaturation
-*Negative oversaturation* refers to the ones that occur when the capacity is negatively affected to below the incoming traffic. Again, let's use a simulation to demonstrate this scenario. In this one the mock service has a capacity of 220 requests/second. It was serving a traffic of 180 requests/second when it's capactity degrades by 30% capacity to 150 requests/second at roughly 15:32, which means that the capacity is 30 requests/second short. In a matter of seconds, the latency grew to over 10 seconds. Then due to this high latency the incoming traffic falls back to 110 requests/second. But the latencies continued to grow. At roughly 15:39 the capacity recovered. But due to the contention and queue the previous traffic overflow already caused, the latencies remains dreadful.
+*Negative oversaturation* refers to the ones that occur when the capacity is negatively affected to below the incoming traffic. Again, let's use a simulation to demonstrate this scenario. In this one the mock service starts with a capacity of 220 requests/second serving a traffic of 180 requests/second. Then it's capacity degrades by 30% capacity to 150 requests/second at roughly 15:32, which means that the capacity is 30 requests/second short.
 
 ![baseline_response](../img/Negative_Gatling_response_time_baseline.png){: .center-image}
 
 Fig 3. Negative traffic oversataturation - response time
 {: .caption .center}
+
+In a matter of seconds, the latency grew to over 10 seconds. Then due to this high latency the incoming traffic falls back to 110 requests/second. But the latencies continued to grow. At roughly 15:39 the capacity recovered. But due to the contention and queue the previous traffic overflow already caused, the latencies remains dreadful.
+
 
 ![baseline_response](../img/Negative_Gatling_response_num_baseline.png){: .center-image}
 
@@ -147,14 +150,14 @@ Fig 6. Positive traffic oversataturation with kanaloa - responses per second
 
 When the incoming traffic exceeds the capacity at 200 requests/second, we first see a spike of latencies to roughly 4 seconds; then it falls back to roughly 1-1.5 second. The spike is due to the burst mode enabled in kanaloa. In burst mode, kanaloa will not reject traffic, hence the high latencies. Burst mode is limited to a short period of time. As soon as it exits the burst mode, kanaloa starts to reject excessive traffic to keep latency in control. The latency gradually improves afterwards as kanaloa optimizing the throttle. It's very easier to see the difference kanaloa makes comparing Fig 1,2 and Fig 5, 6
 
-Now let's take a look how Kanaloa achieve this. Kanaloa provides real-time monotoring which gives us good insights into how it works.
+Now let’s take a look at how Kanaloa achieve this. Kanaloa provides real-time monitoring which gives us good insights into how it works.
 
 ![kanaloa_response_num](../img/Positive_Grafana_inbound.png){: .center-image}
 
 Fig 7. Positive traffic oversataturation with Kanaloa - Inbound traffic
 {: .caption .center}
 
-Kanaloa achieves low latency by only allow a portion of incoming traffic that is within the capacity of the service and reject the excessive portion. As indicated by the charts above, after the incoming traffic exceeds the capacity which is 200 requests/second, kanaloa starts to reject portion of traffic. With the incoming traffic at 250 requests/second, kanaloa rejects 50 requests/second, which leaves 200 requests/second to pass through the service which is exactly it's capactity.
+Kanaloa achieves low latency by only allow a portion of incoming traffic that is within the capacity of the service and reject the excessive portion. As indicated by the charts above, after the incoming traffic exceeds the capacity which is 200 requests/second, kanaloa starts to reject portion of traffic. With the incoming traffic at 250 requests/second, kanaloa rejects 50 requests/second, which leaves 200 requests/second to pass through the service which is exactly it's capacity.
 
 Kanaloa rejects traffic by applying two measures. First, it uses it's concurrency throttle to cap the concurrent requests the service handles.
 ![kanaloa_response_num](../img/Positive_Grafana_pool_process.png){: .center-image}
@@ -162,18 +165,18 @@ Kanaloa rejects traffic by applying two measures. First, it uses it's concurrenc
 Fig 8. Positive traffic oversataturation with Kanaloa - concurrency throttle
 {: .caption .center}
 
-The *utlized* metric in the upper chart is the concurrent requests the service is handling. When the incoming traffic ramps up, this number slowly increases as well, but when the traffic oversaturation happens at around 16:14, it quickly reaches the maximum cap Kanaloa is configured to allow, which is 60. This means that out of all the concurrent requests Kanaloa received at that moment, 60 go into the service. The time they spent in the service is indicated in the lower chart titled as "Process Time". As indicated in the chart, as traffic oversaturation happes, the procss time quickly increases alone with the number of concurrent requests in service. Thanks to the cap kanaloa imposes on concurrent requests, the process time also caps at 300ms.
+The *utilized* metric in the upper chart is the concurrent requests the service is handling. When the incoming traffic ramps up, this number slowly increases as well, but when the traffic oversaturation happens at around 16:14, it quickly reaches the maximum cap Kanaloa is configured to allow, which is 60. This means that out of all the concurrent requests Kanaloa received at that moment, 60 go into the service. The time they spent in the service is indicated in the lower chart titled as "Process Time". As indicated in the chart, as traffic oversaturation happens, the process time quickly increases alone with the number of concurrent requests in service. Thanks to the cap kanaloa imposes on concurrent requests, the process time also caps at 300ms.
 
-As mentioned previously, Kanaloa's conccurrent throtle is adaptive. The mock service can handle 20 concurrent requests in parallel, sending more requests to it will only have them sitting in a queue waiting and causes some contention. Kanaloa monitors the performance, i.e. throughput and process time, and gradually managed to set the throttle at around 20 concurrent requests - exactly the number the mock service can handle in parallel. This results in the process time shrinking to 100ms which is close to before traffic oversaturation.
+As mentioned previously, Kanaloa's concurrency throttle is adaptive. The mock service can handle 20 concurrent requests in parallel, sending more requests to it will only have them sitting in a queue waiting and causes some contention. Kanaloa monitors the performance, i.e. throughput and process time, and gradually managed to set the throttle at around 20 concurrent requests - exactly the number the mock service can handle in parallel. This results in the process time shrinking to 100ms which is close to before traffic oversaturation.
 
-Now that the requests going into the services is capped, the exccessive requests go into a queue inside Kanaloa. See blow:
+Now that the requests going into the services is capped, the excessive requests go into a queue inside Kanaloa. See blow:
 
 ![kanaloa_response_num](../img/Positive_Grafana_queue_wait.png){: .center-image}
 
 Fig 9. Positive traffic oversataturation with Kanaloa - kanaloa queue
 {: .caption .center}
 
-When the traffic oversaturation happens at around 16:14, kanaloa first enters burst mode - all the excessive requets go into the queue; with roughly 700 requests in the queue (as seen in the "Queue Length" chart), the wait time, defined as the time requests stay in this queue before they can be sent to the service, reaches 3-4 seconds as well. This is the main part of the initial latency spike we saw in Fig 5.
+When the traffic oversaturation happens at around 16:14, kanaloa first enters burst mode - all the excessive requests go into the queue; with roughly 700 requests in the queue (as seen in the "Queue Length" chart), the wait time, defined as the time requests stay in this queue before they can be sent to the service, reaches 3-4 seconds as well. This is the main part of the initial latency spike we saw in Fig 5.
 
 Very quickly Kanaloa exits the burst mode and PIE starts to increase the drop rate with which Kanaloa rejects traffic as seen in Fig 7.
 
@@ -209,9 +212,10 @@ Fig 12. Negative traffic oversataturation with Kanaloa - inbound vs throughput
 
 In the above charts, the throughput (depicted in the upper chart) is the capacity of the service. As it degrades to around 150 requests/second, Kanaloa starts to reject requests at roughly 30 requests/second out of the 180 incoming requests/second. This keeps the latencies low v.s. the 10+ seconds latencies we saw in Fig 3. Just like in the positive oversaturation scenario, Kanaloa does this traffic rejection through the combination of it's adaptive concurrency throttle and PIE.
 
-## Summary
+## Conclusion
 
-Kanaloa protects your service against oversaturated traffic by adaptively throttles the concurrent requests the service handles and regulate the incoming traffic using a Little's law based algorithm called PIE that drops requests based on estimated wait time.  The main advantages of Kanaloa are:
-1. it requires little knowledge of the service capacity beforehand - it learns it on the fly.
+Without backpressure services becomes unusable or even collapse when incoming traffic exceeds capacity. This is more prone to happen and difficult to mitigate when, in complex systems, capacity has a higher risk of being negatively impacted to an unknown level. 
+Kanaloa protects your service against oversaturated traffic by adaptively throttles the concurrent requests the service handles and regulate the incoming traffic using a Little’s law based algorithm called PIE that drops requests based on estimated wait time. The main advantages of Kanaloa are:
+1. it requires little knowledge of the service capacity beforehand — it learns it on the fly.
 2. it's adaptive to the dynamic capacity of the service and thus is suitable to deal with both positive and negative traffic oversaturation.
 3. it's a reverse proxy in front of the service. No implementation is needed at the service side.
