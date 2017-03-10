@@ -76,8 +76,9 @@ object GeneralActorRefHandler {
     context watch target
 
     def complete(r: Either[Interrupted, Any]): Unit = {
-      cancelled.set(true)
       promise.tryComplete(Success(r))
+      cancelled.set(true)
+      context unwatch target
       context stop self
     }
 
