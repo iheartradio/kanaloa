@@ -9,15 +9,3 @@
 Make your service more resilient by providing protection against traffic oversaturation.
 
 Check the website for detail - [iheartradio.github.io/kanaloa](https://iheartradio.github.io/kanaloa)
-
-### Contribute
-
-Any contribution and feedback is more than welcome.
-
-
-### Special Thanks
-
-The autothrottle algorithm was first suggested by @richdougherty. @ktoso kindly reviewed this library and provided valuable feedback.
-
-
-
