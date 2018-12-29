@@ -5,7 +5,8 @@ import com.typesafe.sbt.SbtGhPages.GhPagesKeys._
 lazy val docsMappingsAPIDir = settingKey[String]("Name of subdirectory in site target directory for api docs")
 
 val commonSettings = Seq(
-  scalaVersion := "2.11.8",
+  scalaVersion := "2.11.12",
+  crossScalaVersions := Seq("2.11.12", "2.12.8"),
   scalacOptions ++= Seq(
     "-encoding", "UTF-8",
     "-deprecation", // warning and location for usages of deprecated APIs
@@ -67,10 +68,10 @@ val noPublishing = Seq(publish := (), publishLocal := (), publishArtifact := fal
 
 
 lazy val root = project.in(file("."))
-  .aggregate(core, cluster)
+  .settings(crossScalaVersions := Seq("2.11.12", "2.12.8"))
   .settings(moduleName := "kanaloa")
   .settings(noPublishing)
-
+  .aggregate(core, cluster)
 
 lazy val core = project
   .configs(Testing.Integration)

@@ -48,7 +48,8 @@ object Dependencies {
 
   lazy val settings = Seq(
 
-    scalaVersion in Global := "2.11.8",
+    scalaVersion in Global := "2.11.12",
+    crossScalaVersions := Seq("2.11.12", "2.12.8"),
 
     resolvers ++= Seq(
       Resolver.typesafeRepo("releases"),
