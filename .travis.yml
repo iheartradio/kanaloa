@@ -9,7 +9,8 @@ git:
   depth: 9999
 
 scala:
-   - 2.11.8
+   - 2.11.12
+   - 2.12.8
 jdk:
    - oraclejdk8
 
