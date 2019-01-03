@@ -1,14 +1,15 @@
 package kanaloa.handler
 
 import kanaloa.handler.AgentHandlerProviderSpec.{TestHandlerProvider, TestHandler}
-import kanaloa.handler.HandlerProvider.{HandlersAdded, HandlerChange, Subscriber}
-import org.scalatest.concurrent.{Eventually, AsyncAssertions}
-import org.scalatest.{AsyncWordSpec, Matchers, WordSpecLike}
+import kanaloa.handler.HandlerProvider.{HandlersAdded, HandlerChange}
+import org.scalatest.concurrent.Eventually
+import org.scalatest.{AsyncWordSpec, Matchers}
 
-import scala.concurrent.{Await, ExecutionContext}
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext
+
 class AgentHandlerProviderSpec extends AsyncWordSpec with Matchers with Eventually {
+  override implicit val executionContext: ExecutionContext = ExecutionContext.global
+
   "AgentHandlerProvider#addHandler" should {
     "return true when the handler name is not" in {
       val h = new TestHandlerProvider
@@ -44,10 +45,9 @@ class AgentHandlerProviderSpec extends AsyncWordSpec with Matchers with Eventual
       h.addHandler(newHandler)
 
       eventually(changes should contain(HandlersAdded(List(newHandler))))
-
     }
 
-    "does not broadcast handler added event if the name is duplicated" in {
+    "not broadcast handler added event if the name is duplicated" in {
       val h = new TestHandlerProvider
       @volatile
       var changes: List[HandlerChange] = Nil
