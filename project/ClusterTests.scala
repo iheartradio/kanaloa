@@ -8,7 +8,7 @@ object ClusterTests {
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-remote" % Versions.akka,
       "com.typesafe.akka" %% "akka-multi-node-testkit" % Versions.akka,
-      "org.scoverage" %% "scalac-scoverage-runtime" % "1.1.1"
+      "org.scoverage" %% "scalac-scoverage-runtime" % "1.3.1"
     ).map(_ % "test,multi-jvm"),
 
     compile in MultiJvm <<= (compile in MultiJvm) triggeredBy (compile in Test),
